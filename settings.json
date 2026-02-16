@@ -1,1 +1,5 @@
-{"autoview":true,"antilink":true}
+{
+  "autoview": true,
+  "autoreact": true,
+  "antilink": true
+}

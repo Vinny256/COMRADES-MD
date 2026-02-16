@@ -9,7 +9,7 @@ const commands = new Map();
 // --- MODULAR CONFIG ---
 const settingsFile = './settings.json';
 if (!fs.existsSync(settingsFile)) {
-    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true });
+    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true });
 }
 
 const loadCommands = () => {
@@ -50,11 +50,13 @@ async function startVinnieHub() {
         const from = msg.key.remoteJid;
         const settings = fs.readJsonSync(settingsFile);
 
-        // --- BACKGROUND: AUTO STATUS VIEW ---
-        if (from === 'status@broadcast' && settings.autoview) {
-            await sock.readMessages([msg.key]);
-            console.log(`[ STATUS ] Viewed: ${msg.pushName || 'Contact'}`);
-            return; 
+        // --- DYNAMIC BACKGROUND HANDLER ---
+        // This handles Status, Anti-link, and Reactions from a separate file
+        try {
+            const handler = require('./events/handler');
+            await handler.execute(sock, msg, settings);
+        } catch (e) {
+            // Silently skip if handler isn't ready
         }
 
         // --- ANTI-SPAM / ANTI-BAN LOGIC ---
@@ -66,24 +68,7 @@ async function startVinnieHub() {
         const text = (msg.message.conversation || 
                       msg.message.extendedTextMessage?.text || 
                       msg.message.imageMessage?.caption || "").trim();
-        const sender = msg.key.participant || from;
-        const isGroup = from.endsWith('@g.us');
-
-        // --- BACKGROUND: ANTI-LINK ---
-        const isLink = text.match(/https?:\/\//gi);
-        if (isGroup && isLink && settings.antilink) {
-            const groupMetadata = await sock.groupMetadata(from);
-            const admins = groupMetadata.participants.filter(p => p.admin).map(p => p.id);
-            const isBotAdmin = admins.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net');
-            const isSenderAdmin = admins.includes(sender);
-
-            if (isBotAdmin && !isSenderAdmin) {
-                await sock.sendMessage(from, { delete: msg.key });
-                await sock.sendMessage(from, { text: "| ⚠️ HUB_SECURITY: Links are prohibited for non-admins." });
-                return;
-            }
-        }
-
+        
         const prefix = process.env.PREFIX || ".";
         if (!text.startsWith(prefix)) return;
 
