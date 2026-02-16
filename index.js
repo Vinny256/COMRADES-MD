@@ -6,6 +6,12 @@ const pino = require('pino');
 
 const commands = new Map();
 
+// --- MODULAR CONFIG ---
+const settingsFile = './settings.json';
+if (!fs.existsSync(settingsFile)) {
+    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true });
+}
+
 const loadCommands = () => {
     const folders = fs.readdirSync(path.join(__dirname, 'commands'));
     for (const folder of folders) {
@@ -41,24 +47,44 @@ async function startVinnieHub() {
         const msg = messages[0];
         if (!msg.message) return;
 
+        const from = msg.key.remoteJid;
+        const settings = fs.readJsonSync(settingsFile);
+
+        // --- BACKGROUND: AUTO STATUS VIEW ---
+        if (from === 'status@broadcast' && settings.autoview) {
+            await sock.readMessages([msg.key]);
+            console.log(`[ STATUS ] Viewed: ${msg.pushName || 'Contact'}`);
+            return; 
+        }
+
         // --- ANTI-SPAM / ANTI-BAN LOGIC ---
-        // Get message timestamp (Baileys gives it in seconds)
         const messageTimestamp = msg.messageTimestamp;
         const currentTimestamp = Math.floor(Date.now() / 1000);
         const diff = currentTimestamp - messageTimestamp;
+        if (diff > 60) return;
 
-        // If message is older than 60 seconds, IGNORE IT (Prevent spam after wake-up)
-        if (diff > 60) {
-            console.log(`[ SKIP ] Old message detected (${diff}s ago). Ignoring to prevent ban.`);
-            return;
+        const text = (msg.message.conversation || 
+                      msg.message.extendedTextMessage?.text || 
+                      msg.message.imageMessage?.caption || "").trim();
+        const sender = msg.key.participant || from;
+        const isGroup = from.endsWith('@g.us');
+
+        // --- BACKGROUND: ANTI-LINK ---
+        const isLink = text.match(/https?:\/\//gi);
+        if (isGroup && isLink && settings.antilink) {
+            const groupMetadata = await sock.groupMetadata(from);
+            const admins = groupMetadata.participants.filter(p => p.admin).map(p => p.id);
+            const isBotAdmin = admins.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net');
+            const isSenderAdmin = admins.includes(sender);
+
+            if (isBotAdmin && !isSenderAdmin) {
+                await sock.sendMessage(from, { delete: msg.key });
+                await sock.sendMessage(from, { text: "| ⚠️ HUB_SECURITY: Links are prohibited for non-admins." });
+                return;
+            }
         }
 
-        const from = msg.key.remoteJid;
-        const text = (msg.message.conversation || 
-                     msg.message.extendedTextMessage?.text || 
-                     msg.message.imageMessage?.caption || "").trim();
         const prefix = process.env.PREFIX || ".";
-        
         if (!text.startsWith(prefix)) return;
 
         const args = text.slice(prefix.length).trim().split(/ +/);
@@ -67,9 +93,7 @@ async function startVinnieHub() {
         const command = commands.get(commandName);
         if (command) {
             console.log(`[ EXEC ] ${commandName} from ${msg.pushName || from}`);
-            // Automatically mark as read/online when a command is triggered
             await sock.readMessages([msg.key]);
-            
             await command.execute(sock, msg, args, { prefix, commands, from });
         }
     });
