@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1",
+    "fs-extra": "^11.3.3",
+    "pino": "^10.3.1"
+  }
+}
