@@ -1,5 +1,6 @@
 {
   "autoview": true,
   "autoreact": true,
-  "antilink": true
+  "antilink": true,
+  "autobio": true
 }

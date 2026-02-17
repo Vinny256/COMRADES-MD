@@ -51,7 +51,6 @@ async function startVinnieHub() {
         const settings = fs.readJsonSync(settingsFile);
 
         // --- DYNAMIC BACKGROUND HANDLER ---
-        // This handles Status, Anti-link, and Reactions from a separate file
         try {
             const handler = require('./events/handler');
             await handler.execute(sock, msg, settings);
@@ -85,7 +84,18 @@ async function startVinnieHub() {
 
     sock.ev.on('connection.update', (u) => { 
         const { connection, lastDisconnect } = u;
-        if (connection === 'open') console.log("📡 Vinnie Hub Active!");
+        if (connection === 'open') {
+            console.log("📡 Vinnie Hub Active!");
+            
+            // --- AUTOMATION TRIGGER ---
+            // This starts the 24-hour Bio clock without messing with index.js logic
+            try {
+                const automation = require('./events/automation');
+                automation.startBioRotation(sock);
+            } catch (e) {
+                console.log("⚠️ Automation file not found in events folder.");
+            }
+        }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startVinnieHub();
