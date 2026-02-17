@@ -3,42 +3,49 @@ const axios = require('axios');
 module.exports = {
     name: "tt",
     category: "downloader",
-    desc: "Download TikTok videos without watermark",
+    desc: "No-watermark TikTok downloader",
     async execute(sock, msg, args, { prefix, from }) {
         const url = args[0];
         if (!url || !url.includes("tiktok.com")) {
-            return sock.sendMessage(from, { text: `| ❌ Provide a TikTok link!\n| Example: ${prefix}tt https://vt.tiktok.com/xxx` });
+            return sock.sendMessage(from, { text: "┃ ❌ Error: Provide TikTok Link" });
         }
 
-        await sock.sendMessage(from, { text: "| ⏳ Processing TikTok Video..." });
+        // Phase 1: Requesting State
+        const { key } = await sock.sendMessage(from, { 
+            text: `┏━━━━━ ✿ V_HUB_DL ✿ ━━━━━┓\n┃\n┃  TYPE: TIKTOK_VIDEO\n┃  STAT: [ FETCHING... ]\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛` 
+        });
 
         try {
-            // Using the Tikwm API (Free and stable)
             const response = await axios.get(`https://www.tikwm.com/api/?url=${url}`);
             const data = response.data.data;
 
-            if (!data) return sock.sendMessage(from, { text: "│ ❌ Video not found or link is private." });
+            if (!data) throw new Error("Private_Link");
 
-            const videoUrl = data.play; // No-watermark HD link
-            const title = data.title || "Vinnie Hub Download";
+            const videoUrl = data.play;
+            const title = data.title || "No Title";
 
-            let res = `+--- [#] TIKTOK_DL [#] ---+\n`;
-            res += `|\n`;
-            res += `|  DESC: ${title.slice(0, 30)}...\n`;
-            res += `|  USER: ${data.author.nickname}\n`;
-            res += `|  TYPE: HD No-Watermark\n`;
-            res += `|\n`;
-            res += `+--- [*] V_DIGITAL_HUB [*] ---+`;
+            // Phase 2: Building Premium Caption
+            let caption = `┏━━━━━ ✿ TT_RESULT ✿ ━━━━━┓\n`;
+            caption += `┃\n`;
+            caption += `┃  USER: ${data.author.nickname.slice(0, 12)}\n`;
+            caption += `┃  DESC: ${title.slice(0, 15)}...\n`;
+            caption += `┃  QUAL: HD_NO_WM\n`;
+            caption += `┃\n`;
+            caption += `┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛`;
 
-            // Send the video
+            // Phase 3: Send Video & Delete Loading Message
             await sock.sendMessage(from, { 
                 video: { url: videoUrl }, 
-                caption: res 
-            });
+                caption: caption 
+            }, { quoted: msg });
+
+            await sock.sendMessage(from, { delete: key });
 
         } catch (e) {
-            console.error(e);
-            await sock.sendMessage(from, { text: "│ ❌ Failed to download. API might be busy." });
+            await sock.sendMessage(from, { 
+                text: `┏━━━━━ ✿ ERROR_LOG ✿ ━━━━━┓\n┃\n┃  STAT: FAILED\n┃  ERR: PRIVATE/OFFLINE\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━━━━┛`, 
+                edit: key 
+            });
         }
     }
 };
