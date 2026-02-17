@@ -19,20 +19,18 @@ module.exports = {
             }, { quoted: m });
         }
 
-        // Format phone to 254 standard
         if (phone.startsWith('0')) phone = '254' + phone.slice(1);
 
-        // 2. Initial Status Message
+        // 2. Initial Message
         const msg = await sock.sendMessage(remoteJid, { 
             text: `⏳ *V_HUB:* Processing request for ${waName}...` 
         }, { quoted: m });
 
         try {
-            // 3. Trigger Proxy STK Push
+            // 3. Trigger STK Push
             const result = await hubClient.deposit(phone, amount, remoteJid, waName);
 
             if (result && (result.ResponseCode === "0" || result.success)) {
-                // 4. Update UI to tell user we are waiting
                 const waitingText = `┏━━━━━ ✿ *V_HUB_PAY* ✿ ━━━━━┓
 ┃
 ┃ ✅ *STK PUSH SENT!*
@@ -46,46 +44,61 @@ module.exports = {
 ┃ 2. *Wait 25 seconds* for the bot to 
 ┃    auto-verify your transaction.
 ┃
-┃ 🕒 _Verifying in 25s..._
+┃ 🕒 _Status: Awaiting PIN..._
 ┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
-                await sock.sendMessage(remoteJid, { 
-                    text: waitingText,
-                    edit: msg.key 
-                });
+                await sock.sendMessage(remoteJid, { text: waitingText, edit: msg.key });
 
-                // 5. POLLING LOGIC (The Worker Bridge)
-                setTimeout(async () => {
+                // 4. SMART POLLING ENGINE (Checks 3 times)
+                let attempts = 0;
+                const checkInterval = setInterval(async () => {
+                    attempts++;
                     try {
-                        // Knock on the Proxy's Status Door
-                        // Replace the URL with your actual Proxy Heroku URL
-                        const check = await axios.get(`https://vhubg-27494ea43fc4.herokuapp.com/api/check-status?phone=${phone}`);
+                        const PROXY_URL = "https://vhubg-27494ea43fc4.herokuapp.com";
+                        const check = await axios.get(`${PROXY_URL}/api/check-status?phone=${phone}`);
                         
                         if (check.data.status === "OK" && check.data.isRecent) {
+                            clearInterval(checkInterval); // STOP POLLING
                             const tx = check.data.lastTransaction;
                             const successReceipt = `┏━━━━━ ✿ *V_HUB_RECEIPT* ✿ ━━━━━┓\n┃\n┃ ✅ *PAYMENT VERIFIED*\n┃ 💵 *AMOUNT:* KSH ${tx.amount}\n┃ 🧾 *REF:* ${tx.receipt}\n┃ 🏦 *NEW BAL:* KSH ${check.data.balance}\n┃\n┃ _Infinite Impact - Vinnie Hub_ \n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
                             
                             await sock.sendMessage(remoteJid, { text: successReceipt }, { quoted: m });
-                        } else {
-                            // If no payment found after 25s
-                            await sock.sendMessage(remoteJid, { 
-                                text: "⚠️ *V_HUB:* Auto-verification timed out. If you paid, please check your `.balance` in a few seconds." 
-                            }, { quoted: m });
                         }
                     } catch (e) {
-                        console.error("┃ ❌ POLLING_ERROR:", e.message);
+                        // If we reach 3 attempts (approx 30-35 seconds) and still 404
+                        if (attempts >= 3) {
+                            clearInterval(checkInterval);
+                            const errorText = `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓
+┃
+┃ ❌ *VERIFICATION FAILED*
+┃ 
+┃ Vinnie Hub faced an error. It's either 
+┃ you didn't complete the transaction
+┃ or M-PESA is delayed.
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃
+┃ 📢 *NEED HELP?*
+┃ If you think this is a mistake, 
+┃ please contact the admin.
+┃
+┃ 🛠️ _Status: Timeout_
+┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                            
+                            await sock.sendMessage(remoteJid, { text: errorText, edit: msg.key });
+                        }
                     }
-                }, 25000); // 25 seconds delay
+                }, 10000); // Checks every 10 seconds
 
             } else {
                 await sock.sendMessage(remoteJid, { 
-                    text: `❌ *V_HUB: REQUEST FAILED*\n\nSafaricom was unable to initiate the STK push.`,
+                    text: `❌ *V_HUB: REQUEST FAILED*\n\nSTK could not be initiated.`,
                     edit: msg.key
                 });
             }
         } catch (err) {
             await sock.sendMessage(remoteJid, { 
-                text: "⚠️ *V_HUB: SERVER ERROR*\n\nConnection to the Vinnie Digital Hub Proxy was lost.",
+                text: "⚠️ *V_HUB: SERVER ERROR*\n\nProxy connection lost.",
                 edit: msg.key
             });
         }
