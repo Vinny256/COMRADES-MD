@@ -1,4 +1,5 @@
 const hubClient = require('../../utils/hubClient');
+const axios = require('axios');
 
 module.exports = {
     name: 'prompt',
@@ -21,7 +22,7 @@ module.exports = {
         // Format phone to 254 standard
         if (phone.startsWith('0')) phone = '254' + phone.slice(1);
 
-        // 2. Initial "Ghost" Message (To be edited)
+        // 2. Initial Status Message
         const msg = await sock.sendMessage(remoteJid, { 
             text: `⏳ *V_HUB:* Processing request for ${waName}...` 
         }, { quoted: m });
@@ -31,40 +32,60 @@ module.exports = {
             const result = await hubClient.deposit(phone, amount, remoteJid, waName);
 
             if (result && (result.ResponseCode === "0" || result.success)) {
-                // 4. Success UI - The "Single Block" Professional View
-                const successText = `┏━━━━━ ✿ *V_HUB_PAY* ✿ ━━━━━┓
+                // 4. Update UI to tell user we are waiting
+                const waitingText = `┏━━━━━ ✿ *V_HUB_PAY* ✿ ━━━━━┓
 ┃
 ┃ ✅ *STK PUSH SENT!*
 ┃ 👤 *USER:* ${waName}
-┃ 📱 *TARGET:* ${phone}
 ┃ 💰 *AMOUNT:* KSH ${amount}
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━┫
 ┃
-┃ 📢 *WHAT HAPPENS NOW?*
-┃ 1. Check your phone for the PIN pop-up.
-┃ 2. Enter your M-PESA PIN to confirm.
-┃ 3. You will receive an instant 
-┃    confirmation here once paid.
+┃ 📢 *ACTION REQUIRED:*
+┃ 1. Enter M-PESA PIN on your phone.
+┃ 2. *Wait 25 seconds* for the bot to 
+┃    auto-verify your transaction.
 ┃
-┃ ⚠️ _Wait up to 30 seconds for pop-up._
+┃ 🕒 _Verifying in 25s..._
 ┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
                 await sock.sendMessage(remoteJid, { 
-                    text: successText,
+                    text: waitingText,
                     edit: msg.key 
                 });
+
+                // 5. POLLING LOGIC (The Worker Bridge)
+                setTimeout(async () => {
+                    try {
+                        // Knock on the Proxy's Status Door
+                        // Replace the URL with your actual Proxy Heroku URL
+                        const check = await axios.get(`https://vhubg-27494ea43fc4.herokuapp.com/api/check-status?phone=${phone}`);
+                        
+                        if (check.data.status === "OK" && check.data.isRecent) {
+                            const tx = check.data.lastTransaction;
+                            const successReceipt = `┏━━━━━ ✿ *V_HUB_RECEIPT* ✿ ━━━━━┓\n┃\n┃ ✅ *PAYMENT VERIFIED*\n┃ 💵 *AMOUNT:* KSH ${tx.amount}\n┃ 🧾 *REF:* ${tx.receipt}\n┃ 🏦 *NEW BAL:* KSH ${check.data.balance}\n┃\n┃ _Infinite Impact - Vinnie Hub_ \n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                            
+                            await sock.sendMessage(remoteJid, { text: successReceipt }, { quoted: m });
+                        } else {
+                            // If no payment found after 25s
+                            await sock.sendMessage(remoteJid, { 
+                                text: "⚠️ *V_HUB:* Auto-verification timed out. If you paid, please check your `.balance` in a few seconds." 
+                            }, { quoted: m });
+                        }
+                    } catch (e) {
+                        console.error("┃ ❌ POLLING_ERROR:", e.message);
+                    }
+                }, 25000); // 25 seconds delay
+
             } else {
-                // 5. Rejection UI
                 await sock.sendMessage(remoteJid, { 
-                    text: `❌ *V_HUB: REQUEST FAILED*\n\nSafaricom was unable to initiate the STK push to ${phone}. Please ensure the number is active and has no M-PESA lock.`,
+                    text: `❌ *V_HUB: REQUEST FAILED*\n\nSafaricom was unable to initiate the STK push.`,
                     edit: msg.key
                 });
             }
         } catch (err) {
-            // 6. Crash Protection
             await sock.sendMessage(remoteJid, { 
-                text: "⚠️ *V_HUB: SERVER ERROR*\n\nConnection to the Vinnie Digital Hub Proxy was lost. Please try again in a few minutes.",
+                text: "⚠️ *V_HUB: SERVER ERROR*\n\nConnection to the Vinnie Digital Hub Proxy was lost.",
                 edit: msg.key
             });
         }
