@@ -1,4 +1,4 @@
-const hubClient = require('../utils/hubClient');
+const hubClient = require('../../utils/hubClient');
 
 module.exports = {
     name: 'prompt',
