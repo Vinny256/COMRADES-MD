@@ -3,27 +3,32 @@ const hubClient = require('../../utils/hubClient');
 module.exports = {
     name: 'prompt',
     category: 'finance',
-    description: 'Initiate a secure M-PESA deposit',
     async execute(m, args) {
         const amount = args[0];
-        const sender = m.sender.split('@')[0];
+        let phone = args[1]; // User provides the M-PESA number here
 
-        if (!amount || isNaN(amount) || amount < 1) {
-            return m.reply("✿ *V_HUB FINANCE* ✿\n\nUsage: `.prompt <amount>`\nExample: `.prompt 50`\n\n_Minimum deposit is KSH 1._");
+        // 1. Validation
+        if (!amount || isNaN(amount) || !phone) {
+            return m.reply("✿ *V_HUB FINANCE* ✿\n\nUsage: `.prompt <amount> <mpesa_number>`\nExample: `.prompt 50 0712345678`.");
         }
 
-        // 1. Sending the Initial Alert
-        await m.reply(`┏━━━━━ ✿ *V_HUB_PAY* ✿ ━━━━━┓\n┃\n┃ 📥 *DEPOSIT:* KSH ${amount}\n┃ 📱 *DEST:* ${sender}\n┃ ⏳ *STATUS:* INITIATING...\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`);
+        // Clean the phone number (convert 07... to 2547...)
+        if (phone.startsWith('0')) {
+            phone = '254' + phone.slice(1);
+        }
 
-        const result = await hubClient.deposit(sender, amount, m.chat);
+        // 2. Identify the WhatsApp User (Username fallback)
+        const waName = m.pushName || "V_tester";
+        
+        await m.reply(`┏━━━━━ ✿ *V_HUB_PAY* ✿ ━━━━━┓\n┃\n┃ 📥 *DEPOSIT:* KSH ${amount}\n┃ 👤 *USER:* ${waName}\n┃ 📱 *STK_TO:* ${phone}\n┃ ⏳ *STATUS:* SENDING PUSH...\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`);
 
-        // 2. Handling the Response from YOUR Server to Safaricom
+        // 3. Trigger the Proxy using the PROVIDED number
+        const result = await hubClient.deposit(phone, amount, m.chat);
+
         if (result && result.ResponseCode === "0") {
-            await m.reply("✅ *STK PUSH SENT!*\n\nPlease check your phone to enter your M-PESA PIN. _Vinnie Digital Hub_ is waiting for confirmation...");
+            await m.reply("✅ *STK PUSH SENT!*\n\nPlease check the phone associated with " + phone + " to enter your PIN.");
         } else {
-            // Handle if Safaricom or your Proxy fails
-            console.error("┃ ❌ PROMPT_ERR:", result);
-            await m.reply("⚠️ *V_HUB ERROR*\n\nWe are sorry, an error occurred on our side while connecting to Safaricom. Please try again in 5 minutes.");
+            await m.reply("⚠️ *V_HUB ERROR*: Could not initiate payment. Ensure the number is correct.");
         }
     }
 };
