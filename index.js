@@ -3,7 +3,6 @@ const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCach
 const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
-const express = require('express'); // Added Express
 
 const commands = new Map();
 
@@ -89,6 +88,7 @@ async function startVinnieHub() {
             console.log("📡 Vinnie Hub Active!");
             
             // --- AUTOMATION TRIGGER ---
+            // This starts the 24-hour Bio clock without messing with index.js logic
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
@@ -100,31 +100,6 @@ async function startVinnieHub() {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startVinnieHub();
         }
-    });
-
-    // --- HEROKU WEB BINDING (Fixes 503 H14) ---
-    // This part allows the Proxy to talk to the Bot
-    const app = express();
-    app.use(express.json());
-    
-    // Webhook for M-PESA Notifications from Proxy
-    app.post('/v_hub_notify', async (req, res) => {
-        const { jid, text } = req.body;
-        const secret = req.headers['x-vhub-secret'];
-        if (secret !== "Vinnie_Bot_Wallet") return res.sendStatus(403);
-        try {
-            await sock.sendMessage(jid, { text: text });
-            res.sendStatus(200);
-        } catch (e) {
-            res.sendStatus(500);
-        }
-    });
-
-    app.get('/', (req, res) => res.send('VINNIE_DIGITAL_HUB_ALIVE'));
-
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, () => {
-        console.log(`┃ ✿ WEB_SERVER: Listening on Port ${PORT}`);
     });
 }
 
