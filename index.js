@@ -4,9 +4,12 @@ const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
 
+// --- 🛡️ THE GAG ORDER ---
+// Create a logger that does absolutely nothing
+const silentLogger = pino({ level: 'silent' });
+
 const commands = new Map();
 
-// --- MODULAR CONFIG ---
 const settingsFile = './settings.json';
 if (!fs.existsSync(settingsFile)) {
     fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false });
@@ -35,16 +38,16 @@ async function startVinnieHub() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
     const sock = makeWASocket({
-        // 🛡️ SILENCED SIGNAL STORE - Stops "SessionEntry" logs
+        // 🔇 Passing the silent logger directly into the KeyStore is the only way to stop SessionEntry logs
         auth: { 
             creds: state.creds, 
-            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' })) 
+            keys: makeCacheableSignalKeyStore(state.keys, silentLogger) 
         },
         printQRInTerminal: false,
-        logger: pino({ level: 'fatal' }), // 🔕 Total Silence on Socket
+        logger: silentLogger, 
         browser: ["Vinnie Hub", "Chrome", "1.0.0"],
         
-        // --- 🛡️ THE BIG ACCOUNT STABILITY SHIELD ---
+        // --- 🛡️ ACCOUNT STABILITY ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
         markOnlineOnConnect: true,
@@ -67,11 +70,10 @@ async function startVinnieHub() {
         try {
             const settings = fs.readJsonSync(settingsFile);
 
-            // --- DYNAMIC BACKGROUND HANDLER ---
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
-            } catch (e) { /* Silently skip */ }
+            } catch (e) { }
 
             const messageTimestamp = msg.messageTimestamp;
             const currentTimestamp = Math.floor(Date.now() / 1000);
@@ -89,7 +91,6 @@ async function startVinnieHub() {
             
             const command = commands.get(commandName);
             if (command) {
-                // --- 🎤 RECORDING / TYPING HANDLER ---
                 if (settings.typing) {
                     await sock.sendPresenceUpdate('composing', from);
                 } else if (settings.recording) {
@@ -115,7 +116,11 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', (u) => { 
         const { connection, lastDisconnect } = u;
         if (connection === 'open') {
-            console.log("📡 Vinnie Hub Active!");
+            // Force clear the terminal once connected for a clean start
+            console.clear();
+            console.log("\n📡 Vinnie Hub Active!");
+            console.log("┃ Infinite Impact - Session Logs Muted\n");
+            
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
