@@ -35,9 +35,13 @@ async function startVinnieHub() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
     const sock = makeWASocket({
-        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })) },
+        // 🛡️ SILENCED SIGNAL STORE - Stops "SessionEntry" logs
+        auth: { 
+            creds: state.creds, 
+            keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'fatal' })) 
+        },
         printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
+        logger: pino({ level: 'fatal' }), // 🔕 Total Silence on Socket
         browser: ["Vinnie Hub", "Chrome", "1.0.0"],
         
         // --- 🛡️ THE BIG ACCOUNT STABILITY SHIELD ---
@@ -94,10 +98,8 @@ async function startVinnieHub() {
 
                 console.log(`[ EXEC ] ${commandName} from ${msg.pushName || from}`);
                 
-                // Read message so blue ticks show (optional)
                 await sock.readMessages([msg.key]);
 
-                // Simulate thinking time for more human-like behavior
                 if (settings.typing || settings.recording) {
                     await new Promise(resolve => setTimeout(resolve, 1500));
                     await sock.sendPresenceUpdate('paused', from);
