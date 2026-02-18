@@ -40,8 +40,18 @@ async function startVinnieHub() {
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
 
-    const base64Data = process.env.SESSION_ID.split('VINNIE-SESSION~')[1];
-    fs.writeFileSync(path.join(authFolder, 'creds.json'), Buffer.from(base64Data, 'base64').toString());
+    const credsPath = path.join(authFolder, 'creds.json');
+
+    // --- 🛡️ SMART SESSION RECOVERY ---
+    // Only write creds if they don't exist to prevent session reset lag
+    if (!fs.existsSync(credsPath)) {
+        console.log("📦 Initializing session from SESSION_ID...");
+        const base64Data = process.env.SESSION_ID.split('VINNIE-SESSION~')[1];
+        fs.writeFileSync(
+            credsPath,
+            Buffer.from(base64Data, 'base64').toString()
+        );
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
@@ -129,7 +139,7 @@ async function startVinnieHub() {
         if (connection === 'open') {
             console.clear();
             console.log("\n📡 Vinnie Hub Active!");
-            console.log("┃ Infinite Impact - Session Preserved for Speed\n");
+            console.log("┃ Infinite Impact - Smart Session Recovery Active\n");
             
             try {
                 const automation = require('./events/automation');
