@@ -3,5 +3,7 @@
   "autoreact": true,
   "antilink": true,
   "autobio": true,
-  "antiviewonce": true
+  "antiviewonce": true,
+  "typing": true,
+  "recording": false
 }
