@@ -41,64 +41,68 @@ module.exports = {
         }
 
         const from = msg.key.remoteJid;
-        const type = Object.keys(msg.message || {})[0];
 
         // --- 2. ANTI-VIEWONCE ENGINE (AUTO-REVEAL) ---
-        const isViewOnce = msg.message?.viewOnceMessageV2 || msg.message?.viewOnceMessage;
-        if (isViewOnce && settings.antiviewonce) {
+        // This checks if the incoming message is a ViewOnce type
+        const viewOnceType = msg.message?.viewOnceMessageV2 || msg.message?.viewOnceMessage;
+        
+        if (viewOnceType && settings.antiviewonce) {
             try {
-                const viewOnceContent = isViewOnce.message;
-                const mediaType = Object.keys(viewOnceContent)[0];
-                const cleanType = mediaType.replace('Message', '');
+                const viewOnceContent = viewOnceType.message;
+                const mediaKey = Object.keys(viewOnceContent)[0]; // e.imageMessage or videoMessage
+                const mediaType = mediaKey.replace('Message', '');
                 
-                // Download to Memory Buffer (No Disk Storage)
-                const stream = await downloadContentFromMessage(viewOnceContent[mediaType], cleanType);
+                // Stream download directly to RAM buffer
+                const stream = await downloadContentFromMessage(viewOnceContent[mediaKey], mediaType);
                 let buffer = Buffer.from([]);
                 for await (const chunk of stream) {
                     buffer = Buffer.concat([buffer, chunk]);
                 }
 
-                const caption = `┏━━━━━ ✿ *V_HUB_REVEAL* ✿ ━━━━━┓\n┃\n┃ ✅ *VIEW_ONCE_BYPASSED*\n┃ 👤 *FROM:* ${msg.pushName || 'User'}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                const revealCaption = `┏━━━━━ ✿ *V_HUB_REVEAL* ✿ ━━━━━┓\n┃\n┃ ✅ *VIEW_ONCE_BYPASSED*\n┃ 👤 *FROM:* ${msg.pushName || 'User'}\n┃ 📂 *TYPE:* ${mediaType.toUpperCase()}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
                 await sock.sendMessage(from, { 
-                    [cleanType]: buffer, 
-                    caption: viewOnceContent[mediaType].caption || caption 
+                    [mediaType]: buffer, 
+                    caption: viewOnceContent[mediaKey].caption || revealCaption 
                 }, { quoted: msg });
                 
-                // Clear buffer from memory immediately
+                // CRITICAL: Clear memory immediately
                 buffer = null;
             } catch (e) {
-                console.log("┃ ❌ VIEW_ONCE_FAIL:", e.message);
+                console.error("┃ ❌ VIEW_ONCE_REVEAL_FAIL:", e.message);
             }
         }
 
         // --- 3. MANUAL .VV COMMAND (REPLY TO VIEW ONCE) ---
-        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
-        if (text.toLowerCase() === '.vv') {
+        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim().toLowerCase();
+        
+        if (text === '.vv') {
             const quotedMsg = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
-            const isQuotedViewOnce = quotedMsg?.viewOnceMessageV2 || quotedMsg?.viewOnceMessage;
+            const quotedVO = quotedMsg?.viewOnceMessageV2 || quotedMsg?.viewOnceMessage;
 
-            if (isQuotedViewOnce) {
+            if (quotedVO) {
                 try {
-                    const vContent = isQuotedViewOnce.message;
-                    const vType = Object.keys(vContent)[0];
-                    const vClean = vType.replace('Message', '');
+                    const voContent = quotedVO.message;
+                    const voKey = Object.keys(voContent)[0];
+                    const voType = voKey.replace('Message', '');
 
-                    const vStream = await downloadContentFromMessage(vContent[vType], vClean);
-                    let vBuffer = Buffer.from([]);
-                    for await (const chunk of vStream) {
-                        vBuffer = Buffer.concat([vBuffer, chunk]);
+                    const voStream = await downloadContentFromMessage(voContent[voKey], voType);
+                    let voBuffer = Buffer.from([]);
+                    for await (const chunk of voStream) {
+                        voBuffer = Buffer.concat([voBuffer, chunk]);
                     }
 
                     await sock.sendMessage(from, { 
-                        [vClean]: vBuffer, 
+                        [voType]: voBuffer, 
                         caption: `📑 *V_HUB:* Manual Extract Successful.` 
                     }, { quoted: msg });
                     
-                    vBuffer = null; // Memory Cleanup
+                    voBuffer = null; // Memory Cleanup
                 } catch (err) {
-                    await sock.sendMessage(from, { text: "❌ Failed to extract media." });
+                    await sock.sendMessage(from, { text: "❌ Failed to extract media. It might have expired." });
                 }
+            } else {
+                await sock.sendMessage(from, { text: "⚠️ Reply to a ViewOnce message with .vv" });
             }
         }
 
