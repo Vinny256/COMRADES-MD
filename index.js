@@ -5,7 +5,6 @@ const path = require('path');
 const pino = require('pino');
 
 // --- 🛡️ THE GAG ORDER ---
-// Create a logger that does absolutely nothing
 const silentLogger = pino({ level: 'silent' });
 
 const commands = new Map();
@@ -38,7 +37,6 @@ async function startVinnieHub() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
     const sock = makeWASocket({
-        // 🔇 Passing the silent logger directly into the KeyStore is the only way to stop SessionEntry logs
         auth: { 
             creds: state.creds, 
             keys: makeCacheableSignalKeyStore(state.keys, silentLogger) 
@@ -63,50 +61,61 @@ async function startVinnieHub() {
         
         const msg = messages[0];
         if (!msg.message) return;
-        if (msg.key && msg.key.remoteJid === 'status@broadcast') return;
 
         const from = msg.key.remoteJid;
+        const prefix = process.env.PREFIX || ".";
         
+        // --- 🛠️ BUSINESS SELECTIVE LISTENER ---
+        const text = (msg.message.conversation || 
+                      msg.message.extendedTextMessage?.text || 
+                      msg.message.imageMessage?.caption || "").trim();
+
+        const isCommand = text.startsWith(prefix);
+        const isStatus = from === 'status@broadcast';
+
+        // 🛑 CRITICAL FILTER: 
+        // If it's NOT a status AND NOT a command, we stop immediately.
+        // This stops the Business account from lagging on normal chats.
+        if (!isStatus && !isCommand) return;
+
         try {
             const settings = fs.readJsonSync(settingsFile);
 
+            // --- 1. DYNAMIC BACKGROUND HANDLER ---
+            // Allows status updates and auto-reveals to process through handler.js
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
             } catch (e) { }
 
-            const messageTimestamp = msg.messageTimestamp;
-            const currentTimestamp = Math.floor(Date.now() / 1000);
-            if (currentTimestamp - messageTimestamp > 60) return;
+            // --- 2. COMMAND EXECUTION ---
+            if (isCommand) {
+                const messageTimestamp = msg.messageTimestamp;
+                const currentTimestamp = Math.floor(Date.now() / 1000);
+                if (currentTimestamp - messageTimestamp > 60) return;
 
-            const text = (msg.message.conversation || 
-                          msg.message.extendedTextMessage?.text || 
-                          msg.message.imageMessage?.caption || "").trim();
-            
-            const prefix = process.env.PREFIX || ".";
-            if (!text.startsWith(prefix)) return;
-
-            const args = text.slice(prefix.length).trim().split(/ +/);
-            const commandName = args.shift().toLowerCase();
-            
-            const command = commands.get(commandName);
-            if (command) {
-                if (settings.typing) {
-                    await sock.sendPresenceUpdate('composing', from);
-                } else if (settings.recording) {
-                    await sock.sendPresenceUpdate('recording', from);
-                }
-
-                console.log(`[ EXEC ] ${commandName} from ${msg.pushName || from}`);
+                const args = text.slice(prefix.length).trim().split(/ +/);
+                const commandName = args.shift().toLowerCase();
                 
-                await sock.readMessages([msg.key]);
+                const command = commands.get(commandName);
+                if (command) {
+                    if (settings.typing) {
+                        await sock.sendPresenceUpdate('composing', from);
+                    } else if (settings.recording) {
+                        await sock.sendPresenceUpdate('recording', from);
+                    }
 
-                if (settings.typing || settings.recording) {
-                    await new Promise(resolve => setTimeout(resolve, 1500));
-                    await sock.sendPresenceUpdate('paused', from);
+                    console.log(`[ EXEC ] ${commandName} from ${msg.pushName || from}`);
+                    
+                    await sock.readMessages([msg.key]);
+
+                    if (settings.typing || settings.recording) {
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                        await sock.sendPresenceUpdate('paused', from);
+                    }
+
+                    await command.execute(sock, msg, args, { prefix, commands, from });
                 }
-
-                await command.execute(sock, msg, args, { prefix, commands, from });
             }
         } catch (err) {
             console.error("┃ ❌ UPSERT_ERROR:", err.message);
@@ -116,7 +125,6 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', (u) => { 
         const { connection, lastDisconnect } = u;
         if (connection === 'open') {
-            // Force clear the terminal once connected for a clean start
             console.clear();
             console.log("\n📡 Vinnie Hub Active!");
             console.log("┃ Infinite Impact - Session Logs Muted\n");
