@@ -1,3 +1,14 @@
+// --- 🛡️ THE GLOBAL BUSINESS SHIELD (NUCLEAR SILENCE) ---
+// This intercepts and deletes session logs at the process level before they lag Heroku
+const originalWrite = process.stdout.write;
+process.stdout.write = function (chunk, encoding, callback) {
+    const data = chunk.toString();
+    if (data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message')) {
+        return; 
+    }
+    return originalWrite.call(process.stdout, chunk, encoding, callback);
+};
+
 require('dotenv').config();
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore } = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
@@ -11,7 +22,7 @@ const commands = new Map();
 
 const settingsFile = './settings.json';
 if (!fs.existsSync(settingsFile)) {
-    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false });
+    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true });
 }
 
 const loadCommands = () => {
@@ -30,7 +41,10 @@ async function startVinnieHub() {
     loadCommands();
     
     const authFolder = './auth_temp';
-    if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
+    // Clean start: Wipes old corrupted session files on every Heroku deploy
+    if (fs.existsSync(authFolder)) fs.emptyDirSync(authFolder);
+    else fs.mkdirSync(authFolder);
+
     const base64Data = process.env.SESSION_ID.split('VINNIE-SESSION~')[1];
     fs.writeFileSync(path.join(authFolder, 'creds.json'), Buffer.from(base64Data, 'base64').toString());
 
@@ -45,10 +59,15 @@ async function startVinnieHub() {
         logger: silentLogger, 
         browser: ["Vinnie Hub", "Chrome", "1.0.0"],
         
-        // --- 🛡️ ACCOUNT STABILITY ---
+        // --- 🚀 THE BUSINESS SPEED PATCH (INSTANT RESPONSE) ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
         markOnlineOnConnect: true,
+        fireInitQueries: false,      // 🛑 CRITICAL: Stops bot from asking for old messages on boot
+        maxMsgRetryCount: 1,         // Stops the "Bad MAC" retry loop
+        linkPreviewHighQuality: false, 
+        generateHighQualityLinkPreview: false,
+        
         getMessage: async (key) => {
             return { conversation: 'V_Hub_Ignore' };
         }
@@ -73,16 +92,13 @@ async function startVinnieHub() {
         const isCommand = text.startsWith(prefix);
         const isStatus = from === 'status@broadcast';
 
-        // 🛑 CRITICAL FILTER: 
-        // If it's NOT a status AND NOT a command, we stop immediately.
-        // This stops the Business account from lagging on normal chats.
+        // 🛑 Stop processing immediately if it's not a command or status
         if (!isStatus && !isCommand) return;
 
         try {
             const settings = fs.readJsonSync(settingsFile);
 
             // --- 1. DYNAMIC BACKGROUND HANDLER ---
-            // Allows status updates and auto-reveals to process through handler.js
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
@@ -92,7 +108,8 @@ async function startVinnieHub() {
             if (isCommand) {
                 const messageTimestamp = msg.messageTimestamp;
                 const currentTimestamp = Math.floor(Date.now() / 1000);
-                if (currentTimestamp - messageTimestamp > 60) return;
+                // Ignore commands older than 30 seconds to prevent "lag-execution"
+                if (currentTimestamp - messageTimestamp > 30) return;
 
                 const args = text.slice(prefix.length).trim().split(/ +/);
                 const commandName = args.shift().toLowerCase();
@@ -110,7 +127,7 @@ async function startVinnieHub() {
                     await sock.readMessages([msg.key]);
 
                     if (settings.typing || settings.recording) {
-                        await new Promise(resolve => setTimeout(resolve, 1500));
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                         await sock.sendPresenceUpdate('paused', from);
                     }
 
@@ -127,14 +144,12 @@ async function startVinnieHub() {
         if (connection === 'open') {
             console.clear();
             console.log("\n📡 Vinnie Hub Active!");
-            console.log("┃ Infinite Impact - Session Logs Muted\n");
+            console.log("┃ Infinite Impact - Business Engine Optimized\n");
             
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
-            } catch (e) {
-                console.log("⚠️ Automation file not found.");
-            }
+            } catch (e) { }
         }
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
