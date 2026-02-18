@@ -2,5 +2,6 @@
   "autoview": true,
   "autoreact": true,
   "antilink": true,
-  "autobio": true
+  "autobio": true,
+  "antiviewonce": true
 }

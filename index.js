@@ -9,7 +9,7 @@ const commands = new Map();
 // --- MODULAR CONFIG ---
 const settingsFile = './settings.json';
 if (!fs.existsSync(settingsFile)) {
-    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true });
+    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false });
 }
 
 const loadCommands = () => {
@@ -41,11 +41,9 @@ async function startVinnieHub() {
         browser: ["Vinnie Hub", "Chrome", "1.0.0"],
         
         // --- 🛡️ THE BIG ACCOUNT STABILITY SHIELD ---
-        // This stops the bot from trying to decrypt thousands of old messages
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
         markOnlineOnConnect: true,
-        // Optional: Ignores Bad MAC data packets by returning an empty placeholder
         getMessage: async (key) => {
             return { conversation: 'V_Hub_Ignore' };
         }
@@ -54,18 +52,14 @@ async function startVinnieHub() {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        // Only process 'notify' (live messages) to avoid history-sync lag
         if (type !== 'notify') return;
         
         const msg = messages[0];
         if (!msg.message) return;
-        
-        // Ignore status/broadcast to save processing power
         if (msg.key && msg.key.remoteJid === 'status@broadcast') return;
 
         const from = msg.key.remoteJid;
         
-        // --- 🛡️ CRASH PROTECTION ---
         try {
             const settings = fs.readJsonSync(settingsFile);
 
@@ -75,7 +69,6 @@ async function startVinnieHub() {
                 await handler.execute(sock, msg, settings);
             } catch (e) { /* Silently skip */ }
 
-            // --- ANTI-SPAM LOGIC ---
             const messageTimestamp = msg.messageTimestamp;
             const currentTimestamp = Math.floor(Date.now() / 1000);
             if (currentTimestamp - messageTimestamp > 60) return;
@@ -92,8 +85,24 @@ async function startVinnieHub() {
             
             const command = commands.get(commandName);
             if (command) {
+                // --- 🎤 RECORDING / TYPING HANDLER ---
+                if (settings.typing) {
+                    await sock.sendPresenceUpdate('composing', from);
+                } else if (settings.recording) {
+                    await sock.sendPresenceUpdate('recording', from);
+                }
+
                 console.log(`[ EXEC ] ${commandName} from ${msg.pushName || from}`);
+                
+                // Read message so blue ticks show (optional)
                 await sock.readMessages([msg.key]);
+
+                // Simulate thinking time for more human-like behavior
+                if (settings.typing || settings.recording) {
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await sock.sendPresenceUpdate('paused', from);
+                }
+
                 await command.execute(sock, msg, args, { prefix, commands, from });
             }
         } catch (err) {
