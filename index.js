@@ -18,10 +18,6 @@ const silentLogger = pino({ level: 'silent' });
 const commands = new Map();
 const settingsFile = './settings.json';
 
-// --- 🐕 WATCHDOG VARIABLES ---
-let watchdogTimer = null;
-const WATCHDOG_TIMEOUT = 5 * 60 * 1000; // 5 Minutes
-
 if (!fs.existsSync(settingsFile)) {
     fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true });
 }
@@ -37,25 +33,6 @@ const loadCommands = () => {
     }
     console.log(`✅ Loaded ${commands.size} Commands`);
 };
-
-// Function to start the 5-minute timer
-function startWatchdog(sock) {
-    if (watchdogTimer) clearTimeout(watchdogTimer);
-    watchdogTimer = setTimeout(async () => {
-        console.log("⚠️ WATCHDOG: No activity for 5 mins. Clearing session for a fresh start...");
-        const authFolder = './auth_temp';
-        if (fs.existsSync(authFolder)) fs.emptyDirSync(authFolder);
-        process.exit(1); // Force Heroku to restart the worker
-    }, WATCHDOG_TIMEOUT);
-}
-
-// Function to reset the timer when activity happens
-function resetWatchdog() {
-    if (watchdogTimer) {
-        clearTimeout(watchdogTimer);
-        // We only restart the timer if the bot is healthy
-    }
-}
 
 async function startVinnieHub() {
     loadCommands();
@@ -77,6 +54,7 @@ async function startVinnieHub() {
         logger: silentLogger, 
         browser: ["Vinnie Hub", "Chrome", "1.0.0"],
         
+        // --- 🚀 HIGH-PERFORMANCE FLAGS ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
         markOnlineOnConnect: true,
@@ -108,9 +86,6 @@ async function startVinnieHub() {
         const isStatus = from === 'status@broadcast';
 
         if (!isStatus && !isCommand) return;
-
-        // ✅ Reset the 5-minute timer because we received activity
-        resetWatchdog();
 
         try {
             const settings = fs.readJsonSync(settingsFile);
@@ -154,11 +129,8 @@ async function startVinnieHub() {
         if (connection === 'open') {
             console.clear();
             console.log("\n📡 Vinnie Hub Active!");
-            console.log("┃ Watchdog Active (5m inactivity trigger)\n");
+            console.log("┃ Infinite Impact - Session Preserved for Speed\n");
             
-            // Start the timer once the bot is connected
-            startWatchdog(sock);
-
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
