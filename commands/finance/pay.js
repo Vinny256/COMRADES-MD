@@ -7,15 +7,17 @@ module.exports = {
         const sock = conn?.sendMessage ? conn : (m.conn || global.conn);
         const remoteJid = m.key.remoteJid;
         
-        // --- 1. OWNER SECURITY CHECK ---
-        // Hardcoded your number + check for Environment Variable for future cloners
-        const masterDirector = "254788032713@s.whatsapp.net";
-        const envOwner = process.env.OWNER_NUMBER ? process.env.OWNER_NUMBER + "@s.whatsapp.net" : masterDirector;
+        // --- 1. IDENTITY & ANONYMOUS CHECK ---
+        const senderPhone = m.sender.split('@')[0];
+        const rawName = m.pushName || "V_Hub_Member";
         
-        if (m.key.remoteJid !== masterDirector && m.key.remoteJid !== envOwner && !m.key.fromMe) {
-            return sock.sendMessage(remoteJid, { text: "🚫 *V_HUB:* Access Denied. Only the Founder can disburse funds." });
+        if (rawName === "V_Hub_Member" || rawName.includes("V_Hub_Member")) {
+            return sock.sendMessage(remoteJid, { 
+                text: "┏━━━━━ ✿ *V_HUB_SECURITY* ✿ ━━━━━┓\n┃\n┃ ❌ *ACCESS DENIED*\n┃ 👤 *USER:* V_Hub_Member\n┃\n┃ _For safety, unnamed accounts_\n┃ _cannot withdraw funds._\n┃\n┃ 💡 *FIX:* Set a name in WhatsApp.\n┗━━━━━━━━━━━━━━━━━━━━━━┛" 
+            });
         }
 
+        const truncatedSenderName = rawName.length > 12 ? rawName.substring(0, 12) + ".." : rawName;
         const amount = args[0];
         let phone = args[1];
 
@@ -23,64 +25,74 @@ module.exports = {
         if (!amount || isNaN(amount) || !phone) {
             return sock.sendMessage(remoteJid, { text: "❌ *Usage:* `.pay <amount> <phone>`" });
         }
-
         if (Number(amount) < 10) {
-            return sock.sendMessage(remoteJid, { text: "⚠️ *V_HUB:* M-PESA B2C requires a minimum of KSH 10." });
+            return sock.sendMessage(remoteJid, { text: "⚠️ *V_HUB:* Minimum withdrawal is KSH 10." });
         }
-
         if (phone.startsWith('0')) phone = '254' + phone.slice(1);
 
-        // --- 3. INITIAL FEEDBACK (EDITABLE MESSAGE) ---
-        const msg = await sock.sendMessage(remoteJid, { text: "⏳ *V_HUB:* Validating disbursement request..." });
+        const msg = await sock.sendMessage(remoteJid, { text: "⏳ *V_HUB:* Running security checks..." });
 
-        // --- 4. SAFE EXECUTION (CRASH PROTECTION) ---
         try {
-            const processingText = `┏━━━━━ ✿ *V_HUB_BANKING* ✿ ━━━━━┓
-┃
-┃ 📥 *REQUEST RECEIVED*
-┃ 👤 *TO:* ${phone}
-┃ 💰 *AMOUNT:* KSH ${amount}
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ 🕒 *CONFIRMATION:*
-┃ Your request has been received. 
-┃ Please wait for M-PESA confirmation.
-┃
-┃ 🛠️ _Disbursing via Hub Engine..._
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`;
+            // --- 3. DATABASE & LIMIT CHECKS ---
+            const check = await hubClient.checkStatus(senderPhone);
 
-            await sock.sendMessage(remoteJid, { text: processingText, edit: msg.key });
+            if (check.status !== "OK") {
+                return sock.sendMessage(remoteJid, { text: "❌ *V_HUB:* User not found in database.", edit: msg.key });
+            }
 
-            // Using hubClient to keep index.js clean
-            const res = await hubClient.withdraw(phone, amount);
+            // Calculate Daily Spending
+            const today = new Date().toDateString();
+            const DAILY_MAX = 10000;
+            
+            // Sum up withdrawals from history for today
+            const spentToday = check.lastTransaction && Array.isArray(check.history) 
+                ? check.history
+                    .filter(tx => tx.type === "WITHDRAW" && new Date(tx.date).toDateString() === today)
+                    .reduce((sum, tx) => sum + tx.amount, 0)
+                : 0;
+
+            if (spentToday + Number(amount) > DAILY_MAX) {
+                return sock.sendMessage(remoteJid, { 
+                    text: `┏━━━━━ ✿ *LIMIT_REACHED* ✿ ━━━━━┓\n┃\n┃ ❌ *DAILY LIMIT EXCEEDED*\n┃ 👤 *USER:* ${truncatedSenderName}\n┃ 📉 *SPENT TODAY:* KSH ${spentToday}\n┃ 🚫 *LIMIT:* KSH ${DAILY_MAX}\n┃\n┃ _Try a smaller amount or wait 24h._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                    edit: msg.key 
+                });
+            }
+
+            if (check.balance < Number(amount)) {
+                return sock.sendMessage(remoteJid, { text: `❌ *INSUFFICIENT:* Balance is KSH ${check.balance}.`, edit: msg.key });
+            }
+
+            // --- 4. EXECUTION ---
+            const res = await hubClient.withdraw(phone, amount, truncatedSenderName);
 
             if (res && res.success) {
+                const limitLeft = DAILY_MAX - (spentToday + Number(amount));
+                
                 const finalReceipt = `┏━━━━━ ✿ *V_HUB_SUCCESS* ✿ ━━━━━┓
 ┃
 ┃ ✅ *TRANSFER DISBURSED!*
+┃ 👤 *DEAR:* ${truncatedSenderName}
 ┃ 💵 *DEBITED:* KSH ${amount}
 ┃ 📱 *RECIPIENT:* ${phone}
 ┃ 🧾 *REF:* ${res.receipt || 'B2C_OK'}
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
 ┃
-┃ _The amount has been deducted from_
-┃ _the Hub wallet in your favour._
-┃
 ┃ 🏦 *NEW BAL:* KSH ${res.newBalance}
+┃ 🕒 *LIMIT LEFT:* KSH ${limitLeft}
+┃
+┃ _Infinite Impact - Vinnie Hub_
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`;
 
-                await sock.sendMessage(remoteJid, { text: finalReceipt });
+                await sock.sendMessage(remoteJid, { text: finalReceipt, edit: msg.key });
             } else {
                 throw new Error(res?.message || "M-Pesa Gateway Timeout");
             }
 
         } catch (err) {
-            // This prevents the whole bot from crashing
             console.error("┃ ❌ PAY_COMMAND_ERROR:", err.message);
             await sock.sendMessage(remoteJid, { 
-                text: `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓\n┃\n┃ ❌ *PAYMENT FAILED*\n┃ ⚠️ *REASON:* ${err.message}\n┃\n┃ _Bot is still active. Please try_\n┃ _again later or contact admin._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                text: `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓\n┃\n┃ ❌ *PAYMENT FAILED*\n┃ ⚠️ *REASON:* ${err.message}\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
                 edit: msg.key 
             });
         }
