@@ -1,5 +1,4 @@
 // --- 🛡️ THE GLOBAL BUSINESS SHIELD (NUCLEAR SILENCE) ---
-// This intercepts and deletes session logs at the process level before they lag Heroku
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
@@ -15,12 +14,14 @@ const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
 
-// --- 🛡️ THE GAG ORDER ---
 const silentLogger = pino({ level: 'silent' });
-
 const commands = new Map();
-
 const settingsFile = './settings.json';
+
+// --- 🐕 WATCHDOG VARIABLES ---
+let watchdogTimer = null;
+const WATCHDOG_TIMEOUT = 5 * 60 * 1000; // 5 Minutes
+
 if (!fs.existsSync(settingsFile)) {
     fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true });
 }
@@ -37,13 +38,30 @@ const loadCommands = () => {
     console.log(`✅ Loaded ${commands.size} Commands`);
 };
 
+// Function to start the 5-minute timer
+function startWatchdog(sock) {
+    if (watchdogTimer) clearTimeout(watchdogTimer);
+    watchdogTimer = setTimeout(async () => {
+        console.log("⚠️ WATCHDOG: No activity for 5 mins. Clearing session for a fresh start...");
+        const authFolder = './auth_temp';
+        if (fs.existsSync(authFolder)) fs.emptyDirSync(authFolder);
+        process.exit(1); // Force Heroku to restart the worker
+    }, WATCHDOG_TIMEOUT);
+}
+
+// Function to reset the timer when activity happens
+function resetWatchdog() {
+    if (watchdogTimer) {
+        clearTimeout(watchdogTimer);
+        // We only restart the timer if the bot is healthy
+    }
+}
+
 async function startVinnieHub() {
     loadCommands();
     
     const authFolder = './auth_temp';
-    // Clean start: Wipes old corrupted session files on every Heroku deploy
-    if (fs.existsSync(authFolder)) fs.emptyDirSync(authFolder);
-    else fs.mkdirSync(authFolder);
+    if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
 
     const base64Data = process.env.SESSION_ID.split('VINNIE-SESSION~')[1];
     fs.writeFileSync(path.join(authFolder, 'creds.json'), Buffer.from(base64Data, 'base64').toString());
@@ -59,13 +77,11 @@ async function startVinnieHub() {
         logger: silentLogger, 
         browser: ["Vinnie Hub", "Chrome", "1.0.0"],
         
-        // --- 🚀 THE BUSINESS SPEED PATCH (INSTANT RESPONSE) ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
         markOnlineOnConnect: true,
-        fireInitQueries: false,      // 🛑 CRITICAL: Stops bot from asking for old messages on boot
-        maxMsgRetryCount: 1,         // Stops the "Bad MAC" retry loop
-        linkPreviewHighQuality: false, 
+        fireInitQueries: false,      
+        maxMsgRetryCount: 1,         
         generateHighQualityLinkPreview: false,
         
         getMessage: async (key) => {
@@ -84,7 +100,6 @@ async function startVinnieHub() {
         const from = msg.key.remoteJid;
         const prefix = process.env.PREFIX || ".";
         
-        // --- 🛠️ BUSINESS SELECTIVE LISTENER ---
         const text = (msg.message.conversation || 
                       msg.message.extendedTextMessage?.text || 
                       msg.message.imageMessage?.caption || "").trim();
@@ -92,23 +107,22 @@ async function startVinnieHub() {
         const isCommand = text.startsWith(prefix);
         const isStatus = from === 'status@broadcast';
 
-        // 🛑 Stop processing immediately if it's not a command or status
         if (!isStatus && !isCommand) return;
+
+        // ✅ Reset the 5-minute timer because we received activity
+        resetWatchdog();
 
         try {
             const settings = fs.readJsonSync(settingsFile);
 
-            // --- 1. DYNAMIC BACKGROUND HANDLER ---
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
             } catch (e) { }
 
-            // --- 2. COMMAND EXECUTION ---
             if (isCommand) {
                 const messageTimestamp = msg.messageTimestamp;
                 const currentTimestamp = Math.floor(Date.now() / 1000);
-                // Ignore commands older than 30 seconds to prevent "lag-execution"
                 if (currentTimestamp - messageTimestamp > 30) return;
 
                 const args = text.slice(prefix.length).trim().split(/ +/);
@@ -116,14 +130,10 @@ async function startVinnieHub() {
                 
                 const command = commands.get(commandName);
                 if (command) {
-                    if (settings.typing) {
-                        await sock.sendPresenceUpdate('composing', from);
-                    } else if (settings.recording) {
-                        await sock.sendPresenceUpdate('recording', from);
-                    }
+                    if (settings.typing) await sock.sendPresenceUpdate('composing', from);
+                    else if (settings.recording) await sock.sendPresenceUpdate('recording', from);
 
                     console.log(`[ EXEC ] ${commandName} from ${msg.pushName || from}`);
-                    
                     await sock.readMessages([msg.key]);
 
                     if (settings.typing || settings.recording) {
@@ -144,8 +154,11 @@ async function startVinnieHub() {
         if (connection === 'open') {
             console.clear();
             console.log("\n📡 Vinnie Hub Active!");
-            console.log("┃ Infinite Impact - Business Engine Optimized\n");
+            console.log("┃ Watchdog Active (5m inactivity trigger)\n");
             
+            // Start the timer once the bot is connected
+            startWatchdog(sock);
+
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
