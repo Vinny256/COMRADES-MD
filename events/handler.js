@@ -1,6 +1,13 @@
 const fs = require('fs-extra');
 const express = require('express');
 const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
+const path = require('path');
+
+// --- 🛡️ STATUS TRACKER CONFIG ---
+const statusMemoryFile = './reacted_statuses.json';
+if (!fs.existsSync(statusMemoryFile)) {
+    fs.writeJsonSync(statusMemoryFile, []);
+}
 
 // Create a small internal server for the Proxy to talk to
 const app = express();
@@ -43,16 +50,14 @@ module.exports = {
         const from = msg.key.remoteJid;
 
         // --- 2. ANTI-VIEWONCE ENGINE (AUTO-REVEAL) ---
-        // This checks if the incoming message is a ViewOnce type
         const viewOnceType = msg.message?.viewOnceMessageV2 || msg.message?.viewOnceMessage;
         
         if (viewOnceType && settings.antiviewonce) {
             try {
                 const viewOnceContent = viewOnceType.message;
-                const mediaKey = Object.keys(viewOnceContent)[0]; // e.imageMessage or videoMessage
+                const mediaKey = Object.keys(viewOnceContent)[0]; 
                 const mediaType = mediaKey.replace('Message', '');
                 
-                // Stream download directly to RAM buffer
                 const stream = await downloadContentFromMessage(viewOnceContent[mediaKey], mediaType);
                 let buffer = Buffer.from([]);
                 for await (const chunk of stream) {
@@ -66,14 +71,13 @@ module.exports = {
                     caption: viewOnceContent[mediaKey].caption || revealCaption 
                 }, { quoted: msg });
                 
-                // CRITICAL: Clear memory immediately
                 buffer = null;
             } catch (e) {
                 console.error("┃ ❌ VIEW_ONCE_REVEAL_FAIL:", e.message);
             }
         }
 
-        // --- 3. MANUAL .VV COMMAND (REPLY TO VIEW ONCE) ---
+        // --- 3. MANUAL .vv COMMAND (REPLY TO VIEW ONCE) ---
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim().toLowerCase();
         
         if (text === '.vv') {
@@ -97,7 +101,7 @@ module.exports = {
                         caption: `📑 *V_HUB:* Manual Extract Successful.` 
                     }, { quoted: msg });
                     
-                    voBuffer = null; // Memory Cleanup
+                    voBuffer = null; 
                 } catch (err) {
                     await sock.sendMessage(from, { text: "❌ Failed to extract media. It might have expired." });
                 }
@@ -106,15 +110,34 @@ module.exports = {
             }
         }
 
-        // --- 4. STATUS ENGINE ---
+        // --- 4. STATUS ENGINE (WITH PERSISTENT ANTI-SPAM) ---
         if (from === 'status@broadcast' && settings.autoview) {
+            const statusId = msg.key.id;
+            let reactedList = fs.readJsonSync(statusMemoryFile);
+
+            // 🛑 Check if this specific status has already been handled
+            if (reactedList.includes(statusId)) return;
+
             try {
+                // View the status
                 await sock.readMessages([msg.key]);
+
+                // React to the status
                 if (settings.autoreact) {
                     const emojis = ['🔥', '🫡', '⭐', '🚀', '💎'];
                     const reaction = emojis[Math.floor(Math.random() * emojis.length)];
-                    await sock.sendMessage(from, { react: { key: msg.key, text: reaction } }, { statusJidList: [msg.key.participant] });
+                    await sock.sendMessage(from, { 
+                        react: { key: msg.key, text: reaction } 
+                    }, { 
+                        statusJidList: [msg.key.participant] 
+                    });
                 }
+
+                // Save to memory
+                reactedList.push(statusId);
+                if (reactedList.length > 500) reactedList.shift(); // Keep memory lean
+                fs.writeJsonSync(statusMemoryFile, reactedList);
+
             } catch (e) {}
         }
     }
