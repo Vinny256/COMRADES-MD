@@ -1,23 +1,74 @@
 const fs = require('fs-extra');
 const express = require('express');
-const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
+const { downloadContentFromMessage, delay } = require("@whiskeysockets/baileys");
 const path = require('path');
 
-// --- 🛡️ STATUS TRACKER CONFIG ---
+// --- 🛡️ STATUS TRACKER & QUEUE CONFIG ---
 const statusMemoryFile = './reacted_statuses.json';
 if (!fs.existsSync(statusMemoryFile)) {
     fs.writeJsonSync(statusMemoryFile, []);
 }
 
-// 🧠 INSTANT RAM MEMORY (Blocks repeats in milliseconds)
 if (!global.statusTracker) {
     global.statusTracker = new Set();
 }
+
+// 🚦 QUEUE ENGINE GLOBALS
+if (!global.statusQueue) global.statusQueue = [];
+if (global.isProcessingStatus === undefined) global.isProcessingStatus = false;
 
 const app = express();
 app.use(express.json());
 
 let listenerActive = false;
+
+// --- 🛠️ HELPER: QUEUE PROCESSOR ---
+async function processStatusQueue(sock, settings) {
+    if (global.isProcessingStatus || global.statusQueue.length === 0) return;
+    global.isProcessingStatus = true;
+
+    while (global.statusQueue.length > 0) {
+        const item = global.statusQueue.shift();
+        const { msg, statusId, participant, from } = item;
+
+        try {
+            // 1. Human-like delay (30-60 seconds between each view)
+            // This prevents the "Bad MAC" wall of errors
+            await delay(Math.floor(Math.random() * 30000) + 30000);
+
+            // 2. Mark as Seen
+            await sock.readMessages([msg.key]);
+
+            // 3. Optional: React
+            if (settings.autoreact) {
+                const emojis = ['🔥', '🫡', '⭐', '🚀', '💎', '❤️', '✅'];
+                const reaction = emojis[Math.floor(Math.random() * emojis.length)];
+                
+                // Small delay between viewing and reacting
+                await delay(2000); 
+                
+                await sock.sendMessage(from, { 
+                    react: { key: msg.key, text: reaction } 
+                }, { 
+                    statusJidList: [participant] 
+                });
+            }
+
+            // ✅ Update Memories
+            global.statusTracker.add(statusId);
+            let reactedList = fs.readJsonSync(statusMemoryFile);
+            reactedList.push(statusId);
+            if (reactedList.length > 500) reactedList.shift();
+            fs.writeJsonSync(statusMemoryFile, reactedList);
+
+            console.log(`[ QUEUE ] Viewed & Reacted: ${participant}`);
+
+        } catch (e) {
+            console.error("┃ ❌ QUEUE_PROCESS_ERR:", e.message);
+        }
+    }
+    global.isProcessingStatus = false;
+}
 
 module.exports = {
     async execute(sock, msg, settings) {
@@ -74,9 +125,9 @@ module.exports = {
         }
 
         // --- 3. MANUAL .vv COMMAND ---
-        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim().toLowerCase();
+        const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim().toLowerCase();
         if (text === '.vv') {
-            const quotedMsg = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+            const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
             const quotedVO = quotedMsg?.viewOnceMessageV2 || quotedMsg?.viewOnceMessage;
             if (quotedVO) {
                 try {
@@ -94,44 +145,22 @@ module.exports = {
             }
         }
 
-        // --- 4. STATUS ENGINE (THE DOUBLE-LOCK) ---
+        // --- 4. STATUS ENGINE (QUEUED & STABLE) ---
         if (from === 'status@broadcast' && settings.autoview) {
             const statusId = msg.key.id;
             const participant = msg.key.participant || msg.key.remoteJid;
 
-            // 🛑 RAM LOCK (Instant protection)
+            // Block duplicates
             if (global.statusTracker.has(statusId)) return;
-
-            // 🛑 DISK LOCK (Backup protection)
             let reactedList = fs.readJsonSync(statusMemoryFile);
             if (reactedList.includes(statusId)) {
                 global.statusTracker.add(statusId);
                 return;
             }
 
-            try {
-                // View the status
-                await sock.readMessages([msg.key]);
-
-                // React exactly once
-                if (settings.autoreact) {
-                    const emojis = ['🔥', '🫡', '⭐', '🚀', '💎'];
-                    const reaction = emojis[Math.floor(Math.random() * emojis.length)];
-                    await sock.sendMessage(from, { 
-                        react: { key: msg.key, text: reaction } 
-                    }, { 
-                        statusJidList: [participant] 
-                    });
-                }
-
-                // ✅ Update both memories
-                global.statusTracker.add(statusId);
-                reactedList.push(statusId);
-                if (reactedList.length > 500) reactedList.shift();
-                fs.writeJsonSync(statusMemoryFile, reactedList);
-
-                console.log(`[ STATUS ] One-time reaction success: ${statusId}`);
-            } catch (e) {}
+            // ADD TO QUEUE instead of immediate processing
+            global.statusQueue.push({ msg, statusId, participant, from });
+            processStatusQueue(sock, settings);
         }
     }
 };
