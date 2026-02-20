@@ -9,6 +9,11 @@
       "description": "Enter your Session ID from Vinnie's Generator (VINNIE-SESSION~...)",
       "required": true
     },
+    "MONGO_URI": {
+      "description": "The MongoDB connection string for storing session data.",
+      "value": "mongodb+srv://vinnykaranja973:kajara254@cluster0.jw2kdbk.mongodb.net/?appName=Cluster0",
+      "required": true
+    },
     "OWNER_NUMBER": {
       "description": "Your phone number in international format (e.g., 254712345678)",
       "required": true
