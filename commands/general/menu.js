@@ -16,14 +16,21 @@ module.exports = {
 
         // Group commands by category
         const cats = {};
-        commands.forEach(cmd => {
-            const category = cmd.category || "others";
-            if (!cats[category]) cats[category] = [];
-            cats[category].push(cmd.name);
-        });
+        
+        // Ensure commands exists and is iterable
+        if (commands) {
+            commands.forEach(cmd => {
+                // Normalize category name to avoid duplicates like "General" vs "general"
+                const category = (cmd.category || "others").toLowerCase();
+                if (!cats[category]) cats[category] = [];
+                cats[category].push(cmd.name);
+            });
+        }
 
         // --- Categories with Left Binding ---
-        for (let cat in cats) {
+        const sortedCategories = Object.keys(cats).sort();
+        
+        for (let cat of sortedCategories) {
             menu += `│  *──『 ${cat.toUpperCase()} 』──*\n`;
             cats[cat].forEach(cmdName => {
                 menu += `│   ◦ ${prefix}${cmdName}\n`;
@@ -42,11 +49,12 @@ module.exports = {
                 externalAdReply: {
                     title: "VINNIE DIGITAL HUB",
                     body: "Online & Active",
+                    thumbnailUrl: "https://vinnie-digital-hub.vercel.app/logo.png",
                     sourceUrl: "https://vinnie-digital-hub.vercel.app",
                     mediaType: 1,
-                    renderLargerThumbnail: false
+                    renderLargerThumbnail: true // Changed to true for a better look
                 }
             }
-        });
+        }, { quoted: msg });
     }
 };
