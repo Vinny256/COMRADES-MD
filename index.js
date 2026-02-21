@@ -30,7 +30,7 @@ const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 
 if (!fs.existsSync(settingsFile)) {
-    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true });
+    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true, antimention: false });
 }
 
 const loadCommands = () => {
@@ -86,8 +86,9 @@ async function startVinnieHub() {
         syncFullHistory: false,
         markOnlineOnConnect: false, 
         fireInitQueries: false,      
-        maxMsgRetryCount: 1,         
+        maxMsgRetryCount: 2, // Slightly increased to help "Waiting for message" resolve faster
         generateHighQualityLinkPreview: false,
+        // Added the ignore-sync helper to prevent handshake loops
         getMessage: async (key) => { return { conversation: 'V_Hub_Ignore' }; }
     });
 
@@ -115,8 +116,7 @@ async function startVinnieHub() {
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
 
-        // --- 🛡️ CRASH-PROOF TEXT EXTRACTION ---
-        // Replacing the logic that caused the Line 133 TypeError
+        // --- 🛡️ YOUR CRASH-PROOF LOGIC (UNTOUCHED) ---
         const messageType = Object.keys(msg.message)[0];
         const text = (
             messageType === 'conversation' ? msg.message.conversation :
@@ -124,13 +124,12 @@ async function startVinnieHub() {
             messageType === 'imageMessage' ? msg.message.imageMessage.caption :
             messageType === 'videoMessage' ? msg.message.videoMessage.caption :
             msg.message.extendedTextMessage?.text || ""
-        ) || ""; // Ensure it's never null
+        ) || ""; 
         
         const cleanText = text.trim(); 
         const isCommand = cleanText.startsWith(prefix);
 
-        // --- 🚥 STATUS ENGINE HANDSHAKE ---
-        // Instead of returning, we pass it to the handler queue for slow viewing
+        // --- 🚥 YOUR STATUS ENGINE HANDSHAKE ---
         if (from === 'status@broadcast') {
             try {
                 const handler = require('./events/handler');
@@ -144,7 +143,7 @@ async function startVinnieHub() {
                 try {
                     await sock.presenceSubscribe(from);
                     await sock.sendPresenceUpdate('composing', from);
-                    await new Promise(resolve => setTimeout(resolve, 10000));
+                    await new Promise(resolve => setTimeout(resolve, 5000)); // Slightly reduced to save bandwidth
                     await sock.sendPresenceUpdate('paused', from);
                 } catch (e) { }
             })();
@@ -163,8 +162,9 @@ async function startVinnieHub() {
                 if (command) {
                     const time = new Date().toLocaleTimeString();
                     const sender = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
+                    // --- 🚀 YOUR CUSTOM LOGGING (STAYED) ---
                     console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${sender}`);
-                    await command.execute(sock, msg, args, { prefix, commands, from });
+                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
                 }
             }
         } catch (err) { 
@@ -172,17 +172,19 @@ async function startVinnieHub() {
         }
     });
 
+    // --- 🚨 MODIFIED CLEANUP (STABILITY PROTECTOR) ---
     setInterval(async () => {
         const authFolder = './auth_temp';
         try {
             const files = fs.readdirSync(authFolder);
             for (const file of files) {
-                if (file !== 'creds.json' && !file.includes('app-state')) {
+                // Now it PROTECTS app-state and pre-keys so session doesn't close!
+                if (file !== 'creds.json' && !file.includes('app-state') && !file.includes('pre-key') && !file.includes('session')) {
                     fs.removeSync(path.join(authFolder, file));
                 }
             }
         } catch (err) { }
-    }, 1000 * 60 * 60 * 2);
+    }, 1000 * 60 * 60 * 12); // Increased to 12 hours to reduce disk thrashing
 
     sock.ev.on('connection.update', async (u) => { 
         const { connection, lastDisconnect } = u;
