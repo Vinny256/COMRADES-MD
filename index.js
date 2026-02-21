@@ -86,10 +86,11 @@ async function startVinnieHub() {
         syncFullHistory: false,
         markOnlineOnConnect: false, 
         fireInitQueries: false,      
-        maxMsgRetryCount: 2, // Slightly increased to help "Waiting for message" resolve faster
+        maxMsgRetryCount: 5, // Surgical Fix 1: Increased from 2 to 5 to force key re-negotiation
         generateHighQualityLinkPreview: false,
-        // Added the ignore-sync helper to prevent handshake loops
-        getMessage: async (key) => { return { conversation: 'V_Hub_Ignore' }; }
+        // Surgical Fix 2: Changed 'V_Hub_Ignore' to undefined. 
+        // Returning undefined is the ONLY way to fix "Bad MAC" as it triggers a retry request to the sender.
+        getMessage: async (key) => { return undefined; } 
     });
 
     sock.ev.on('creds.update', async () => {
@@ -178,13 +179,13 @@ async function startVinnieHub() {
         try {
             const files = fs.readdirSync(authFolder);
             for (const file of files) {
-                // Now it PROTECTS app-state and pre-keys so session doesn't close!
+                // Surgical Fix 3: Ensure session files are NEVER deleted while bot is running
                 if (file !== 'creds.json' && !file.includes('app-state') && !file.includes('pre-key') && !file.includes('session')) {
                     fs.removeSync(path.join(authFolder, file));
                 }
             }
         } catch (err) { }
-    }, 1000 * 60 * 60 * 12); // Increased to 12 hours to reduce disk thrashing
+    }, 1000 * 60 * 60 * 12); 
 
     sock.ev.on('connection.update', async (u) => { 
         const { connection, lastDisconnect } = u;
