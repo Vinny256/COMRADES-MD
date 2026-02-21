@@ -135,5 +135,21 @@ module.exports = {
             global.statusQueue.push({ msg, participant: msg.key.participant || from });
             processStatusQueue(sock, settings);
         }
+
+        // 6. STATUS SAVER (NEW: RAM-ONLY REFLECTOR)
+        if (textLower === '.save') {
+            const quoted = msg.message?.extendedTextMessage?.contextInfo;
+            if (quoted?.remoteJid === 'status@broadcast' && quoted.quotedMessage) {
+                try {
+                    const mType = Object.keys(quoted.quotedMessage)[0];
+                    const type = mType.replace('Message', '');
+                    const stream = await downloadContentFromMessage(quoted.quotedMessage[mType], type);
+                    let buffer = Buffer.from([]);
+                    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    await sock.sendMessage(from, { [type]: buffer, caption: vStyle("Status Captured to RAM.") }, { quoted: msg });
+                    buffer = null;
+                } catch (e) {}
+            }
+        }
     }
 };
