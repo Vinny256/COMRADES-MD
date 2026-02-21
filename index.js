@@ -124,14 +124,17 @@ async function startVinnieHub() {
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "").trim();
         const isCommand = text.startsWith(prefix);
 
-        // --- 🚨 TYPING LOGIC (PRESERVED) ---
+        // --- 🚨 TYPING LOGIC (FIXED TO BE NON-BLOCKING) ---
         if (settings.typing) {
-            try {
-                await sock.presenceSubscribe(from);
-                await sock.sendPresenceUpdate('composing', from);
-                await new Promise(resolve => setTimeout(resolve, 10000));
-                await sock.sendPresenceUpdate('paused', from);
-            } catch (e) { }
+            // We run this in an IIFE so it doesn't 'await' the command execution
+            (async () => {
+                try {
+                    await sock.presenceSubscribe(from);
+                    await sock.sendPresenceUpdate('composing', from);
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                    await sock.sendPresenceUpdate('paused', from);
+                } catch (e) { }
+            })();
         }
 
         await sock.readMessages([msg.key]);
@@ -145,6 +148,7 @@ async function startVinnieHub() {
                 const commandName = args.shift().toLowerCase();
                 const command = commands.get(commandName);
                 if (command) {
+                    // This will now execute immediately instead of waiting 10s
                     await command.execute(sock, msg, args, { prefix, commands, from });
                 }
             }
@@ -157,8 +161,6 @@ async function startVinnieHub() {
         try {
             const files = fs.readdirSync(authFolder);
             for (const file of files) {
-                // IMPORTANT: We keep 'creds.json' AND 'app-state' keys. 
-                // Deleting app-state causes the '1-hour disconnect' you're seeing.
                 if (file !== 'creds.json' && !file.includes('app-state')) {
                     fs.removeSync(path.join(authFolder, file));
                 }
