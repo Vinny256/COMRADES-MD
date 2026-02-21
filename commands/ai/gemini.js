@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const axios = require('axios');
 
 module.exports = {
     name: 'gemini',
@@ -6,58 +6,38 @@ module.exports = {
     async execute(sock, m, args) {
         const from = m.key.remoteJid;
         const text = args.join(" ");
+        const key = process.env.GEMINI_API_KEY;
 
-        // Unicode flower aesthetic
-        const spark = "\u2728"; 
-        const flower = "\u2740"; 
-        const diamond = "\u2727"; 
-        const crystal = "\u10112"; 
-        const leaf = "\uD83C\uDF3F"; 
+        if (!text) return sock.sendMessage(from, { text: "❀ *V_HUB:* What's on your mind? 𖤣𖥧" });
 
-        if (!text) {
-            return sock.sendMessage(from, { 
-                text: `${flower} *V_HUB:* Please provide a prompt. ${leaf}` 
-            });
-        }
-
-        const { key } = await sock.sendMessage(from, { 
-            text: `┏━━━━━━ ${crystal} ━━━━━━┓\n   ${spark} *V_HUB AI* ${spark}\n  ${leaf} *Thinking...* ${leaf}\n┗━━━━━━ \uD83C\uDF38 ━━━━━━┛`.trim()
+        // Styled Loading
+        const { key: msgKey } = await sock.sendMessage(from, { 
+            text: "┏━━━━━━ 💠 ━━━━━━┓\n   ✨ *V_HUB AI* ✨\n  🌿 *Thinking...* 🌿\n┗━━━━━━ 🌸 ━━━━━━┛" 
         }, { quoted: m });
 
         try {
-            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            // We call the STABLE v1 API directly, bypassing the buggy library
+            const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${key}`;
             
-            // --- FIX: Use the explicit model name ---
-            // 'gemini-1.5-flash' is the standard, but 'models/gemini-1.5-flash' 
-            // often bypasses 404 issues in v1beta.
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const response = await axios.post(url, {
+                contents: [{ parts: [{ text: text }] }]
+            }, { headers: { 'Content-Type': 'application/json' } });
 
-            const result = await model.generateContent(text);
-            const response = await result.response;
-            const reply = response.text();
+            const reply = response.data.candidates[0].content.parts[0].text;
 
-            const styledMsg = `
-${diamond}─── \uD83C\uDF38 *OFFICIAL GEMINI* \uD83C\uDF38 ───${diamond}
+            const styledMsg = `✧─── 🌸 *GEMINI STABLE* 🌸 ───✧\n\n${reply}\n\n✧──── ❀ 💠 ❀ ────✧`;
 
-*${leaf} User:* _${text}_
-
-*📝 Response:*
-${reply}
-
-${diamond}──── ${flower} ${crystal} ${flower} ────${diamond}
-            `.trim();
-
-            await sock.sendMessage(from, { text: styledMsg, edit: key });
-            process.stdout.write(`🚀 [AI SUCCESS] Official Gemini responded to ${from}\n`);
+            await sock.sendMessage(from, { text: styledMsg, edit: msgKey });
+            process.stdout.write(`🚀 [AI SUCCESS] Gemini Stable responded.\n`);
 
         } catch (e) {
-            // Log the full error to your terminal so we can see the exact reason
-            process.stdout.write(`🚀 [AI ERROR] Official Gemini failed: ${e.message}\n`);
-            
-            // Fallback Message
+            // Log the detailed error from Google's server
+            const errorDetail = e.response?.data?.error?.message || e.message;
+            process.stdout.write(`🚀 [AI ERROR] Gemini Stable failed: ${errorDetail}\n`);
+
             await sock.sendMessage(from, { 
-                text: "❌ *V_HUB:* Google returned a 404. I'm attempting to refresh the connection. 🌸", 
-                edit: key 
+                text: `❌ *V_HUB:* Google Error: ${errorDetail}`, 
+                edit: msgKey 
             });
         }
     }
