@@ -2,7 +2,8 @@
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
-    if (data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message')) {
+    // Added a bypass for the rocket emoji so logs aren't blocked
+    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message')) && !data.includes('🚀')) {
         return; 
     }
     return originalWrite.call(process.stdout, chunk, encoding, callback);
@@ -112,10 +113,7 @@ async function startVinnieHub() {
         const msg = messages[0];
         if (!msg.message) return;
 
-        // --- 🔓 ALLOW THE BOT TO RESPOND TO YOU ---
-        // This allows commands from your own number, but ignores purely automated responses
         const isMe = msg.key.fromMe;
-        
         const from = msg.key.remoteJid;
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
@@ -125,7 +123,6 @@ async function startVinnieHub() {
             return; 
         }
 
-        // --- 🎯 IMPROVED TEXT EXTRACTION (Sees .vv inside replies) ---
         const messageType = Object.keys(msg.message)[0];
         const text = (
             messageType === 'conversation' ? msg.message.conversation :
@@ -137,7 +134,6 @@ async function startVinnieHub() {
 
         const isCommand = text.startsWith(prefix);
 
-        // --- 🚨 TYPING LOGIC (NON-BLOCKING) ---
         if (settings.typing) {
             (async () => {
                 try {
@@ -160,13 +156,19 @@ async function startVinnieHub() {
                 const commandName = args.shift().toLowerCase();
                 const command = commands.get(commandName);
                 if (command) {
+                    // --- 🚀 TERMINAL LOGGING (Safe & No Bloat) ---
+                    const time = new Date().toLocaleTimeString();
+                    const sender = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
+                    console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${sender}`);
+
                     await command.execute(sock, msg, args, { prefix, commands, from });
                 }
             }
-        } catch (err) { }
+        } catch (err) { 
+            console.error("❌ Command Error:", err.message);
+        }
     });
 
-    // --- 🧹 SAFE STORAGE OPTIMIZATION ---
     setInterval(async () => {
         const authFolder = './auth_temp';
         try {
