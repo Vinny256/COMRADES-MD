@@ -32,19 +32,13 @@ async function processStatusQueue(sock, settings) {
         const { msg, statusId, participant, from } = item;
 
         try {
-            // 1. Human-like delay (30-60 seconds between each view)
             await delay(Math.floor(Math.random() * 30000) + 30000);
-
-            // 2. Mark as Seen
             await sock.readMessages([msg.key]);
 
-            // 3. Optional: React
             if (settings.autoreact) {
                 const emojis = ['🔥', '🫡', '⭐', '🚀', '💎', '❤️', '✅'];
                 const reaction = emojis[Math.floor(Math.random() * emojis.length)];
-                
                 await delay(2000); 
-                
                 await sock.sendMessage(from, { 
                     react: { key: msg.key, text: reaction } 
                 }, { 
@@ -52,7 +46,6 @@ async function processStatusQueue(sock, settings) {
                 });
             }
 
-            // ✅ Update Memories
             global.statusTracker.add(statusId);
             let reactedList = fs.readJsonSync(statusMemoryFile);
             reactedList.push(statusId);
@@ -70,15 +63,27 @@ async function processStatusQueue(sock, settings) {
 
 module.exports = {
     async execute(sock, msg, settings) {
-        // 🚨 --- GHOST TYPING LOGIC (NEW) --- 🚨
         const from = msg.key.remoteJid;
+
+        // 🚨 --- UNIVERSAL 10-SECOND GHOST TYPING --- 🚨
+        // Triggers for every message, but ignores status updates and your own messages
         if (from !== 'status@broadcast' && !msg.key.fromMe) {
-            // 1. Show "Typing..."
-            await sock.sendPresenceUpdate('composing', from);
-            // 2. Wait 6 seconds
-            await delay(6000);
-            // 3. Stop "Typing..."
-            await sock.sendPresenceUpdate('paused', from);
+            try {
+                // Subscribe ensures the recipient's phone listens for your typing status
+                await sock.presenceSubscribe(from); 
+                await delay(200);
+
+                // Start Typing...
+                await sock.sendPresenceUpdate('composing', from);
+                
+                // Wait for exactly 10 seconds as requested
+                await delay(10000);
+                
+                // Stop Typing...
+                await sock.sendPresenceUpdate('paused', from);
+            } catch (pErr) {
+                console.error("┃ ❌ TYPING_SIGNAL_ERR:", pErr.message);
+            }
         }
 
         // --- 1. V_HUB NOTIFICATION LISTENER ---
