@@ -39,10 +39,10 @@ _“We used to hide under the covers...”_`;
         if (fs.existsSync(audioPath)) {
             await delay(1500);
             await sock.sendMessage(from, { 
-                audio: { url: audioPath }, // Use URL/Path instead of ReadFileSync for better memory
-                mimetype: 'audio/mpeg',    // Changed to mpeg for .mp3 files
-                ptt: true,                 // Sends as a playable voice note
-                waveform: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90] // Optional: adds visual wave
+                audio: { url: audioPath }, 
+                mimetype: 'audio/mpeg',    // Correct for .mp3
+                ptt: false,                // CHANGED: Sending as music instead of voice note for better compatibility
+                fileName: 'Alan Walker - Play.mp3'
             }, { quoted: msg });
         } else {
             console.error(`┃ ❌ Audio file missing at: ${audioPath}`);
