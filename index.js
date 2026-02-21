@@ -92,9 +92,9 @@ async function startVinnieHub() {
         // --- ⚡ STORAGE OPTIMIZATIONS ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
-        markOnlineOnConnect: false, // Set to false so your phone receives notifications correctly
+        markOnlineOnConnect: false, 
         fireInitQueries: false,      
-        maxMsgRetryCount: 1, // Reduced to prevent infinite "Bad MAC" loops         
+        maxMsgRetryCount: 1,         
         generateHighQualityLinkPreview: false,
         getMessage: async (key) => { return { conversation: 'V_Hub_Ignore' }; }
     });
@@ -104,45 +104,69 @@ async function startVinnieHub() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
-        if (!msg.message) return;
+        if (!msg.message || msg.key.fromMe) return;
+
         const from = msg.key.remoteJid;
         const prefix = process.env.PREFIX || ".";
-        
-        // --- 🎯 SMART STATUS AUTO-VIEW (ZERO DOWNLOAD) ---
+        const settings = fs.readJsonSync(settingsFile);
+
+        // --- 🎯 SMART STATUS AUTO-VIEW ---
         if (from === 'status@broadcast') {
-            await sock.readMessages([msg.key]); // Just tells server "I saw it"
-            return; // EXIT: Never download the video/image
+            await sock.readMessages([msg.key]);
+            return; 
         }
 
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "").trim();
         const isCommand = text.startsWith(prefix);
 
-        // --- 🛑 NUCLEAR SILENCE FOR GROUPS ---
-        // If it's not a command, mark as read and KILL the process here.
-        if (!isCommand) {
-            await sock.readMessages([msg.key]); 
-            return; 
+        // --- 🚨 FIXED TYPING LOGIC (UNIVERSAL) ---
+        if (settings.typing) {
+            try {
+                await sock.presenceSubscribe(from);
+                await sock.sendPresenceUpdate('composing', from);
+                // 10 second delay as requested
+                await new Promise(resolve => setTimeout(resolve, 10000));
+                await sock.sendPresenceUpdate('paused', from);
+            } catch (e) { }
         }
 
+        // --- 🔵 MARK AS READ (Now happens AFTER the 10s typing) ---
+        await sock.readMessages([msg.key]);
+
         try {
-            const settings = fs.readJsonSync(settingsFile);
-            
-            // Execute events only for commands now to save resources
+            // --- EXECUTE HANDLER (Anti-ViewOnce, Status Engine, etc.) ---
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
             } catch (e) { }
 
-            const args = text.slice(prefix.length).trim().split(/ +/);
-            const commandName = args.shift().toLowerCase();
-            const command = commands.get(commandName);
-            
-            if (command) {
-                if (settings.typing) await sock.sendPresenceUpdate('composing', from);
-                await command.execute(sock, msg, args, { prefix, commands, from });
+            // --- EXECUTE COMMANDS ---
+            if (isCommand) {
+                const args = text.slice(prefix.length).trim().split(/ +/);
+                const commandName = args.shift().toLowerCase();
+                const command = commands.get(commandName);
+                
+                if (command) {
+                    await command.execute(sock, msg, args, { prefix, commands, from });
+                }
             }
         } catch (err) { }
     });
+
+    // --- 🧹 THE NUCLEAR STORAGE PURGE (Every 2 Hours) ---
+    setInterval(async () => {
+        const authFolder = './auth_temp';
+        try {
+            const files = fs.readdirSync(authFolder);
+            for (const file of files) {
+                // NEVER delete creds.json - this keeps you logged in!
+                if (file !== 'creds.json') {
+                    fs.removeSync(path.join(authFolder, file));
+                }
+            }
+            console.log("🧹 [STORAGE] Session cleaned. Login preserved.");
+        } catch (err) { }
+    }, 1000 * 60 * 60 * 2);
 
     sock.ev.on('connection.update', async (u) => { 
         const { connection, lastDisconnect } = u;
@@ -150,7 +174,7 @@ async function startVinnieHub() {
             console.clear();
             console.log("\n📡 Vinnie Hub Active (Storage Optimized Mode)");
             console.log("┃ Status: Auto-viewing (No download)");
-            console.log("┃ Logic: Command-only processing\n");
+            console.log("┃ Logic: Ghost Typing Active (10s)\n");
             
             try {
                 const automation = require('./events/automation');
