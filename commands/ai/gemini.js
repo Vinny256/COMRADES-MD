@@ -1,52 +1,65 @@
 const axios = require('axios');
 
+// This object will hold chat history in RAM
+// Format: { "user_number": [{role, content}, ...] }
+const chatMemory = {}; 
+
 module.exports = {
-    name: 'gemini', // Keeping the name so your users don't have to change their habits
+    name: 'gemini',
     category: 'ai',
     async execute(sock, m, args) {
         const from = m.key.remoteJid;
         const text = args.join(" ");
         const apiKey = process.env.GROQ_API_KEY;
 
-        const spark = "\u2728"; 
-        const flower = "\u2740"; 
-        const crystal = "\u10112"; 
-        const leaf = "\uD83C\uDF3F"; 
-
-        if (!text) return sock.sendMessage(from, { text: `${flower} *V_HUB:* What's on your mind? ${leaf}` });
+        if (!text) return sock.sendMessage(from, { text: "❀ *V_HUB:* What's on your mind? 𖤣𖥧" });
 
         const { key: msgKey } = await sock.sendMessage(from, { 
-            text: `┏━━━━━━ ${crystal} ━━━━━━┓\n   ${spark} *V_HUB AI* ${spark}\n  ${leaf} *Thinking...* ${leaf}\n┗━━━━━━ \uD83C\uDF38 ━━━━━━┛` 
+            text: "┏━━━━━━ 💠 ━━━━━━┓\n   ✨ *V_HUB AI* ✨\n  🌿 *Thinking...* 🌿\n┗━━━━━━ 🌸 ━━━━━━┛" 
         }, { quoted: m });
 
         try {
+            // --- 🧠 MEMORY LOGIC ---
+            // Initialize memory for new users
+            if (!chatMemory[from]) {
+                chatMemory[from] = [
+                    { role: "system", content: "You are V_HUB AI, a helpful and elegant assistant. You remember previous parts of this conversation." }
+                ];
+            }
+
+            // Add the new user message to memory
+            chatMemory[from].push({ role: "user", content: text });
+
+            // Keep only the last 10 messages to save space/RAM
+            if (chatMemory[from].length > 11) {
+                chatMemory[from].splice(1, 2); // Remove oldest exchange, keep system prompt
+            }
+
             const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                 model: "llama-3.3-70b-versatile",
-                messages: [
-                    { role: "system", content: "You are V_HUB AI, a helpful and elegant assistant." },
-                    { role: "user", content: text }
-                ]
+                messages: chatMemory[from], // Send the WHOLE history
+                temperature: 0.7
             }, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 10000
             });
 
             const reply = response.data.choices[0].message.content;
-            const styledMsg = `✧─── 🌸 *V_HUB AI (GROQ)* 🌸 ───✧\n\n${reply}\n\n✧──── ❀ ${crystal} ❀ ────✧`;
+
+            // Add the AI response to memory so it remembers what it said!
+            chatMemory[from].push({ role: "assistant", content: reply });
+
+            const styledMsg = `✧─── 🌸 *V_HUB AI (GROQ)* 🌸 ───✧\n\n${reply}\n\n✧──── ❀ 💠 ❀ ────✧`;
 
             await sock.sendMessage(from, { text: styledMsg, edit: msgKey });
-            process.stdout.write(`🚀 [GROQ SUCCESS] Fast response sent to ${from}\n`);
 
         } catch (e) {
             const errorMsg = e.response?.data?.error?.message || e.message;
             process.stdout.write(`🚀 [GROQ ERROR] ${errorMsg}\n`);
-
-            await sock.sendMessage(from, { 
-                text: `❌ *V_HUB:* System hiccup! ${errorMsg}`, 
-                edit: msgKey 
-            });
+            await sock.sendMessage(from, { text: `❌ *V_HUB:* ${errorMsg}`, edit: msgKey });
         }
     }
 };
