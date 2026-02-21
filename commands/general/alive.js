@@ -10,7 +10,6 @@ module.exports = {
         const from = msg.key.remoteJid;
         
         // --- 📂 LOCAL FILE PATH ---
-        // Make sure you place your song in: assets/play.mp3
         const audioPath = path.join(__dirname, '../../assets/play.mp3');
 
         const aliveText = `┏━━━━━ ✿ *COMRADE-MD* ✿ ━━━━━┓
@@ -22,7 +21,7 @@ module.exports = {
 ┗━━━━━━━━━━━━━━━━━━━━━━┛
 _“We used to hide under the covers...”_`;
 
-        // 1. Send the Status Text
+        // 1. Send the Status Text (Kept your logic exactly as is)
         await sock.sendMessage(from, { 
             text: aliveText,
             contextInfo: {
@@ -36,17 +35,17 @@ _“We used to hide under the covers...”_`;
             }
         }, { quoted: msg });
 
-        // 2. Check if file exists before sending to prevent crash
+        // 2. SMART AUDIO SENDING
         if (fs.existsSync(audioPath)) {
             await delay(1500);
             await sock.sendMessage(from, { 
-                audio: fs.readFileSync(audioPath), 
-                mimetype: 'audio/mp4', 
-                ptt: true 
+                audio: { url: audioPath }, // Use URL/Path instead of ReadFileSync for better memory
+                mimetype: 'audio/mpeg',    // Changed to mpeg for .mp3 files
+                ptt: true,                 // Sends as a playable voice note
+                waveform: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90] // Optional: adds visual wave
             }, { quoted: msg });
         } else {
             console.error(`┃ ❌ Audio file missing at: ${audioPath}`);
-            // Fallback message if you forgot to upload the file
             await sock.sendMessage(from, { text: "⚠️ Audio file 'play.mp3' not found in assets folder." });
         }
     }
