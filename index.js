@@ -58,24 +58,18 @@ async function startVinnieHub() {
     if (!fs.existsSync(credsPath)) {
         console.log("📦 Recovery Mode: Fetching session from MongoDB...");
         const sessionID = process.env.SESSION_ID;
-
         if (sessionID && sessionID.startsWith('VINNIE~')) {
             try {
                 await client.connect();
                 const db = client.db("vinnieBot");
                 const sessions = db.collection("sessions");
                 const sessionRecord = await sessions.findOne({ sessionId: sessionID });
-                
                 if (sessionRecord) {
                     const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
                     fs.writeFileSync(credsPath, decryptedData);
-                    console.log("✅ Session recovered. Keeping DB record for 2-hour safety.");
-                } else {
-                    console.log("❌ Session expired or not found in DB.");
+                    console.log("✅ Session recovered.");
                 }
-            } catch (err) {
-                console.error("❌ DB Recovery Error:", err.message);
-            }
+            } catch (err) { }
         }
     }
 
@@ -89,7 +83,6 @@ async function startVinnieHub() {
         printQRInTerminal: false,
         logger: silentLogger, 
         browser: Browsers.macOS("Safari"),
-        // --- ⚡ STORAGE OPTIMIZATIONS ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
         markOnlineOnConnect: false, 
@@ -99,7 +92,20 @@ async function startVinnieHub() {
         getMessage: async (key) => { return { conversation: 'V_Hub_Ignore' }; }
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    // --- 🛡️ STABILITY FIX: SYNC BACK TO MONGO ---
+    sock.ev.on('creds.update', async () => {
+        await saveCreds(); 
+        try {
+            const sessionID = process.env.SESSION_ID;
+            const credsData = fs.readFileSync(credsPath);
+            const compressed = zlib.deflateSync(credsData).toString('base64');
+            await client.db("vinnieBot").collection("sessions").updateOne(
+                { sessionId: sessionID },
+                { $set: { data: compressed, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        } catch (e) { }
+    });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
@@ -110,7 +116,6 @@ async function startVinnieHub() {
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
 
-        // --- 🎯 SMART STATUS AUTO-VIEW ---
         if (from === 'status@broadcast') {
             await sock.readMessages([msg.key]);
             return; 
@@ -119,33 +124,26 @@ async function startVinnieHub() {
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "").trim();
         const isCommand = text.startsWith(prefix);
 
-        // --- 🚨 FIXED TYPING LOGIC (UNIVERSAL) ---
+        // --- 🚨 TYPING LOGIC (PRESERVED) ---
         if (settings.typing) {
             try {
                 await sock.presenceSubscribe(from);
                 await sock.sendPresenceUpdate('composing', from);
-                // 10 second delay as requested
                 await new Promise(resolve => setTimeout(resolve, 10000));
                 await sock.sendPresenceUpdate('paused', from);
             } catch (e) { }
         }
 
-        // --- 🔵 MARK AS READ (Now happens AFTER the 10s typing) ---
         await sock.readMessages([msg.key]);
 
         try {
-            // --- EXECUTE HANDLER (Anti-ViewOnce, Status Engine, etc.) ---
-            try {
-                const handler = require('./events/handler');
-                await handler.execute(sock, msg, settings);
-            } catch (e) { }
+            const handler = require('./events/handler');
+            await handler.execute(sock, msg, settings);
 
-            // --- EXECUTE COMMANDS ---
             if (isCommand) {
                 const args = text.slice(prefix.length).trim().split(/ +/);
                 const commandName = args.shift().toLowerCase();
                 const command = commands.get(commandName);
-                
                 if (command) {
                     await command.execute(sock, msg, args, { prefix, commands, from });
                 }
@@ -153,18 +151,18 @@ async function startVinnieHub() {
         } catch (err) { }
     });
 
-    // --- 🧹 THE NUCLEAR STORAGE PURGE (Every 2 Hours) ---
+    // --- 🧹 SAFE STORAGE OPTIMIZATION ---
     setInterval(async () => {
         const authFolder = './auth_temp';
         try {
             const files = fs.readdirSync(authFolder);
             for (const file of files) {
-                // NEVER delete creds.json - this keeps you logged in!
-                if (file !== 'creds.json') {
+                // IMPORTANT: We keep 'creds.json' AND 'app-state' keys. 
+                // Deleting app-state causes the '1-hour disconnect' you're seeing.
+                if (file !== 'creds.json' && !file.includes('app-state')) {
                     fs.removeSync(path.join(authFolder, file));
                 }
             }
-            console.log("🧹 [STORAGE] Session cleaned. Login preserved.");
         } catch (err) { }
     }, 1000 * 60 * 60 * 2);
 
@@ -172,10 +170,7 @@ async function startVinnieHub() {
         const { connection, lastDisconnect } = u;
         if (connection === 'open') {
             console.clear();
-            console.log("\n📡 Vinnie Hub Active (Storage Optimized Mode)");
-            console.log("┃ Status: Auto-viewing (No download)");
-            console.log("┃ Logic: Ghost Typing Active (10s)\n");
-            
+            console.log("\n📡 Vinnie Hub Active");
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
@@ -184,10 +179,7 @@ async function startVinnieHub() {
 
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason === DisconnectReason.restartRequired || reason === DisconnectReason.connectionClosed) {
-                console.log("🔄 Stable Restarting...");
-                startVinnieHub();
-            } else if (reason !== DisconnectReason.loggedOut) {
+            if (reason !== DisconnectReason.loggedOut) {
                 startVinnieHub();
             }
         }
