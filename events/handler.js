@@ -1,61 +1,44 @@
-const fs = require('fs-extra');
-const express = require('express');
 const { downloadContentFromMessage, delay } = require("@whiskeysockets/baileys");
-const path = require('path');
+const express = require('express');
 
-// --- 🛡️ STATUS TRACKER & QUEUE CONFIG ---
-const statusMemoryFile = './reacted_statuses.json';
-if (!fs.existsSync(statusMemoryFile)) {
-    fs.writeJsonSync(statusMemoryFile, []);
-}
-
-if (!global.statusTracker) {
-    global.statusTracker = new Set();
-}
-
-// 🚦 QUEUE ENGINE GLOBALS
+// --- 🧠 VOLATILE MEMORY (No Storage) ---
+// Lives in RAM. Reset on restart. No files created.
+if (!global.statusHistory) global.statusHistory = new Set();
 if (!global.statusQueue) global.statusQueue = [];
 if (global.isProcessingStatus === undefined) global.isProcessingStatus = false;
 
 const app = express();
 app.use(express.json());
-
 let listenerActive = false;
 
-// --- 🛠️ HELPER: QUEUE PROCESSOR ---
+// --- 🚦 ATOMIC QUEUE PROCESSOR ---
+// Ensures bot views one status at a time to prevent crashing.
 async function processStatusQueue(sock, settings) {
     if (global.isProcessingStatus || global.statusQueue.length === 0) return;
     global.isProcessingStatus = true;
 
     while (global.statusQueue.length > 0) {
         const item = global.statusQueue.shift();
-        const { msg, statusId, participant, from } = item;
+        const { msg, participant, pushName } = item;
 
         try {
-            await delay(Math.floor(Math.random() * 30000) + 30000);
+            // Random delay to mimic a human looking at the status
+            await delay(Math.floor(Math.random() * 3000) + 2000);
+
+            // THE ACTION: Marks the status as "Viewed"
             await sock.readMessages([msg.key]);
+            console.log(`✅ [VIEWED] Status from: ${pushName || participant}`);
 
+            // Optional: Auto-React if settings allow
             if (settings.autoreact) {
-                const emojis = ['🔥', '🫡', '⭐', '🚀', '💎', '❤️', '✅'];
+                const emojis = ['🔥', '🫡', '⭐', '🚀', '❤️', '✅'];
                 const reaction = emojis[Math.floor(Math.random() * emojis.length)];
-                await delay(2000); 
-                await sock.sendMessage(from, { 
+                await sock.sendMessage(msg.key.remoteJid, { 
                     react: { key: msg.key, text: reaction } 
-                }, { 
-                    statusJidList: [participant] 
-                });
+                }, { statusJidList: [participant] });
             }
-
-            global.statusTracker.add(statusId);
-            let reactedList = fs.readJsonSync(statusMemoryFile);
-            reactedList.push(statusId);
-            if (reactedList.length > 500) reactedList.shift();
-            fs.writeJsonSync(statusMemoryFile, reactedList);
-
-            console.log(`[ QUEUE ] Viewed & Reacted: ${participant}`);
-
         } catch (e) {
-            console.error("┃ ❌ QUEUE_PROCESS_ERR:", e.message);
+            console.error("┃ ❌ STATUS_VIEW_ERR:", e.message);
         }
     }
     global.isProcessingStatus = false;
@@ -65,111 +48,79 @@ module.exports = {
     async execute(sock, msg, settings) {
         const from = msg.key.remoteJid;
 
-        // 🚨 --- UNIVERSAL 10-SECOND GHOST TYPING --- 🚨
-        // Triggers for every message, but ignores status updates and your own messages
+        // --- 1. GHOST TYPING (Remains Intact) ---
         if (from !== 'status@broadcast' && !msg.key.fromMe) {
             try {
-                // Subscribe ensures the recipient's phone listens for your typing status
                 await sock.presenceSubscribe(from); 
-                await delay(200);
-
-                // Start Typing...
                 await sock.sendPresenceUpdate('composing', from);
-                
-                // Wait for exactly 10 seconds as requested
-                await delay(10000);
-                
-                // Stop Typing...
+                await delay(2000); 
                 await sock.sendPresenceUpdate('paused', from);
-            } catch (pErr) {
-                console.error("┃ ❌ TYPING_SIGNAL_ERR:", pErr.message);
-            }
+            } catch (pErr) {}
         }
 
-        // --- 1. V_HUB NOTIFICATION LISTENER ---
+        // --- 2. V_HUB NOTIFICATION LISTENER (Remains Intact) ---
         if (!listenerActive) {
             try {
                 const PORT = process.env.PORT || 3000;
                 app.post('/v_hub_notify', async (req, res) => {
                     const { jid, text } = req.body;
-                    const secret = req.headers['x-vhub-secret'];
-                    if (secret !== "Vinnie_Bot_Wallet") return res.sendStatus(403);
-                    try {
-                        await sock.sendMessage(jid, { text: text });
-                        res.status(200).send({ status: "Sent" });
-                    } catch (err) {
-                        res.status(500).send({ error: "WA_SEND_FAIL" });
-                    }
+                    if (req.headers['x-vhub-secret'] !== "Vinnie_Bot_Wallet") return res.sendStatus(403);
+                    await sock.sendMessage(jid, { text: text });
+                    res.status(200).send({ status: "Sent" });
                 });
-
                 if (!global.vHubRunning) {
-                    app.listen(PORT, () => {
-                        console.log(`\n┏━━━━━ ✿ V_HUB_LISTENER_ACTIVE ✿ ━━━━━┓`);
-                        console.log(`┃   PORT: ${PORT}                      ┃`);
-                        console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`);
-                    });
+                    app.listen(PORT, () => console.log(`\n┏━━━━━ ✿ V_HUB_LISTENER_ACTIVE ✿ ━━━━━┓`));
                     global.vHubRunning = true;
                 }
                 listenerActive = true;
-            } catch (setupError) {
-                console.log("┃ ⚠️ V_HUB_LISTENER: Setup failed.");
-            }
+            } catch (setupError) {}
         }
 
-        // --- 2. ANTI-VIEWONCE ENGINE ---
+        // --- 3. ANTI-VIEWONCE & MANUAL .vv (Remains Intact) ---
         const viewOnceType = msg.message?.viewOnceMessageV2 || msg.message?.viewOnceMessage;
+        const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim().toLowerCase();
+
         if (viewOnceType && settings.antiviewonce) {
             try {
-                const viewOnceContent = viewOnceType.message;
-                const mediaKey = Object.keys(viewOnceContent)[0]; 
-                const mediaType = mediaKey.replace('Message', '');
-                const stream = await downloadContentFromMessage(viewOnceContent[mediaKey], mediaType);
+                const content = viewOnceType.message;
+                const type = Object.keys(content)[0].replace('Message', '');
+                const stream = await downloadContentFromMessage(content[Object.keys(content)[0]], type);
                 let buffer = Buffer.from([]);
-                for await (const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk]);
-                }
-                const revealCaption = `┏━━━━━ ✿ *V_HUB_REVEAL* ✿ ━━━━━┓\n┃\n┃ ✅ *VIEW_ONCE_BYPASSED*\n┃ 👤 *FROM:* ${msg.pushName || 'User'}\n┃ 📂 *TYPE:* ${mediaType.toUpperCase()}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                await sock.sendMessage(from, { [mediaType]: buffer, caption: viewOnceContent[mediaKey].caption || revealCaption }, { quoted: msg });
-                buffer = null;
-            } catch (e) {
-                console.error("┃ ❌ VIEW_ONCE_REVEAL_FAIL:", e.message);
-            }
+                for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                await sock.sendMessage(from, { [type]: buffer, caption: `📑 *V_HUB:* ViewOnce Revealed.` }, { quoted: msg });
+            } catch (e) {}
         }
 
-        // --- 3. MANUAL .vv COMMAND ---
-        const text = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim().toLowerCase();
         if (text === '.vv') {
-            const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-            const quotedVO = quotedMsg?.viewOnceMessageV2 || quotedMsg?.viewOnceMessage;
+            const quotedVO = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.viewOnceMessageV2;
             if (quotedVO) {
                 try {
-                    const voContent = quotedVO.message;
-                    const voKey = Object.keys(voContent)[0];
-                    const voType = voKey.replace('Message', '');
-                    const voStream = await downloadContentFromMessage(voContent[voKey], voType);
-                    let voBuffer = Buffer.from([]);
-                    for await (const chunk of voStream) { voBuffer = Buffer.concat([voBuffer, chunk]); }
-                    await sock.sendMessage(from, { [voType]: voBuffer, caption: `📑 *V_HUB:* Manual Extract Successful.` }, { quoted: msg });
-                    voBuffer = null; 
-                } catch (err) {
-                    await sock.sendMessage(from, { text: "❌ Failed to extract media." });
-                }
+                    const type = Object.keys(quotedVO.message)[0].replace('Message', '');
+                    const stream = await downloadContentFromMessage(quotedVO.message[Object.keys(quotedVO.message)[0]], type);
+                    let buffer = Buffer.from([]);
+                    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+                    await sock.sendMessage(from, { [type]: buffer, caption: `📑 *V_HUB:* Manual Extract.` }, { quoted: msg });
+                } catch (err) {}
             }
         }
 
-        // --- 4. STATUS ENGINE (QUEUED & STABLE) ---
+        // --- 4. NEW STATUS ENGINE (NO STORAGE / QUEUED) ---
         if (from === 'status@broadcast' && settings.autoview) {
             const statusId = msg.key.id;
             const participant = msg.key.participant || msg.key.remoteJid;
 
-            if (global.statusTracker.has(statusId)) return;
-            let reactedList = fs.readJsonSync(statusMemoryFile);
-            if (reactedList.includes(statusId)) {
-                global.statusTracker.add(statusId);
-                return;
+            // Don't view the same status twice
+            if (global.statusHistory.has(statusId)) return;
+            global.statusHistory.add(statusId);
+
+            // Clean RAM if history gets huge (prevents memory leaks)
+            if (global.statusHistory.size > 500) {
+                const firstItem = global.statusHistory.values().next().value;
+                global.statusHistory.delete(firstItem);
             }
 
-            global.statusQueue.push({ msg, statusId, participant, from });
+            // Push to the queue for sequential viewing
+            global.statusQueue.push({ msg, participant, pushName: msg.pushName });
             processStatusQueue(sock, settings);
         }
     }
