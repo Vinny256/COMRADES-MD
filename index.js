@@ -110,8 +110,12 @@ async function startVinnieHub() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         const msg = messages[0];
-        if (!msg.message || msg.key.fromMe) return;
+        if (!msg.message) return;
 
+        // --- 🔓 ALLOW THE BOT TO RESPOND TO YOU ---
+        // This allows commands from your own number, but ignores purely automated responses
+        const isMe = msg.key.fromMe;
+        
         const from = msg.key.remoteJid;
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
@@ -121,12 +125,20 @@ async function startVinnieHub() {
             return; 
         }
 
-        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "").trim();
+        // --- 🎯 IMPROVED TEXT EXTRACTION (Sees .vv inside replies) ---
+        const messageType = Object.keys(msg.message)[0];
+        const text = (
+            messageType === 'conversation' ? msg.message.conversation :
+            messageType === 'extendedTextMessage' ? msg.message.extendedTextMessage.text :
+            messageType === 'imageMessage' ? msg.message.imageMessage.caption :
+            messageType === 'videoMessage' ? msg.message.videoMessage.caption :
+            msg.message.extendedTextMessage?.text || ""
+        ).trim();
+
         const isCommand = text.startsWith(prefix);
 
-        // --- 🚨 TYPING LOGIC (FIXED TO BE NON-BLOCKING) ---
+        // --- 🚨 TYPING LOGIC (NON-BLOCKING) ---
         if (settings.typing) {
-            // We run this in an IIFE so it doesn't 'await' the command execution
             (async () => {
                 try {
                     await sock.presenceSubscribe(from);
@@ -148,7 +160,6 @@ async function startVinnieHub() {
                 const commandName = args.shift().toLowerCase();
                 const command = commands.get(commandName);
                 if (command) {
-                    // This will now execute immediately instead of waiting 10s
                     await command.execute(sock, msg, args, { prefix, commands, from });
                 }
             }
