@@ -2,7 +2,6 @@
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
-    // Added a bypass for the rocket emoji so logs aren't blocked
     if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message')) && !data.includes('🚀')) {
         return; 
     }
@@ -55,7 +54,6 @@ async function startVinnieHub() {
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
-    // --- 🛡️ SMART SESSION RECOVERY ---
     if (!fs.existsSync(credsPath)) {
         console.log("📦 Recovery Mode: Fetching session from MongoDB...");
         const sessionID = process.env.SESSION_ID;
@@ -93,7 +91,6 @@ async function startVinnieHub() {
         getMessage: async (key) => { return { conversation: 'V_Hub_Ignore' }; }
     });
 
-    // --- 🛡️ STABILITY FIX: SYNC BACK TO MONGO ---
     sock.ev.on('creds.update', async () => {
         await saveCreds(); 
         try {
@@ -118,11 +115,8 @@ async function startVinnieHub() {
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
 
-        if (from === 'status@broadcast') {
-            await sock.readMessages([msg.key]);
-            return; 
-        }
-
+        // --- 🛡️ CRASH-PROOF TEXT EXTRACTION ---
+        // Replacing the logic that caused the Line 133 TypeError
         const messageType = Object.keys(msg.message)[0];
         const text = (
             messageType === 'conversation' ? msg.message.conversation :
@@ -130,11 +124,22 @@ async function startVinnieHub() {
             messageType === 'imageMessage' ? msg.message.imageMessage.caption :
             messageType === 'videoMessage' ? msg.message.videoMessage.caption :
             msg.message.extendedTextMessage?.text || ""
-        ).trim();
+        ) || ""; // Ensure it's never null
+        
+        const cleanText = text.trim(); 
+        const isCommand = cleanText.startsWith(prefix);
 
-        const isCommand = text.startsWith(prefix);
+        // --- 🚥 STATUS ENGINE HANDSHAKE ---
+        // Instead of returning, we pass it to the handler queue for slow viewing
+        if (from === 'status@broadcast') {
+            try {
+                const handler = require('./events/handler');
+                await handler.execute(sock, msg, settings);
+                return; 
+            } catch (e) { return; }
+        }
 
-        if (settings.typing) {
+        if (settings.typing && !isMe) {
             (async () => {
                 try {
                     await sock.presenceSubscribe(from);
@@ -152,15 +157,13 @@ async function startVinnieHub() {
             await handler.execute(sock, msg, settings);
 
             if (isCommand) {
-                const args = text.slice(prefix.length).trim().split(/ +/);
+                const args = cleanText.slice(prefix.length).trim().split(/ +/);
                 const commandName = args.shift().toLowerCase();
                 const command = commands.get(commandName);
                 if (command) {
-                    // --- 🚀 TERMINAL LOGGING (Safe & No Bloat) ---
                     const time = new Date().toLocaleTimeString();
                     const sender = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
                     console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${sender}`);
-
                     await command.execute(sock, msg, args, { prefix, commands, from });
                 }
             }
@@ -191,7 +194,6 @@ async function startVinnieHub() {
                 automation.startBioRotation(sock);
             } catch (e) { }
         }
-
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode;
             if (reason !== DisconnectReason.loggedOut) {
