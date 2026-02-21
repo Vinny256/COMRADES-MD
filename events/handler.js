@@ -33,7 +33,6 @@ async function processStatusQueue(sock, settings) {
 
         try {
             // 1. Human-like delay (30-60 seconds between each view)
-            // This prevents the "Bad MAC" wall of errors
             await delay(Math.floor(Math.random() * 30000) + 30000);
 
             // 2. Mark as Seen
@@ -44,7 +43,6 @@ async function processStatusQueue(sock, settings) {
                 const emojis = ['🔥', '🫡', '⭐', '🚀', '💎', '❤️', '✅'];
                 const reaction = emojis[Math.floor(Math.random() * emojis.length)];
                 
-                // Small delay between viewing and reacting
                 await delay(2000); 
                 
                 await sock.sendMessage(from, { 
@@ -72,6 +70,17 @@ async function processStatusQueue(sock, settings) {
 
 module.exports = {
     async execute(sock, msg, settings) {
+        // 🚨 --- GHOST TYPING LOGIC (NEW) --- 🚨
+        const from = msg.key.remoteJid;
+        if (from !== 'status@broadcast' && !msg.key.fromMe) {
+            // 1. Show "Typing..."
+            await sock.sendPresenceUpdate('composing', from);
+            // 2. Wait 6 seconds
+            await delay(6000);
+            // 3. Stop "Typing..."
+            await sock.sendPresenceUpdate('paused', from);
+        }
+
         // --- 1. V_HUB NOTIFICATION LISTENER ---
         if (!listenerActive) {
             try {
@@ -101,8 +110,6 @@ module.exports = {
                 console.log("┃ ⚠️ V_HUB_LISTENER: Setup failed.");
             }
         }
-
-        const from = msg.key.remoteJid;
 
         // --- 2. ANTI-VIEWONCE ENGINE ---
         const viewOnceType = msg.message?.viewOnceMessageV2 || msg.message?.viewOnceMessage;
@@ -150,7 +157,6 @@ module.exports = {
             const statusId = msg.key.id;
             const participant = msg.key.participant || msg.key.remoteJid;
 
-            // Block duplicates
             if (global.statusTracker.has(statusId)) return;
             let reactedList = fs.readJsonSync(statusMemoryFile);
             if (reactedList.includes(statusId)) {
@@ -158,7 +164,6 @@ module.exports = {
                 return;
             }
 
-            // ADD TO QUEUE instead of immediate processing
             global.statusQueue.push({ msg, statusId, participant, from });
             processStatusQueue(sock, settings);
         }
