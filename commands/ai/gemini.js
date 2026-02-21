@@ -24,8 +24,11 @@ module.exports = {
         }, { quoted: m });
 
         try {
-            // Initialize Official Google AI
+            // Use the API Key from your environment
             const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            
+            // TRY THIS: Use 'gemini-1.5-flash-latest' or just 'gemini-1.5-flash'
+            // Some regions/keys require the full name
             const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
             const result = await model.generateContent(text);
@@ -49,8 +52,9 @@ ${diamond}──── ${flower} ${crystal} ${flower} ────${diamond}
         } catch (e) {
             process.stdout.write(`🚀 [AI ERROR] Official Gemini failed: ${e.message}\n`);
             
+            // If it still says 404, the API might want the 'pro' model
             await sock.sendMessage(from, { 
-                text: "❌ *V_HUB:* Google API is reaching its limit or key is invalid. 🌸", 
+                text: "❌ *V_HUB:* Model not found or API key restricted. Check your AI Studio settings. 🌸", 
                 edit: key 
             });
         }
