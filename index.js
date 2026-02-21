@@ -89,11 +89,12 @@ async function startVinnieHub() {
         printQRInTerminal: false,
         logger: silentLogger, 
         browser: Browsers.macOS("Safari"),
+        // --- ⚡ STORAGE OPTIMIZATIONS ---
         shouldSyncHistoryMessage: () => false, 
         syncFullHistory: false,
-        markOnlineOnConnect: true,
+        markOnlineOnConnect: false, // Set to false so your phone receives notifications correctly
         fireInitQueries: false,      
-        maxMsgRetryCount: 2, // Increased for stability since we aren't deleting immediately         
+        maxMsgRetryCount: 1, // Reduced to prevent infinite "Bad MAC" loops         
         generateHighQualityLinkPreview: false,
         getMessage: async (key) => { return { conversation: 'V_Hub_Ignore' }; }
     });
@@ -106,25 +107,39 @@ async function startVinnieHub() {
         if (!msg.message) return;
         const from = msg.key.remoteJid;
         const prefix = process.env.PREFIX || ".";
+        
+        // --- 🎯 SMART STATUS AUTO-VIEW (ZERO DOWNLOAD) ---
+        if (from === 'status@broadcast') {
+            await sock.readMessages([msg.key]); // Just tells server "I saw it"
+            return; // EXIT: Never download the video/image
+        }
+
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || "").trim();
         const isCommand = text.startsWith(prefix);
-        if (from !== 'status@broadcast' && !isCommand) return;
+
+        // --- 🛑 NUCLEAR SILENCE FOR GROUPS ---
+        // If it's not a command, mark as read and KILL the process here.
+        if (!isCommand) {
+            await sock.readMessages([msg.key]); 
+            return; 
+        }
 
         try {
             const settings = fs.readJsonSync(settingsFile);
+            
+            // Execute events only for commands now to save resources
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
             } catch (e) { }
 
-            if (isCommand) {
-                const args = text.slice(prefix.length).trim().split(/ +/);
-                const commandName = args.shift().toLowerCase();
-                const command = commands.get(commandName);
-                if (command) {
-                    if (settings.typing) await sock.sendPresenceUpdate('composing', from);
-                    await command.execute(sock, msg, args, { prefix, commands, from });
-                }
+            const args = text.slice(prefix.length).trim().split(/ +/);
+            const commandName = args.shift().toLowerCase();
+            const command = commands.get(commandName);
+            
+            if (command) {
+                if (settings.typing) await sock.sendPresenceUpdate('composing', from);
+                await command.execute(sock, msg, args, { prefix, commands, from });
             }
         } catch (err) { }
     });
@@ -133,8 +148,9 @@ async function startVinnieHub() {
         const { connection, lastDisconnect } = u;
         if (connection === 'open') {
             console.clear();
-            console.log("\n📡 Vinnie Hub Active!");
-            console.log("┃ Safety Mode: Session ID will remain valid in DB for 2 hours.\n");
+            console.log("\n📡 Vinnie Hub Active (Storage Optimized Mode)");
+            console.log("┃ Status: Auto-viewing (No download)");
+            console.log("┃ Logic: Command-only processing\n");
             
             try {
                 const automation = require('./events/automation');
