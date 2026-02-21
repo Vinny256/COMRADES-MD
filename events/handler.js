@@ -2,7 +2,6 @@ const { downloadContentFromMessage, delay } = require("@whiskeysockets/baileys")
 const express = require('express');
 
 // --- 🧠 VOLATILE MEMORY (No Storage) ---
-// Lives in RAM. Reset on restart. No files created.
 if (!global.statusHistory) global.statusHistory = new Set();
 if (!global.statusQueue) global.statusQueue = [];
 if (global.isProcessingStatus === undefined) global.isProcessingStatus = false;
@@ -12,7 +11,6 @@ app.use(express.json());
 let listenerActive = false;
 
 // --- 🚦 ATOMIC QUEUE PROCESSOR ---
-// Ensures bot views one status at a time to prevent crashing.
 async function processStatusQueue(sock, settings) {
     if (global.isProcessingStatus || global.statusQueue.length === 0) return;
     global.isProcessingStatus = true;
@@ -22,17 +20,18 @@ async function processStatusQueue(sock, settings) {
         const { msg, participant, pushName } = item;
 
         try {
-            // Random delay to mimic a human looking at the status
+            // Sequential delay to mimic human viewing (2-5 seconds)
             await delay(Math.floor(Math.random() * 3000) + 2000);
 
             // THE ACTION: Marks the status as "Viewed"
             await sock.readMessages([msg.key]);
             console.log(`✅ [VIEWED] Status from: ${pushName || participant}`);
 
-            // Optional: Auto-React if settings allow
+            // Auto-React Logic with your specific Emoji Set
             if (settings.autoreact) {
-                const emojis = ['🔥', '🫡', '⭐', '🚀', '❤️', '✅'];
+                const emojis = ['😊', '😈', '👺', '👹', '☠️', '💀', '🛀', '🏌️‍♂️'];
                 const reaction = emojis[Math.floor(Math.random() * emojis.length)];
+                
                 await sock.sendMessage(msg.key.remoteJid, { 
                     react: { key: msg.key, text: reaction } 
                 }, { statusJidList: [participant] });
@@ -104,22 +103,32 @@ module.exports = {
             }
         }
 
-        // --- 4. NEW STATUS ENGINE (NO STORAGE / QUEUED) ---
+        // --- 4. IMPROVED STATUS ENGINE (ANTI-SPAM) ---
         if (from === 'status@broadcast' && settings.autoview) {
+            
+            // 🛡️ GUARD 1: Prevent Self-Loop (Essential to stop spamming your own updates)
+            if (msg.key.fromMe) return;
+
+            // 🛡️ GUARD 2: Ignore reaction events (Don't react to 'likes')
+            if (msg.message?.reactionMessage) return;
+
+            // 🛡️ GUARD 3: Content Filter (Ensure it's a real status update)
+            const hasContent = msg.message?.imageMessage || msg.message?.videoMessage || msg.message?.extendedTextMessage || msg.message?.conversation;
+            if (!hasContent) return;
+
             const statusId = msg.key.id;
             const participant = msg.key.participant || msg.key.remoteJid;
 
-            // Don't view the same status twice
+            // 🛡️ GUARD 4: Deduplication
             if (global.statusHistory.has(statusId)) return;
             global.statusHistory.add(statusId);
 
-            // Clean RAM if history gets huge (prevents memory leaks)
             if (global.statusHistory.size > 500) {
                 const firstItem = global.statusHistory.values().next().value;
                 global.statusHistory.delete(firstItem);
             }
 
-            // Push to the queue for sequential viewing
+            // Push to the queue for sequential, non-spammy processing
             global.statusQueue.push({ msg, participant, pushName: msg.pushName });
             processStatusQueue(sock, settings);
         }
