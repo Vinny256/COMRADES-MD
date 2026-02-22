@@ -5,5 +5,7 @@
   "autobio": true,
   "antiviewonce": true,
   "typing": true,
-  "recording": false
+  "recording": false,
+  "antidelete": false,
+  "antimention": false
 }

@@ -1,21 +1,17 @@
 const fs = require('fs-extra');
+const settingsFile = './settings.json';
 
 module.exports = {
     name: 'recording',
     category: 'automation',
     async execute(sock, m, args) {
         const remoteJid = m.key.remoteJid;
-        const settingsFile = './settings.json';
-        const state = args[0]?.toLowerCase(); // 'on' or 'off'
-
+        const state = args[0]?.toLowerCase();
         if (!state) return sock.sendMessage(remoteJid, { text: "❌ *V_HUB:* Use `.recording on` or `.recording off`" });
 
         let settings = fs.readJsonSync(settingsFile);
         settings.recording = (state === 'on');
-        
-        // If recording is turned on, automatically turn off typing
         if (settings.recording) settings.typing = false;
-
         fs.writeJsonSync(settingsFile, settings);
         
         return sock.sendMessage(remoteJid, { 
