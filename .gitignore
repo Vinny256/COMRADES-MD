@@ -3,3 +3,4 @@ sessions
 auth_temp
 .env
 total_stats.json
+ind.js
