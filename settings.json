@@ -6,6 +6,6 @@
   "antiviewonce": true,
   "typing": true,
   "recording": false,
-  "antidelete": false,
+  "antidelete": true,
   "antimention": false
 }
