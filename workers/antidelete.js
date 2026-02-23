@@ -2,54 +2,57 @@ const vStyle = (text) => {
     return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 };
 
-// Global memory store
 if (!global.msgStorage) global.msgStorage = {};
 
 module.exports = async (sock, msg, settings) => {
     try {
         const from = msg.key.remoteJid;
 
-        // 1. IMPROVED STORAGE: Capture every message properly
-        if (msg.message) {
-            // We store the actual message content linked to the ID
+        // 1. STORAGE LOGIC (Capture every message)
+        if (msg.message && !msg.message.protocolMessage) {
             const msgId = msg.key.id;
-            global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg)); // Deep clone to keep data safe
+            // Store a deep copy so Baileys doesn't mutate it
+            global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg));
             
-            // Clean memory after 2 hours
+            // Cleanup after 2 hours
             setTimeout(() => { if(global.msgStorage[msgId]) delete global.msgStorage[msgId]; }, 7200000);
         }
 
-        // 2. DETECT DELETION
-        const isDelete = msg.messageStubType === 68 || 
-                       (msg.message?.protocolMessage && msg.message.protocolMessage.type === 0);
+        // 2. DETECTION LOGIC (The "Universal" Catch)
+        // Check if the message is a Protocol Message and specifically a 'REVOKE' (type 0)
+        const isRevoke = msg.message?.protocolMessage && msg.message.protocolMessage.type === 0;
+        const isStubDelete = msg.messageStubType === 68;
 
-        if (settings.antidelete && isDelete) {
-            // Get the ID of the message that was actually deleted
-            const deletedId = msg.message?.protocolMessage?.key?.id || msg.key.id;
+        if (settings.antidelete && (isRevoke || isStubDelete)) {
+            
+            // Extract the ID of the message being revoked
+            const deletedId = isRevoke ? msg.message.protocolMessage.key.id : msg.key.id;
             const originalMsg = global.msgStorage[deletedId];
 
             if (originalMsg) {
                 const sender = originalMsg.key.participant || originalMsg.key.remoteJid;
                 
-                // --- V_HUB LOGGING ---
+                // 3. SEND RESTORATION LOG
                 await sock.sendMessage(from, { 
-                    text: vStyle(`🚫 *ANTIDELETE CAUGHT*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Message Deleted\n┃ Status: *RESTORED BELOW*`),
+                    text: vStyle(`🚫 *V_HUB ANTIDELETE*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Delete Attempt\n┃ Status: *RESTORED*`),
                     mentions: [sender]
                 });
 
-                // 3. THE FIX: Delay slightly to let the store catch up, then forward
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                // copyNForward is good, but for some Baileys versions, we use this:
-                await sock.copyNForward(from, originalMsg, false).catch(e => console.log("Forward error:", e));
+                // Small delay to ensure the store isn't busy
+                await new Promise(resolve => setTimeout(resolve, 500));
 
-                // Cleanup
+                // 4. RESTORE CONTENT
+                await sock.copyNForward(from, originalMsg, false);
+                
+                // Cleanup to prevent double-restoring
                 delete global.msgStorage[deletedId];
+                console.log(`✿ HUB_SYNC ✿ Antidelete: Recovered ${deletedId}`);
             } else {
-                console.log(`✿ HUB_SYNC ✿ Antidelete: Message ID ${deletedId} not found in memory.`);
+                // This logs to your terminal if the message was too old or missed
+                console.log(`✿ HUB_SYNC ✿ Antidelete: Could not find ${deletedId} in memory.`);
             }
         }
-    } catch (err) { 
-        console.error("Antidelete Error:", err);
+    } catch (err) {
+        console.error("Antidelete Module Error:", err);
     }
 };
