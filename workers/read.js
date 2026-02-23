@@ -3,17 +3,16 @@ const settingsFile = './settings.json';
 
 module.exports = async (sock, msg) => {
     try {
-        // Skip if it's our own message or a status
         if (msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') return;
 
-        // Fresh read of settings
         const currentSettings = fs.readJsonSync(settingsFile);
         if (!currentSettings.autoread) return;
 
-        // Mark as read (Blue Tick)
+        // 🕒 HUMAN JITTER: Wait 2-5 seconds before blue-ticking
+        const delay = Math.floor(Math.random() * (5000 - 2000 + 1)) + 2000;
+        await new Promise(res => setTimeout(res, delay));
+
         await sock.readMessages([msg.key]);
         
-    } catch (err) {
-        // Silent catch to prevent interference with Queen Healer
-    }
+    } catch (err) { }
 };
