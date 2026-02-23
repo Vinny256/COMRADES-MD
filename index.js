@@ -30,6 +30,11 @@ const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 const statusCache = new Set(); // 🚀 FIX: Prevents reacting to the same status twice
 
+// --- 🧠 SELF-HEALING MEMORY TRACKERS (NEW) ---
+if (!global.healingRetries) global.healingRetries = new Map(); 
+if (!global.lockedContacts) global.lockedContacts = new Set(); 
+if (!global.groupNames) global.groupNames = new Map(); 
+
 // --- 🚥 THE TASK QUEUE (STILL HERE - PREVENTS BAD MAC) ---
 const taskQueue = [];
 let isProcessing = false;
@@ -51,7 +56,7 @@ async function processQueue() {
 
 // --- 🩹 THE QUEEN HEALER (FIXES BAD MAC SILENTLY) ---
 async function healSession(jid) {
-    if (!jid) return;
+    if (!jid || jid.includes('newsletter')) return; // Channels can't be healed
     taskQueue.push(async () => {
         try {
             // Randomized "Typing" time to look human
@@ -70,6 +75,19 @@ async function healSession(jid) {
         } catch (e) {}
     });
     processQueue();
+}
+
+// --- 📛 NAME RESOLVER (NEW) ---
+async function getTargetName(sock, jid) {
+    if (global.groupNames.has(jid)) return global.groupNames.get(jid);
+    if (jid.endsWith('@g.us')) {
+        try {
+            const metadata = await sock.groupMetadata(jid);
+            global.groupNames.set(jid, metadata.subject);
+            return metadata.subject;
+        } catch { return "Unknown Group"; }
+    }
+    return jid.split('@')[0];
 }
 
 const mongoUri = process.env.MONGO_URI;
@@ -170,6 +188,13 @@ async function startVinnieHub() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         let msg = messages[0];
+        const from = msg.key.remoteJid;
+
+        // --- 🛡️ CHANNEL SHIELD (NEW) ---
+        if (from.endsWith('@newsletter')) return;
+
+        // --- 🛡️ LOCK SHIELD (NEW) ---
+        if (global.lockedContacts.has(from)) return;
         
         const isStartupGrace = (Date.now() - connectionOpenTime) < 15000;
 
@@ -188,7 +213,6 @@ async function startVinnieHub() {
         if (!msg.message) return;
 
         const isMe = msg.key.fromMe;
-        const from = msg.key.remoteJid;
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
 
@@ -199,6 +223,7 @@ async function startVinnieHub() {
             const statusID = msg.key.id;
             if (statusCache.has(statusID)) return;
             statusCache.add(statusID);
+            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
             if (statusCache.size > 500) statusCache.clear(); // Keep memory lean
         }
 
@@ -251,8 +276,8 @@ async function startVinnieHub() {
                 // Commands skip the queue for instant reply
                 await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
                 const time = new Date().toLocaleTimeString();
-                const sender = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
-                console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${sender}`);
+                const senderName = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
+                console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${senderName}`);
                 
                 try {
                     await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
@@ -299,14 +324,36 @@ async function startVinnieHub() {
     });
 }
 
-process.on('uncaughtException', (err) => {
-    const errorMsg = err.message;
+// --- 🩹 SMART HEALER SUPERVISOR (UPDATED) ---
+process.on('uncaughtException', async (err) => {
+    const errorMsg = err.message || "";
     
-    // 🚀 EMERGENCY DECRYPTION UNBLOCKER
-    if (errorMsg.includes('Bad MAC') || errorMsg.includes('Chain closed')) {
-        console.log(`🚀 [QUEEN] Emergency MAC Repair Triggered. Unblocking Engine...`);
-        isProcessing = false; // Force clear the block
-        processQueue(); // Resume the next task
+    if (errorMsg.includes('Bad MAC') || errorMsg.includes('Decrypted') || errorMsg.includes('Chain closed')) {
+        const match = errorMsg.match(/(\d+[-]?\d*@\w+\.net|@g\.us)/);
+        const jid = match ? match[0] : null;
+
+        if (jid && !jid.includes('newsletter')) {
+            const targetName = await getTargetName(global.conn, jid);
+            let retries = global.healingRetries.get(jid) || 0;
+
+            if (retries < 5) {
+                console.log(`🚀 [QUEEN] Bad MAC Detected (${retries + 1}/5) | Target: ${targetName}`);
+                await healSession(jid);
+                global.healingRetries.set(jid, retries + 1);
+                console.log(`✅ [QUEEN] Successfully restored contact: ${targetName}`);
+            } else {
+                console.log(`⚠️ [QUEEN] Healing Exhausted for ${targetName}. Locking for 1 hour.`);
+                global.lockedContacts.add(jid);
+                global.healingRetries.delete(jid);
+                setTimeout(() => {
+                    global.lockedContacts.delete(jid);
+                    console.log(`🔓 [QUEEN] Lock expired for ${targetName}.`);
+                }, 3600000);
+            }
+        }
+        
+        isProcessing = false; 
+        processQueue(); 
         return;
     }
 
