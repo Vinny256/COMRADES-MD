@@ -56,8 +56,7 @@ async function processQueue() {
 
 // --- 🩹 THE QUEEN HEALER (FIXES BAD MAC SILENTLY) ---
 async function healSession(jid) {
-    // 🛡️ NUCLEAR GHOST SHIELD: Never interact with the ghost ID
-    if (!jid || jid.includes('newsletter') || jid.includes('246454283149505')) return; 
+    if (!jid || jid.includes('newsletter')) return; // Channels can't be healed
     taskQueue.push(async () => {
         try {
             // Randomized "Typing" time to look human
@@ -191,12 +190,8 @@ async function startVinnieHub() {
         let msg = messages[0];
         const from = msg.key.remoteJid;
 
-        // --- 🕵️ THE GHOST BUSTER (NUCLEAR DISCONNECT) ---
-        // If this ID is present, we completely ignore it. 
-        // We don't even try to read it because that might crash a blocked session.
-        if (from.includes('246454283149505') || from.endsWith('@newsletter')) {
-            return; 
-        }
+        // --- 🛡️ CHANNEL SHIELD (NEW) ---
+        if (from.endsWith('@newsletter')) return;
 
         // --- 🛡️ LOCK SHIELD (NEW) ---
         if (global.lockedContacts.has(from)) return;
@@ -280,7 +275,6 @@ async function startVinnieHub() {
             if (command) {
                 // Commands skip the queue for instant reply
                 await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
-                console.log(`\n┏━━━━━ ✿ V_HUB_LISTENER_ACTIVE ✿ ━━━━━┓`);
                 const time = new Date().toLocaleTimeString();
                 const senderName = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
                 console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${senderName}`);
@@ -338,8 +332,7 @@ process.on('uncaughtException', async (err) => {
         const match = errorMsg.match(/(\d+[-]?\d*@\w+\.net|@g\.us)/);
         const jid = match ? match[0] : null;
 
-        // 🛡️ BLOCK GHOST FROM TRIGGERING HEALER
-        if (jid && !jid.includes('newsletter') && !jid.includes('246454283149505')) {
+        if (jid && !jid.includes('newsletter')) {
             const targetName = await getTargetName(global.conn, jid);
             let retries = global.healingRetries.get(jid) || 0;
 
