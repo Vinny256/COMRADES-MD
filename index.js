@@ -35,7 +35,7 @@ if (!global.healingRetries) global.healingRetries = new Map();
 if (!global.lockedContacts) global.lockedContacts = new Set(); 
 if (!global.groupNames) global.groupNames = new Map(); 
 
-// --- 🚥 THE AUTO-RELEASE TASK QUEUE (STOPS HANGING) ---
+// --- 🚥 THE TASK QUEUE (STILL HERE - PREVENTS BAD MAC) ---
 const taskQueue = [];
 let isProcessing = false;
 let connectionOpenTime = 0; 
@@ -43,52 +43,30 @@ let connectionOpenTime = 0;
 async function processQueue() {
     if (isProcessing || taskQueue.length === 0) return;
     isProcessing = true;
-    
     const task = taskQueue.shift();
-    let timeoutReached = false;
-
-    // 🛡️ THE SAFETY TIMER: If a task (like typing to a blocked user) takes > 5s, we force release
-    const timeout = setTimeout(() => {
-        timeoutReached = true;
-        isProcessing = false;
-        processQueue(); 
-        console.log("⚠️ [QUEUE] Task Timed Out (ID possibly blocked). Resuming...");
-    }, 5000);
-
     try {
         await task();
-        if (!timeoutReached) {
-            clearTimeout(timeout);
-            const jitter = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
-            await new Promise(res => setTimeout(res, jitter)); 
-            isProcessing = false;
-            processQueue();
-        }
-    } catch (e) {
-        if (!timeoutReached) {
-            clearTimeout(timeout);
-            isProcessing = false;
-            processQueue();
-        }
-    }
+        // --- 🎲 HUMANIZED JITTER ---
+        const jitter = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
+        await new Promise(res => setTimeout(res, jitter)); 
+    } catch (e) { }
+    isProcessing = false;
+    processQueue();
 }
 
-// --- 🩹 THE QUEEN HEALER (GHOST-AWARE) ---
+// --- 🩹 THE QUEEN HEALER (FIXES BAD MAC SILENTLY) ---
 async function healSession(jid) {
     if (!jid || jid.includes('newsletter')) return; // Channels can't be healed
     taskQueue.push(async () => {
         try {
-            const isGhost = jid.includes('246454283149505');
-            // If it's the Ghost ID, use a very short typing time
-            const typingTime = isGhost ? 1000 : Math.floor(Math.random() * (7000 - 4000 + 1)) + 4000;
-            
+            // Randomized "Typing" time to look human
+            const typingTime = Math.floor(Math.random() * (7000 - 4000 + 1)) + 4000;
             await global.conn.sendPresenceUpdate('composing', jid);
             await new Promise(r => setTimeout(r, typingTime));
             await global.conn.sendPresenceUpdate('paused', jid);
             
-            if (isGhost) {
-                console.log(`✿ HUB_SYNC ✿ Ghost Processed (1s) | Target: ${jid}`);
-            } else if (jid.endsWith('@g.us')) {
+            if (jid.endsWith('@g.us')) {
+                // 🏛️ GROUP HEALER: Refresh metadata to force key sync
                 await global.conn.groupMetadata(jid).catch(() => {});
                 console.log(`🚀 [QUEEN] 🏛️ Group Keys Synced: ${jid.split('@')[0]}`);
             } else {
@@ -212,12 +190,6 @@ async function startVinnieHub() {
         let msg = messages[0];
         const from = msg.key.remoteJid;
 
-        // --- 🛡️ GHOST BUSTER (NON-BLOCKING RETURN) ---
-        if (from.includes('246454283149505')) {
-            await sock.readMessages([msg.key]);
-            return; // Skip queue entirely
-        }
-
         // --- 🛡️ CHANNEL SHIELD (NEW) ---
         if (from.endsWith('@newsletter')) return;
 
@@ -246,6 +218,15 @@ async function startVinnieHub() {
 
         if (from === 'status@broadcast' && isStartupGrace) return;
 
+        // 🚀 FIX: Prevent Duplicate Status Reactions
+        if (from === 'status@broadcast') {
+            const statusID = msg.key.id;
+            if (statusCache.has(statusID)) return;
+            statusCache.add(statusID);
+            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
+            if (statusCache.size > 500) statusCache.clear(); // Keep memory lean
+        }
+
         const messageType = Object.keys(msg.message)[0];
         const text = (
             messageType === 'conversation' ? msg.message.conversation :
@@ -258,41 +239,13 @@ async function startVinnieHub() {
         const cleanText = text.trim(); 
         const isCommand = cleanText.startsWith(prefix);
 
-        // --- ⚡ FAST TRACK COMMAND EXECUTION (BYPASS QUEUE) ---
-        if (isCommand) {
-            const args = cleanText.slice(prefix.length).trim().split(/ +/);
-            const commandName = args.shift().toLowerCase();
-            const command = commands.get(commandName);
-            
-            if (command) {
-                await sock.sendMessage(from, { react: { text: "⚡", key: msg.key } });
-                const time = new Date().toLocaleTimeString();
-                const senderName = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
-                console.log(`[${time}] 🚀 Fast-Track Command: ${prefix}${commandName} | User: ${senderName}`);
-                
-                try {
-                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
-                } catch (err) { 
-                    console.error("❌ Command Error:", err.message);
-                }
-                return; // Exit so workers don't re-queue a command
-            }
-        }
-
-        // 🚀 FIX: Prevent Duplicate Status Reactions
-        if (from === 'status@broadcast') {
-            const statusID = msg.key.id;
-            if (statusCache.has(statusID)) return;
-            statusCache.add(statusID);
-            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
-            if (statusCache.size > 500) statusCache.clear(); // Keep memory lean
-        }
-
-        // --- 🛠️ BACKGROUND WORKERS (ONLY NON-COMMANDS) ---
+        // --- 🛠️ UPDATED WORKER LOGIC (NO DELETIONS DELETED) ---
         loadedWorkers.forEach(worker => {
+            // Antidelete must run instantly to save messages before they are revoked
             if (worker.name.includes('antidelete')) {
                 worker.fn(sock, msg, settings).catch(() => {});
             } else {
+                // All other workers stay in the safety queue
                 taskQueue.push(async () => {
                     try {
                         if (from === 'status@broadcast') {
@@ -305,6 +258,34 @@ async function startVinnieHub() {
             }
         });
         processQueue();
+
+        if (from === 'status@broadcast') {
+            try {
+                const handler = require('./events/handler');
+                await handler.execute(sock, msg, settings);
+                return; 
+            } catch (e) { return; }
+        }
+
+        if (isCommand) {
+            const args = cleanText.slice(prefix.length).trim().split(/ +/);
+            const commandName = args.shift().toLowerCase();
+            const command = commands.get(commandName);
+            
+            if (command) {
+                // Commands skip the queue for instant reply
+                await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
+                const time = new Date().toLocaleTimeString();
+                const senderName = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
+                console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${senderName}`);
+                
+                try {
+                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
+                } catch (err) { 
+                    console.error("❌ Command Error:", err.message);
+                }
+            }
+        }
 
         try {
             const handler = require('./events/handler');
