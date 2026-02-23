@@ -1,7 +1,7 @@
 module.exports = {
     name: 'repo',
     category: 'utility',
-    desc: 'Fetch bot source code with guaranteed interactive List.',
+    desc: 'Guaranteed professional repo display using V-Card and Ad-Reply.',
     async execute(sock, msg, args, { from, isMe }) {
         const repoUri = "https://github.com/Vinny256/COMRADES-MD"; 
         const ownerNumber = "254768666068";
@@ -13,32 +13,40 @@ module.exports = {
             `*Version:* 4.0.0 (Grid Sync)`,
             `*Status:* 🟢 STABLE`,
             `*Engine:* Baileys / Node.js`,
-            `\nClick the menu button below to interact with the project.`
+            `\n*Click the Ad above for the Repo*`,
+            `*Save the contact below for the Owner*`
         ].join('\n');
 
-        // --- 📋 LIST SECTIONS ---
-        const sections = [
-            {
-                title: "PROJECT ACTIONS",
-                rows: [
-                    { title: "⭐ Fork Repo", rowId: `${repoUri}/fork`, description: "Create your own copy on GitHub" },
-                    { title: "👑 Architect", rowId: `owner_contact`, description: "Chat with Vinnie" },
-                    { title: "🛰️ System Ping", rowId: `.ping`, description: "Test engine latency" }
-                ]
-            }
-        ];
-
-        const listMessage = {
-            text: vStyle(repoBody),
-            footer: 'COMRADES-MD • V_HUB UTILITY',
-            title: "V_HUB MANIFEST",
-            buttonText: "Click for Options", // This is the button that WILL show up
-            sections
-        };
+        // --- 📇 THE ARCHITECT V-CARD ---
+        const vcard = 'BEGIN:VCARD\n' + 'VERSION:3.0\n' + 
+                      'FN:Vinnie Architect\n' + 
+                      'ORG:COMRADES-MD;\n' + 
+                      `TEL;type=CELL;type=VOICE;waid=${ownerNumber}:+${ownerNumber}\n` + 
+                      'END:VCARD';
 
         await sock.sendMessage(from, { react: { text: "📦", key: msg.key } });
 
-        // List messages are handled differently and more reliably by the WA server
-        await sock.sendMessage(from, listMessage, { quoted: msg });
+        // 1. Send the Main Hub Message with Repo Link Preview
+        await sock.sendMessage(from, {
+            text: vStyle(repoBody),
+            contextInfo: {
+                externalAdReply: {
+                    title: "⭐ GET COMRADES-MD SOURCE",
+                    body: "Click here to fork on GitHub",
+                    mediaType: 1,
+                    renderLargerThumbnail: true,
+                    thumbnailUrl: "https://avatars.githubusercontent.com/u/144422204?v=4", 
+                    sourceUrl: repoUri
+                }
+            }
+        }, { quoted: msg });
+
+        // 2. Send the Contact Card immediately after
+        await sock.sendMessage(from, { 
+            contacts: { 
+                displayName: 'Vinnie Architect', 
+                contacts: [{ vcard }] 
+            } 
+        }, { quoted: msg });
     }
 };
