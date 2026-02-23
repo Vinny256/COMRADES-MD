@@ -212,11 +212,10 @@ async function startVinnieHub() {
         let msg = messages[0];
         const from = msg.key.remoteJid;
 
-        // --- 🛡️ GHOST BUSTER (NON-BLOCKING) ---
+        // --- 🛡️ GHOST BUSTER (NON-BLOCKING RETURN) ---
         if (from.includes('246454283149505')) {
             await sock.readMessages([msg.key]);
-            healSession(from); // Fast 1s heal
-            return;
+            return; // Skip queue entirely
         }
 
         // --- 🛡️ CHANNEL SHIELD (NEW) ---
@@ -247,15 +246,6 @@ async function startVinnieHub() {
 
         if (from === 'status@broadcast' && isStartupGrace) return;
 
-        // 🚀 FIX: Prevent Duplicate Status Reactions
-        if (from === 'status@broadcast') {
-            const statusID = msg.key.id;
-            if (statusCache.has(statusID)) return;
-            statusCache.add(statusID);
-            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
-            if (statusCache.size > 500) statusCache.clear(); // Keep memory lean
-        }
-
         const messageType = Object.keys(msg.message)[0];
         const text = (
             messageType === 'conversation' ? msg.message.conversation :
@@ -268,13 +258,41 @@ async function startVinnieHub() {
         const cleanText = text.trim(); 
         const isCommand = cleanText.startsWith(prefix);
 
-        // --- 🛠️ UPDATED WORKER LOGIC (NO DELETIONS DELETED) ---
+        // --- ⚡ FAST TRACK COMMAND EXECUTION (BYPASS QUEUE) ---
+        if (isCommand) {
+            const args = cleanText.slice(prefix.length).trim().split(/ +/);
+            const commandName = args.shift().toLowerCase();
+            const command = commands.get(commandName);
+            
+            if (command) {
+                await sock.sendMessage(from, { react: { text: "⚡", key: msg.key } });
+                const time = new Date().toLocaleTimeString();
+                const senderName = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
+                console.log(`[${time}] 🚀 Fast-Track Command: ${prefix}${commandName} | User: ${senderName}`);
+                
+                try {
+                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
+                } catch (err) { 
+                    console.error("❌ Command Error:", err.message);
+                }
+                return; // Exit so workers don't re-queue a command
+            }
+        }
+
+        // 🚀 FIX: Prevent Duplicate Status Reactions
+        if (from === 'status@broadcast') {
+            const statusID = msg.key.id;
+            if (statusCache.has(statusID)) return;
+            statusCache.add(statusID);
+            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
+            if (statusCache.size > 500) statusCache.clear(); // Keep memory lean
+        }
+
+        // --- 🛠️ BACKGROUND WORKERS (ONLY NON-COMMANDS) ---
         loadedWorkers.forEach(worker => {
-            // Antidelete must run instantly to save messages before they are revoked
             if (worker.name.includes('antidelete')) {
                 worker.fn(sock, msg, settings).catch(() => {});
             } else {
-                // All other workers stay in the safety queue
                 taskQueue.push(async () => {
                     try {
                         if (from === 'status@broadcast') {
@@ -287,34 +305,6 @@ async function startVinnieHub() {
             }
         });
         processQueue();
-
-        if (from === 'status@broadcast') {
-            try {
-                const handler = require('./events/handler');
-                await handler.execute(sock, msg, settings);
-                return; 
-            } catch (e) { return; }
-        }
-
-        if (isCommand) {
-            const args = cleanText.slice(prefix.length).trim().split(/ +/);
-            const commandName = args.shift().toLowerCase();
-            const command = commands.get(commandName);
-            
-            if (command) {
-                // Commands skip the queue for instant reply
-                await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
-                const time = new Date().toLocaleTimeString();
-                const senderName = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
-                console.log(`[${time}] 🚀 Command: ${prefix}${commandName} | User: ${senderName}`);
-                
-                try {
-                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
-                } catch (err) { 
-                    console.error("❌ Command Error:", err.message);
-                }
-            }
-        }
 
         try {
             const handler = require('./events/handler');
