@@ -1,47 +1,64 @@
 module.exports = {
     name: 'repo',
     category: 'utility',
-    desc: 'Guaranteed professional repo display using V-Card and Ad-Reply.',
+    desc: 'Elite Project Dashboard for COMRADES-MD',
     async execute(sock, msg, args, { from, isMe }) {
         const repoUri = "https://github.com/Vinny256/COMRADES-MD"; 
         const ownerNumber = "254768666068";
         
-        const vStyle = (text) => `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        // Dynamic Repo Card - Shows real-time stats visually
+        const githubCard = `https://opengraph.githubassets.com/1/Vinny256/COMRADES-MD`;
 
-        const repoBody = [
-            `🚀 *COMRADES-MD CORE*`,
-            `*Version:* 4.0.0 (Grid Sync)`,
-            `*Status:* 🟢 STABLE`,
-            `*Engine:* Baileys / Node.js`,
-            `\n*Click the Ad above for the Repo*`,
-            `*Save the contact below for the Owner*`
-        ].join('\n');
+        // Elite Dashboard Styling
+        const dashboard = `
+╔════════════════════╗
+║    🛰️  *V_HUB TERMINAL* 🛰️    ║
+╠════════════════════╣
+  ✨ *PROJECT:* COMRADES-MD
+  📂 *REPO:* github.com/Vinny256
+  🛡️ *VERSION:* 4.0.0-Stable
+  🌀 *ENGINE:* Grid Sync v2
 
-        // --- 📇 THE ARCHITECT V-CARD ---
+  📊 *SYSTEM STATUS:*
+  ┣ [██████████] 100%
+  ┣ 🟢 Connection: SECURE
+  ┗ 🟢 MAC Shield: ACTIVE
+
+  💡 *INSTRUCTIONS:*
+  • _Tap the image above for Source_
+  • _Save the card below for Owner_
+╚════════════════════╝`.trim();
+
+        // High-End V-Card with Social Links
         const vcard = 'BEGIN:VCARD\n' + 'VERSION:3.0\n' + 
-                      'FN:Vinnie Architect\n' + 
-                      'ORG:COMRADES-MD;\n' + 
+                      'FN:Vinnie (Architect)\n' + 
+                      'ORG:COMRADES-MD DEVELOPMENT;\n' + 
+                      'TITLE:Lead Developer\n' +
                       `TEL;type=CELL;type=VOICE;waid=${ownerNumber}:+${ownerNumber}\n` + 
+                      `URL;type=GitHub:${repoUri}\n` +
                       'END:VCARD';
 
-        await sock.sendMessage(from, { react: { text: "📦", key: msg.key } });
+        await sock.sendMessage(from, { react: { text: "💎", key: msg.key } });
 
-        // 1. Send the Main Hub Message with Repo Link Preview
+        // Phase 1: The Visual Dashboard
         await sock.sendMessage(from, {
-            text: vStyle(repoBody),
+            text: dashboard,
             contextInfo: {
+                forwardingScore: 999,
+                isForwarded: true,
                 externalAdReply: {
-                    title: "⭐ GET COMRADES-MD SOURCE",
-                    body: "Click here to fork on GitHub",
+                    title: "🚀 COMRADES-MD: SOURCE ENGINE",
+                    body: "Design by Vinnie • Click to Fork",
                     mediaType: 1,
                     renderLargerThumbnail: true,
-                    thumbnailUrl: "https://avatars.githubusercontent.com/u/144422204?v=4", 
-                    sourceUrl: repoUri
+                    thumbnailUrl: githubCard, 
+                    sourceUrl: repoUri,
+                    showAdAttribution: true // Adds the "Ad" badge for elite feel
                 }
             }
         }, { quoted: msg });
 
-        // 2. Send the Contact Card immediately after
+        // Phase 2: The Contact Drop
         await sock.sendMessage(from, { 
             contacts: { 
                 displayName: 'Vinnie Architect', 
