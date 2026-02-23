@@ -1,65 +1,43 @@
-const vStyle = (text) => {
-    return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-};
+const fs = require('fs-extra');
+const settingsFile = './settings.json';
 
-// Global memory store to preserve messages across worker calls
+const vStyle = (text) => `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+
 if (!global.msgStorage) global.msgStorage = {};
 
-module.exports = async (sock, msg, settings) => {
+module.exports = async (sock, msg) => { // Removed 'settings' from here to force fresh read
     try {
         const from = msg.key.remoteJid;
 
-        // 1. 🛡️ THE SAVER: Store every message as it arrives
-        // We ignore protocolMessages because they are just 'notifications' of a delete
+        // 1. ALWAYS STORE (Even if antidelete is OFF, we store so we can catch it if turned ON)
         if (msg.message && !msg.message.protocolMessage) {
             const msgId = msg.key.id;
-            
-            // Deep copy to prevent Baileys from mutating the object in memory
             global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg));
-            
-            // Auto-clean memory every 2 hours (1000 * 60 * 60 * 2)
-            setTimeout(() => { 
-                if (global.msgStorage[msgId]) delete global.msgStorage[msgId]; 
-            }, 7200000);
+            setTimeout(() => { if (global.msgStorage[msgId]) delete global.msgStorage[msgId]; }, 7200000);
         }
 
-        // 2. 🛰️ THE DETECTOR: Check for Revoke (Delete) events
-        const isRevoke = msg.message?.protocolMessage && msg.message.protocolMessage.type === 0;
-        
-        // StubType 68 is an older Baileys fallback for deletions
-        const isStubDelete = msg.messageStubType === 68;
+        // 2. FRESH READ: Check the actual file status right now
+        const currentSettings = fs.readJsonSync(settingsFile);
+        if (!currentSettings.antidelete) return; 
 
-        if (settings.antidelete && (isRevoke || isStubDelete)) {
-            
-            // Extract the actual ID of the message that was deleted
-            const deletedId = isRevoke ? msg.message.protocolMessage.key.id : msg.key.id;
+        // 3. DETECTION
+        const isRevoke = msg.message?.protocolMessage && msg.message.protocolMessage.type === 0;
+        if (isRevoke) {
+            const deletedId = msg.message.protocolMessage.key.id;
             const originalMsg = global.msgStorage[deletedId];
 
             if (originalMsg) {
                 const sender = originalMsg.key.participant || originalMsg.key.remoteJid;
                 
-                // --- 🚨 V_HUB RESTORATION LOG ---
                 await sock.sendMessage(from, { 
-                    text: vStyle(`🚫 *V_HUB ANTIDELETE*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Message Deleted\n┃ Status: *RESTORED BELOW*`),
+                    text: vStyle(`🚫 *V_HUB ANTIDELETE*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Delete Attempt\n┃ Status: *RESTORED*`),
                     mentions: [sender]
                 });
 
-                // Small delay to let the socket breathe before forwarding
-                await new Promise(resolve => setTimeout(resolve, 500));
-
-                // --- 📦 FORWARD THE GHOST MESSAGE ---
+                await new Promise(res => setTimeout(res, 500));
                 await sock.copyNForward(from, originalMsg, false);
-                
-                // Clean up now that it's caught
                 delete global.msgStorage[deletedId];
-                
-                console.log(`🚀 [V_HUB] Antidelete: Successfully restored message ${deletedId}`);
-            } else {
-                // If it wasn't in storage, it's either too old or was sent before the bot started
-                console.log(`🚀 [V_HUB] Antidelete: Message ${deletedId} not found in local memory.`);
             }
         }
-    } catch (err) {
-        // Silent error to avoid breaking your Queen Healer / Task Queue
-    }
+    } catch (err) { }
 };
