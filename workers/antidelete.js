@@ -2,44 +2,54 @@ const vStyle = (text) => {
     return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 };
 
-// Temporary storage to keep track of messages
+// Global memory store
 if (!global.msgStorage) global.msgStorage = {};
 
 module.exports = async (sock, msg, settings) => {
     try {
         const from = msg.key.remoteJid;
 
-        // 1. Store incoming messages so we can recover them later
-        if (msg.message && !msg.key.fromMe) {
+        // 1. IMPROVED STORAGE: Capture every message properly
+        if (msg.message) {
+            // We store the actual message content linked to the ID
             const msgId = msg.key.id;
-            global.msgStorage[msgId] = msg;
+            global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg)); // Deep clone to keep data safe
             
-            // Auto-clean memory every 1 hour to prevent lag
-            setTimeout(() => { delete global.msgStorage[msgId]; }, 3600000);
+            // Clean memory after 2 hours
+            setTimeout(() => { if(global.msgStorage[msgId]) delete global.msgStorage[msgId]; }, 7200000);
         }
 
-        // 2. Logic: If Antidelete is ON and a message is deleted
-        if (settings.antidelete && msg.messageStubType === 68 || msg.message?.protocolMessage?.type === 0) {
-            
+        // 2. DETECT DELETION
+        const isDelete = msg.messageStubType === 68 || 
+                       (msg.message?.protocolMessage && msg.message.protocolMessage.type === 0);
+
+        if (settings.antidelete && isDelete) {
+            // Get the ID of the message that was actually deleted
             const deletedId = msg.message?.protocolMessage?.key?.id || msg.key.id;
             const originalMsg = global.msgStorage[deletedId];
 
             if (originalMsg) {
                 const sender = originalMsg.key.participant || originalMsg.key.remoteJid;
                 
-                // Alert you that a message was caught
+                // --- V_HUB LOGGING ---
                 await sock.sendMessage(from, { 
-                    text: vStyle(`🚫 *ANTIDELETE LOG*\n┃ User: @${sender.split('@')[0]}\n┃ tried to hide a message.\n┃\n┃ *RECOVERING CONTENT...*`),
+                    text: vStyle(`🚫 *ANTIDELETE CAUGHT*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Message Deleted\n┃ Status: *RESTORED BELOW*`),
                     mentions: [sender]
                 });
 
-                // Forward the original message back to the chat
-                await sock.copyNForward(from, originalMsg, false);
+                // 3. THE FIX: Delay slightly to let the store catch up, then forward
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 
-                // Remove from storage now that it's caught
+                // copyNForward is good, but for some Baileys versions, we use this:
+                await sock.copyNForward(from, originalMsg, false).catch(e => console.log("Forward error:", e));
+
+                // Cleanup
                 delete global.msgStorage[deletedId];
-                console.log(`✿ HUB_SYNC ✿ Antidelete: Caught message from ${sender}`);
+            } else {
+                console.log(`✿ HUB_SYNC ✿ Antidelete: Message ID ${deletedId} not found in memory.`);
             }
         }
-    } catch (err) { }
+    } catch (err) { 
+        console.error("Antidelete Error:", err);
+    }
 };
