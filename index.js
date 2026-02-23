@@ -76,13 +76,20 @@ const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 
 if (!fs.existsSync(settingsFile)) {
-    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true, antimention: false });
+    fs.writeJsonSync(settingsFile, { autoview: true, antilink: true, autoreact: true, typing: true, recording: false, antiviewonce: true, antimention: false, antidelete: true });
 }
 
 const workerPath = path.join(__dirname, 'workers');
 if (!fs.existsSync(workerPath)) fs.mkdirSync(workerPath);
 const workerFiles = fs.readdirSync(workerPath).filter(file => file.endsWith('.js'));
-const loadedWorkers = workerFiles.map(file => require(path.join(workerPath, file)));
+
+// Load workers and store their filenames for type-checking
+const loadedWorkers = workerFiles.map(file => {
+    return {
+        name: file,
+        fn: require(path.join(workerPath, file))
+    };
+});
 
 const loadCommands = () => {
     try {
@@ -207,18 +214,23 @@ async function startVinnieHub() {
         const cleanText = text.trim(); 
         const isCommand = cleanText.startsWith(prefix);
 
-        // Put background tasks in queue
-        loadedWorkers.forEach(taskFunc => {
-            taskQueue.push(async () => {
-                try {
-                    // Randomized Status Action (Humanized)
-                    if (from === 'status@broadcast') {
-                        const viewDelay = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
-                        await new Promise(r => setTimeout(r, viewDelay));
-                    }
-                    await taskFunc(sock, msg, settings);
-                } catch (e) { }
-            });
+        // --- 🛠️ UPDATED WORKER LOGIC (NO DELETIONS DELETED) ---
+        loadedWorkers.forEach(worker => {
+            // Antidelete must run instantly to save messages before they are revoked
+            if (worker.name.includes('antidelete')) {
+                worker.fn(sock, msg, settings).catch(() => {});
+            } else {
+                // All other workers stay in the safety queue
+                taskQueue.push(async () => {
+                    try {
+                        if (from === 'status@broadcast') {
+                            const viewDelay = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
+                            await new Promise(r => setTimeout(r, viewDelay));
+                        }
+                        await worker.fn(sock, msg, settings);
+                    } catch (e) { }
+                });
+            }
         });
         processQueue();
 
