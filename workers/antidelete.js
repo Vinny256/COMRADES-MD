@@ -5,23 +5,35 @@ const vStyle = (text) => `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\
 
 if (!global.msgStorage) global.msgStorage = {};
 
-module.exports = async (sock, msg) => { // Removed 'settings' from here to force fresh read
+module.exports = async (sock, msg) => {
     try {
         const from = msg.key.remoteJid;
+        const msgId = msg.key.id;
 
-        // 1. ALWAYS STORE (Even if antidelete is OFF, we store so we can catch it if turned ON)
-        if (msg.message && !msg.message.protocolMessage) {
-            const msgId = msg.key.id;
-            global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg));
-            setTimeout(() => { if (global.msgStorage[msgId]) delete global.msgStorage[msgId]; }, 7200000);
+        // 🛡️ IGNORE SELF-STATUS: Stop log clutter from your own number (254768666068)
+        if (from === 'status@broadcast' && msg.key.participant?.includes('254768666068')) {
+            return;
         }
 
-        // 2. FRESH READ: Check the actual file status right now
+        // 1. ROBUST STORAGE
+        // Capture message content immediately if it exists
+        if (msg.message && !msg.message.protocolMessage) {
+            global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg));
+            
+            // Auto-clean memory (2 hours)
+            setTimeout(() => { 
+                if (global.msgStorage[msgId]) delete global.msgStorage[msgId]; 
+            }, 7200000);
+        }
+
+        // 2. SETTINGS CHECK (Fresh read from disk)
         const currentSettings = fs.readJsonSync(settingsFile);
         if (!currentSettings.antidelete) return; 
 
-        // 3. DETECTION
+        // 3. RESTORATION LOGIC
+        // Detection for WhatsApp "Delete for Everyone"
         const isRevoke = msg.message?.protocolMessage && msg.message.protocolMessage.type === 0;
+        
         if (isRevoke) {
             const deletedId = msg.message.protocolMessage.key.id;
             const originalMsg = global.msgStorage[deletedId];
@@ -29,15 +41,23 @@ module.exports = async (sock, msg) => { // Removed 'settings' from here to force
             if (originalMsg) {
                 const sender = originalMsg.key.participant || originalMsg.key.remoteJid;
                 
+                // Alert the chat
                 await sock.sendMessage(from, { 
                     text: vStyle(`🚫 *V_HUB ANTIDELETE*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Delete Attempt\n┃ Status: *RESTORED*`),
                     mentions: [sender]
                 });
 
-                await new Promise(res => setTimeout(res, 500));
+                // Small jitter to prevent decryption collisions
+                await new Promise(res => setTimeout(res, 800));
+
+                // Restore the message content
                 await sock.copyNForward(from, originalMsg, false);
+                
+                // Remove from memory once restored to keep it lean
                 delete global.msgStorage[deletedId];
             }
         }
-    } catch (err) { }
+    } catch (err) {
+        // Silent catch to prevent crashing the main Hub during Bad MACs
+    }
 };
