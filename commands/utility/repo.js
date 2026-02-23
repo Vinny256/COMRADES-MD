@@ -1,7 +1,7 @@
 module.exports = {
     name: 'repo',
     category: 'utility',
-    desc: 'Fetch bot source code with high-compatibility buttons.',
+    desc: 'Fetch bot source code with guaranteed interactive List.',
     async execute(sock, msg, args, { from, isMe }) {
         const repoUri = "https://github.com/Vinny256/COMRADES-MD"; 
         const ownerNumber = "254768666068";
@@ -13,36 +13,32 @@ module.exports = {
             `*Version:* 4.0.0 (Grid Sync)`,
             `*Status:* 🟢 STABLE`,
             `*Engine:* Baileys / Node.js`,
-            `\nSelect an action below:`
+            `\nClick the menu button below to interact with the project.`
         ].join('\n');
 
-        // --- 🔘 INTERACTIVE BUTTON STRUCTURE ---
-        const buttons = [
-            { buttonId: 'repo_fork', buttonText: { displayText: '⭐ FORK REPO' }, type: 1 },
-            { buttonId: 'repo_owner', buttonText: { displayText: '👑 ARCHITECT' }, type: 1 },
-            { buttonId: '.ping', buttonText: { displayText: '🛰️ PING' }, type: 1 }
+        // --- 📋 LIST SECTIONS ---
+        const sections = [
+            {
+                title: "PROJECT ACTIONS",
+                rows: [
+                    { title: "⭐ Fork Repo", rowId: `${repoUri}/fork`, description: "Create your own copy on GitHub" },
+                    { title: "👑 Architect", rowId: `owner_contact`, description: "Chat with Vinnie" },
+                    { title: "🛰️ System Ping", rowId: `.ping`, description: "Test engine latency" }
+                ]
+            }
         ];
 
-        const buttonMessage = {
+        const listMessage = {
             text: vStyle(repoBody),
             footer: 'COMRADES-MD • V_HUB UTILITY',
-            buttons: buttons,
-            headerType: 4,
-            contextInfo: {
-                externalAdReply: {
-                    title: "COMRADES-MD | OFFICIAL REPO",
-                    body: "Autonomous Human Simulator",
-                    mediaType: 1,
-                    renderLargerThumbnail: true,
-                    thumbnailUrl: "https://avatars.githubusercontent.com/u/144422204?v=4", 
-                    sourceUrl: repoUri
-                }
-            }
+            title: "V_HUB MANIFEST",
+            buttonText: "Click for Options", // This is the button that WILL show up
+            sections
         };
 
         await sock.sendMessage(from, { react: { text: "📦", key: msg.key } });
-        
-        // Using viewOnce to bypass the "Legacy" reply issue
-        await sock.sendMessage(from, buttonMessage, { quoted: msg });
+
+        // List messages are handled differently and more reliably by the WA server
+        await sock.sendMessage(from, listMessage, { quoted: msg });
     }
 };
