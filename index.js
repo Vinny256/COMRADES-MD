@@ -63,9 +63,9 @@ async function healSession(jid) {
             if (jid.endsWith('@g.us')) {
                 // 🏛️ GROUP HEALER: Refresh metadata to force key sync
                 await global.conn.groupMetadata(jid).catch(() => {});
-                console.log(`[QUEEN] 🏛️ Group Keys Synced: ${jid.split('@')[0]}`);
+                console.log(`🚀 [QUEEN] 🏛️ Group Keys Synced: ${jid.split('@')[0]}`);
             } else {
-                console.log(`[QUEEN] 🩹 Repaired session for: ${jid.split('@')[0]}`);
+                console.log(`🚀 [QUEEN] 🩹 Repaired session for: ${jid.split('@')[0]}`);
             }
         } catch (e) {}
     });
@@ -288,8 +288,17 @@ async function startVinnieHub() {
 }
 
 process.on('uncaughtException', (err) => {
-    if (err.message.includes('Bad MAC') || err.message.includes('InternalServerError') || err.message.includes('Key used already')) {
-        // Automatically trigger healer on any caught MAC error
+    const errorMsg = err.message;
+    
+    // 🚀 EMERGENCY DECRYPTION UNBLOCKER
+    if (errorMsg.includes('Bad MAC') || errorMsg.includes('Chain closed')) {
+        console.log(`🚀 [QUEEN] Emergency MAC Repair Triggered. Unblocking Engine...`);
+        isProcessing = false; // Force clear the block
+        processQueue(); // Resume the next task
+        return;
+    }
+
+    if (errorMsg.includes('InternalServerError') || errorMsg.includes('Key used already')) {
         return;
     }
     console.error("⚠️ Supervisor caught crash:", err.message);
