@@ -35,7 +35,7 @@ if (!global.healingRetries) global.healingRetries = new Map();
 if (!global.lockedContacts) global.lockedContacts = new Set(); 
 if (!global.groupNames) global.groupNames = new Map(); 
 
-// --- 🚥 THE TASK QUEUE (STILL HERE - PREVENTS BAD MAC) ---
+// --- 🚥 THE AUTO-RELEASE TASK QUEUE (STOPS HANGING) ---
 const taskQueue = [];
 let isProcessing = false;
 let connectionOpenTime = 0; 
@@ -43,30 +43,52 @@ let connectionOpenTime = 0;
 async function processQueue() {
     if (isProcessing || taskQueue.length === 0) return;
     isProcessing = true;
+    
     const task = taskQueue.shift();
+    let timeoutReached = false;
+
+    // 🛡️ THE SAFETY TIMER: If a task (like typing to a blocked user) takes > 5s, we force release
+    const timeout = setTimeout(() => {
+        timeoutReached = true;
+        isProcessing = false;
+        processQueue(); 
+        console.log("⚠️ [QUEUE] Task Timed Out (ID possibly blocked). Resuming...");
+    }, 5000);
+
     try {
         await task();
-        // --- 🎲 HUMANIZED JITTER ---
-        const jitter = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
-        await new Promise(res => setTimeout(res, jitter)); 
-    } catch (e) { }
-    isProcessing = false;
-    processQueue();
+        if (!timeoutReached) {
+            clearTimeout(timeout);
+            const jitter = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
+            await new Promise(res => setTimeout(res, jitter)); 
+            isProcessing = false;
+            processQueue();
+        }
+    } catch (e) {
+        if (!timeoutReached) {
+            clearTimeout(timeout);
+            isProcessing = false;
+            processQueue();
+        }
+    }
 }
 
-// --- 🩹 THE QUEEN HEALER (FIXES BAD MAC SILENTLY) ---
+// --- 🩹 THE QUEEN HEALER (GHOST-AWARE) ---
 async function healSession(jid) {
     if (!jid || jid.includes('newsletter')) return; // Channels can't be healed
     taskQueue.push(async () => {
         try {
-            // Randomized "Typing" time to look human
-            const typingTime = Math.floor(Math.random() * (7000 - 4000 + 1)) + 4000;
+            const isGhost = jid.includes('246454283149505');
+            // If it's the Ghost ID, use a very short typing time
+            const typingTime = isGhost ? 1000 : Math.floor(Math.random() * (7000 - 4000 + 1)) + 4000;
+            
             await global.conn.sendPresenceUpdate('composing', jid);
             await new Promise(r => setTimeout(r, typingTime));
             await global.conn.sendPresenceUpdate('paused', jid);
             
-            if (jid.endsWith('@g.us')) {
-                // 🏛️ GROUP HEALER: Refresh metadata to force key sync
+            if (isGhost) {
+                console.log(`✿ HUB_SYNC ✿ Ghost Processed (1s) | Target: ${jid}`);
+            } else if (jid.endsWith('@g.us')) {
                 await global.conn.groupMetadata(jid).catch(() => {});
                 console.log(`🚀 [QUEEN] 🏛️ Group Keys Synced: ${jid.split('@')[0]}`);
             } else {
@@ -189,6 +211,13 @@ async function startVinnieHub() {
         if (type !== 'notify') return;
         let msg = messages[0];
         const from = msg.key.remoteJid;
+
+        // --- 🛡️ GHOST BUSTER (NON-BLOCKING) ---
+        if (from.includes('246454283149505')) {
+            await sock.readMessages([msg.key]);
+            healSession(from); // Fast 1s heal
+            return;
+        }
 
         // --- 🛡️ CHANNEL SHIELD (NEW) ---
         if (from.endsWith('@newsletter')) return;
