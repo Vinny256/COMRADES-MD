@@ -15,24 +15,25 @@ const {
     DisconnectReason, 
     makeCacheableSignalKeyStore, 
     Browsers,
-    jidNormalizedUser // Added for clean ID handling
+    jidNormalizedUser 
 } = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
 const zlib = require('zlib'); 
 const { MongoClient } = require("mongodb"); 
-const NodeCache = require("node-cache"); // Added for retry stability
+const NodeCache = require("node-cache"); 
 
 const silentLogger = pino({ level: 'silent' });
 const commands = new Map();
 const settingsFile = './settings.json';
-const msgRetryCounterCache = new NodeCache(); // Prevents "Waiting for message" loops
+const msgRetryCounterCache = new NodeCache(); 
+const statusCache = new Set(); // 🚀 FIX: Prevents reacting to the same status twice
 
 // --- 🚥 THE TASK QUEUE (STILL HERE - PREVENTS BAD MAC) ---
 const taskQueue = [];
 let isProcessing = false;
-let connectionOpenTime = 0; // Silva Protection Variable
+let connectionOpenTime = 0; 
 
 async function processQueue() {
     if (isProcessing || taskQueue.length === 0) return;
@@ -40,7 +41,9 @@ async function processQueue() {
     const task = taskQueue.shift();
     try {
         await task();
-        await new Promise(res => setTimeout(res, 1200)); 
+        // --- 🎲 HUMANIZED JITTER ---
+        const jitter = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
+        await new Promise(res => setTimeout(res, jitter)); 
     } catch (e) { }
     isProcessing = false;
     processQueue();
@@ -51,16 +54,19 @@ async function healSession(jid) {
     if (!jid) return;
     taskQueue.push(async () => {
         try {
-            // Invisible handshake to reset keys
+            // Randomized "Typing" time to look human
+            const typingTime = Math.floor(Math.random() * (7000 - 4000 + 1)) + 4000;
             await global.conn.sendPresenceUpdate('composing', jid);
-            await new Promise(r => setTimeout(r, 2000));
+            await new Promise(r => setTimeout(r, typingTime));
             await global.conn.sendPresenceUpdate('paused', jid);
             
-            // If it's a group, refresh metadata to sync keys
             if (jid.endsWith('@g.us')) {
+                // 🏛️ GROUP HEALER: Refresh metadata to force key sync
                 await global.conn.groupMetadata(jid).catch(() => {});
+                console.log(`[QUEEN] 🏛️ Group Keys Synced: ${jid.split('@')[0]}`);
+            } else {
+                console.log(`[QUEEN] 🩹 Repaired session for: ${jid.split('@')[0]}`);
             }
-            console.log(`[QUEEN] 🩹 Repaired session for: ${jid.split('@')[0]}`);
         } catch (e) {}
     });
     processQueue();
@@ -131,14 +137,14 @@ async function startVinnieHub() {
         syncFullHistory: false,
         markOnlineOnConnect: true, 
         fireInitQueries: false,      
-        maxMsgRetryCount: 5, // Optimized to 5 to prevent spam loops
-        msgRetryCounterCache, // Prevents duplicate retries
+        maxMsgRetryCount: 5, 
+        msgRetryCounterCache, 
         generateHighQualityLinkPreview: false,
         keepAliveIntervalMs: 30000, 
         getMessage: async (key) => { return undefined; } 
     });
 
-    global.conn = sock; // Globalizing for Healer access
+    global.conn = sock; 
 
     sock.ev.on('creds.update', async () => {
         await saveCreds(); 
@@ -158,10 +164,9 @@ async function startVinnieHub() {
         if (type !== 'notify') return;
         let msg = messages[0];
         
-        // --- 🛡️ SILVA STARTUP GRACE PERIOD ---
         const isStartupGrace = (Date.now() - connectionOpenTime) < 15000;
 
-        // --- 🩹 AUTO-REPAIR FOR "WAITING FOR MESSAGE" ---
+        // --- 🩹 AUTO-REPAIR TRIGGER ---
         const mtype = Object.keys(msg.message || {})[0];
         if (mtype === 'protocolMessage' && msg.message.protocolMessage?.type === 0) {
             const repairJid = msg.key.participant || msg.key.remoteJid;
@@ -180,8 +185,15 @@ async function startVinnieHub() {
         const prefix = process.env.PREFIX || ".";
         const settings = fs.readJsonSync(settingsFile);
 
-        // Filter out status spam during startup
         if (from === 'status@broadcast' && isStartupGrace) return;
+
+        // 🚀 FIX: Prevent Duplicate Status Reactions
+        if (from === 'status@broadcast') {
+            const statusID = msg.key.id;
+            if (statusCache.has(statusID)) return;
+            statusCache.add(statusID);
+            if (statusCache.size > 500) statusCache.clear(); // Keep memory lean
+        }
 
         const messageType = Object.keys(msg.message)[0];
         const text = (
@@ -195,9 +207,15 @@ async function startVinnieHub() {
         const cleanText = text.trim(); 
         const isCommand = cleanText.startsWith(prefix);
 
+        // Put background tasks in queue
         loadedWorkers.forEach(taskFunc => {
             taskQueue.push(async () => {
                 try {
+                    // Randomized Status Action (Humanized)
+                    if (from === 'status@broadcast') {
+                        const viewDelay = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
+                        await new Promise(r => setTimeout(r, viewDelay));
+                    }
                     await taskFunc(sock, msg, settings);
                 } catch (e) { }
             });
@@ -218,6 +236,7 @@ async function startVinnieHub() {
             const command = commands.get(commandName);
             
             if (command) {
+                // Commands skip the queue for instant reply
                 await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
                 const time = new Date().toLocaleTimeString();
                 const sender = msg.pushName || (isMe ? "Owner" : from.split('@')[0]);
@@ -251,7 +270,7 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', async (u) => { 
         const { connection, lastDisconnect } = u;
         if (connection === 'open') {
-            connectionOpenTime = Date.now(); // Silva Protection Trigger
+            connectionOpenTime = Date.now(); 
             console.log("\n📡 Vinnie Hub Active | Grid Sync Online");
             try {
                 const automation = require('./events/automation');
@@ -269,8 +288,8 @@ async function startVinnieHub() {
 }
 
 process.on('uncaughtException', (err) => {
-    // Silva Logic: Silent catch for encryption drift
     if (err.message.includes('Bad MAC') || err.message.includes('InternalServerError') || err.message.includes('Key used already')) {
+        // Automatically trigger healer on any caught MAC error
         return;
     }
     console.error("⚠️ Supervisor caught crash:", err.message);
