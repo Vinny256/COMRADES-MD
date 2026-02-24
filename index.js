@@ -167,7 +167,7 @@ const loadCommands = () => {
 };
 
 async function startVinnieHub() {
-    // --- 1️⃣ MOVE RECOVERY TO THE TOP (PRIORITY #1) ---
+    // --- 🔑 PRIORITY #1: SESSION RECOVERY (RESTORED & IMPROVED) ---
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
@@ -177,217 +177,234 @@ async function startVinnieHub() {
         const sessionID = process.env.SESSION_ID;
         if (sessionID && sessionID.startsWith('VINNIE~')) {
             try {
-                // Connect manually here to ensure we don't wait for the settings worker
                 await client.connect(); 
                 const db = client.db("vinnieBot");
                 const sessions = db.collection("sessions");
                 const sessionRecord = await sessions.findOne({ sessionId: sessionID });
-                
                 if (sessionRecord) {
                     const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
                     fs.writeFileSync(credsPath, decryptedData);
                     console.log("✅ [SYSTEM] Session recovered from Database!");
-                } else {
-                    console.log("❌ [SYSTEM] Session ID not found in MongoDB.");
                 }
-            } catch (err) { 
-                console.log("❌ [SYSTEM] Recovery Error:", err.message);
-            }
-        } else {
-            console.log("⚠️ [SYSTEM] No valid SESSION_ID found in Environment.");
+            } catch (err) { console.log("❌ Recovery Error:", err.message); }
         }
     }
 
-    // --- 2️⃣ NOW LOAD EVERYTHING ELSE ---
-    try {
-        await loadCloudSettings(); 
-    } catch (e) {
-        console.log("⚠️ [SYSTEM] Skipping Cloud Settings (using local)");
-    }
-    
+    // --- ☁️ PRIORITY #2: LOAD CLOUD SETTINGS ---
+    try { await loadCloudSettings(); } catch (e) { }
     loadCommands();
 
-    // --- 3️⃣ INITIALIZE CONNECTION ---
+    // --- 📡 PRIORITY #3: INITIALIZE CONNECTION ---
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
-
-  const sock = makeWASocket({
-        auth: { 
-            creds: state.creds, 
-            keys: makeCacheableSignalKeyStore(state.keys, silentLogger) 
-        },
-        printQRInTerminal: false,
-        logger: silentLogger, 
-        browser: Browsers.macOS("Safari"),
-        shouldSyncHistoryMessage: () => false, 
-        syncFullHistory: false,
-        markOnlineOnConnect: true, 
-        fireInitQueries: false,      
-        maxMsgRetryCount: 5, 
-        msgRetryCounterCache, 
-        generateHighQualityLinkPreview: false,
-        keepAliveIntervalMs: 30000, 
-        getMessage: async (key) => { return undefined; } 
-    });
-
-    global.conn = sock; 
-
-    sock.ev.on('creds.update', async () => {
-        await saveCreds(); 
-        try {
-            const sessionID = process.env.SESSION_ID;
-            const credsData = fs.readFileSync(credsPath);
-            const compressed = zlib.deflateSync(credsData).toString('base64');
-            await client.db("vinnieBot").collection("sessions").updateOne(
-                { sessionId: sessionID },
-                { $set: { data: compressed, updatedAt: new Date() } },
-                { upsert: true }
-            );
-        } catch (e) { }
-    });
-
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
-        let msg = messages[0];
-        const from = msg.key.remoteJid;
-
-        if (from === 'status@broadcast') {
-            const statusID = msg.key.id;
-            if (statusCache.has(statusID)) return; 
-            const isStartupGrace = (Date.now() - connectionOpenTime) < 15000;
-            if (isStartupGrace) return;
-            statusCache.add(statusID);
-            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
-            if (statusCache.size > 500) statusCache.clear();
-        }
-
-        if (from.endsWith('@newsletter')) return;
-        if (global.lockedContacts.has(from)) return;
-        
-        const mtype = Object.keys(msg.message || {})[0];
-        if (mtype === 'protocolMessage' && msg.message.protocolMessage?.type === 0) {
-            const repairJid = msg.key.participant || msg.key.remoteJid;
-            healSession(repairJid);
-        }
-
-        let retry = 0;
-        while (!msg.message && retry < 3 && !msg.key.fromMe) {
-            await new Promise(res => setTimeout(res, 1000));
-            retry++;
-        }
-        if (!msg.message) return;
-
-        const isMe = msg.key.fromMe;
-        const prefix = process.env.PREFIX || ".";
-        const settings = fs.readJsonSync(settingsFile);
-
-        const messageType = Object.keys(msg.message)[0];
-        const text = (
-            messageType === 'conversation' ? msg.message.conversation :
-            messageType === 'extendedTextMessage' ? msg.message.extendedTextMessage.text :
-            messageType === 'imageMessage' ? msg.message.imageMessage.caption :
-            messageType === 'videoMessage' ? msg.message.videoMessage.caption :
-            msg.message.extendedTextMessage?.text || ""
-        ) || ""; 
-        
-        const cleanText = text.trim(); 
-        const isCommand = cleanText.startsWith(prefix);
-        const sender = msg.key.participant || msg.key.remoteJid;
-        const isOwner = isMe || (settings.owners && settings.owners.includes(sender));
-        const isBanned = settings.banned && settings.banned.includes(sender);
-
-        if (isBanned && isCommand) return; 
-        if (settings.mode === 'private' && !isOwner && isCommand) return; 
-
-        // 🎮 GAME INTERCEPTOR
-        if (global.gamestate.has(from)) {
-            const activeGame = global.gamestate.get(from);
-            if (!isCommand) {
-                try {
-                    const gameCmd = commands.get(activeGame.name);
-                    if (gameCmd && gameCmd.handleMove) {
-                        await gameCmd.handleMove(sock, msg, cleanText, activeGame);
-                        return; 
-                    }
-                } catch (e) { }
-            }
-        }
-
-        loadedWorkers.forEach(worker => {
-            if (worker.name.includes('antidelete')) {
-                worker.fn(sock, msg, settings).catch(() => {});
-            } else {
-                taskQueue.push(async () => {
-                    try {
-                        if (from === 'status@broadcast') {
-                            const viewDelay = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
-                            await new Promise(r => setTimeout(r, viewDelay));
-                        }
-                        await worker.fn(sock, msg, settings);
-                    } catch (e) { }
-                });
-            }
+    try {
+        const sock = makeWASocket({
+            auth: { 
+                creds: state.creds, 
+                keys: makeCacheableSignalKeyStore(state.keys, silentLogger) 
+            },
+            printQRInTerminal: false,
+            logger: silentLogger, 
+            browser: Browsers.macOS("Safari"),
+            shouldSyncHistoryMessage: () => false, 
+            syncFullHistory: false,
+            markOnlineOnConnect: true, 
+            fireInitQueries: false,      
+            maxMsgRetryCount: 5, 
+            msgRetryCounterCache, 
+            generateHighQualityLinkPreview: false,
+            keepAliveIntervalMs: 30000, 
+            getMessage: async (key) => { return undefined; } 
         });
-        processQueue();
 
-        if (from === 'status@broadcast') {
+        global.conn = sock; 
+
+        // --- 📥 CREDENTIAL UPDATES ---
+        sock.ev.on('creds.update', async () => {
+            await saveCreds(); 
+            try {
+                const sessionID = process.env.SESSION_ID;
+                const credsData = fs.readFileSync(credsPath);
+                const compressed = zlib.deflateSync(credsData).toString('base64');
+                await client.db("vinnieBot").collection("sessions").updateOne(
+                    { sessionId: sessionID },
+                    { $set: { data: compressed, updatedAt: new Date() } },
+                    { upsert: true }
+                );
+            } catch (e) { }
+        });
+
+        // --- 📩 MESSAGE HANDLER ---
+        sock.ev.on('messages.upsert', async ({ messages, type }) => {
+            if (type !== 'notify') return;
+            let msg = messages[0];
+            const from = msg.key.remoteJid;
+
+            if (from === 'status@broadcast') {
+                const statusID = msg.key.id;
+                if (statusCache.has(statusID)) return; 
+                const isStartupGrace = (Date.now() - connectionOpenTime) < 15000;
+                if (isStartupGrace) return;
+                statusCache.add(statusID);
+                console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
+                if (statusCache.size > 500) statusCache.clear();
+            }
+
+            if (from.endsWith('@newsletter')) return;
+            if (global.lockedContacts.has(from)) return;
+            
+            const mtype = Object.keys(msg.message || {})[0];
+            if (mtype === 'protocolMessage' && msg.message.protocolMessage?.type === 0) {
+                const repairJid = msg.key.participant || msg.key.remoteJid;
+                healSession(repairJid);
+            }
+
+            let retry = 0;
+            while (!msg.message && retry < 3 && !msg.key.fromMe) {
+                await new Promise(res => setTimeout(res, 1000));
+                retry++;
+            }
+            if (!msg.message) return;
+
+            const isMe = msg.key.fromMe;
+            const prefix = process.env.PREFIX || ".";
+            const settings = fs.readJsonSync(settingsFile);
+
+            const messageType = Object.keys(msg.message)[0];
+            const text = (
+                messageType === 'conversation' ? msg.message.conversation :
+                messageType === 'extendedTextMessage' ? msg.message.extendedTextMessage.text :
+                messageType === 'imageMessage' ? msg.message.imageMessage.caption :
+                messageType === 'videoMessage' ? msg.message.videoMessage.caption :
+                msg.message.extendedTextMessage?.text || ""
+            ) || ""; 
+            
+            const cleanText = text.trim(); 
+            const isCommand = cleanText.startsWith(prefix);
+            const sender = msg.key.participant || msg.key.remoteJid;
+            const isOwner = isMe || (settings.owners && settings.owners.includes(sender));
+            const isBanned = settings.banned && settings.banned.includes(sender);
+
+            if (isBanned && isCommand) return; 
+            if (settings.mode === 'private' && !isOwner && isCommand) return; 
+
+            if (global.gamestate.has(from)) {
+                const activeGame = global.gamestate.get(from);
+                if (!isCommand) {
+                    try {
+                        const gameCmd = commands.get(activeGame.name);
+                        if (gameCmd && gameCmd.handleMove) {
+                            await gameCmd.handleMove(sock, msg, cleanText, activeGame);
+                            return; 
+                        }
+                    } catch (e) { }
+                }
+            }
+
+            loadedWorkers.forEach(worker => {
+                if (worker.name.includes('antidelete')) {
+                    worker.fn(sock, msg, settings).catch(() => {});
+                } else {
+                    taskQueue.push(async () => {
+                        try {
+                            if (from === 'status@broadcast') {
+                                const viewDelay = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
+                                await new Promise(r => setTimeout(r, viewDelay));
+                            }
+                            await worker.fn(sock, msg, settings);
+                        } catch (e) { }
+                    });
+                }
+            });
+            processQueue();
+
+            if (from === 'status@broadcast') {
+                try {
+                    const handler = require('./events/handler');
+                    await handler.execute(sock, msg, settings);
+                    return; 
+                } catch (e) { return; }
+            }
+
+            if (isCommand) {
+                const args = cleanText.slice(prefix.length).trim().split(/ +/);
+                const commandName = args.shift().toLowerCase();
+                const command = commands.get(commandName);
+                if (command) {
+                    await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
+                    try {
+                        await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
+                    } catch (err) { console.error("❌ Command Error:", err.message); }
+                }
+            }
+
             try {
                 const handler = require('./events/handler');
                 await handler.execute(sock, msg, settings);
-                return; 
-            } catch (e) { return; }
-        }
+            } catch (e) { }
+        });
 
-        if (isCommand) {
-            const args = cleanText.slice(prefix.length).trim().split(/ +/);
-            const commandName = args.shift().toLowerCase();
-            const command = commands.get(commandName);
-            
-            if (command) {
-                await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
-                try {
-                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
-                } catch (err) { console.error("❌ Command Error:", err.message); }
-            }
-        }
-
-        try {
-            const handler = require('./events/handler');
-            await handler.execute(sock, msg, settings);
-        } catch (e) { }
-    });
-
-    // --- 🛡️ SMART GROUP ENFORCER ---
-    sock.ev.on('group-participants.update', async (anu) => {
-        const { id, participants, action } = anu;
-        let metadata;
-        try { metadata = await sock.groupMetadata(id); } catch { return; }
-        try {
-            const settings = fs.readJsonSync(settingsFile);
-            const db = client.db("vinnieBot");
-            const config = await db.collection("group_configs").findOne({ groupId: id });
-            for (let num of participants) {
-                const isMe = num === jidNormalizedUser(sock.user.id);
-                if (action === 'add') {
-                    const isAntiBotEnabled = config?.antibot || settings.antibot;
-                    const isBot = num.includes(':') || num.startsWith('1') || num.length > 15;
-                    if (isAntiBotEnabled && isBot && !isMe) {
-                        await sock.sendMessage(id, { text: `🛡️ *Antibot:* Removed @${num.split('@')[0]}`, mentions: [num] });
-                        return await sock.groupParticipantsUpdate(id, [num], "remove");
+        // --- 🛡️ GROUP EVENT HANDLER ---
+        sock.ev.on('group-participants.update', async (anu) => {
+            const { id, participants, action } = anu;
+            let metadata;
+            try { metadata = await sock.groupMetadata(id); } catch { return; }
+            try {
+                const settings = fs.readJsonSync(settingsFile);
+                const db = client.db("vinnieBot");
+                const config = await db.collection("group_configs").findOne({ groupId: id });
+                for (let num of participants) {
+                    const isMe = num === jidNormalizedUser(sock.user.id);
+                    if (action === 'add') {
+                        const isAntiBotEnabled = config?.antibot || settings.antibot;
+                        const isBot = num.includes(':') || num.startsWith('1') || num.length > 15;
+                        if (isAntiBotEnabled && isBot && !isMe) {
+                            await sock.sendMessage(id, { text: `🛡️ *Antibot:* Removed @${num.split('@')[0]}`, mentions: [num] });
+                            return await sock.groupParticipantsUpdate(id, [num], "remove");
+                        }
+                        if ((config?.welcome || settings.welcome) && !isMe) {
+                            let text = (config?.welcomeText || "Welcome @user to @group").replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
+                            await sock.sendMessage(id, { text, mentions: [num] });
+                        }
                     }
-                    if ((config?.welcome || settings.welcome) && !isMe) {
-                        let text = (config?.welcomeText || "Welcome @user to @group").replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
+                    if (action === 'remove' && (config?.goodbye || settings.goodbye) && !isMe) {
+                        let text = (config?.goodbyeText || "Goodbye @user").replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
                         await sock.sendMessage(id, { text, mentions: [num] });
                     }
                 }
-                if (action === 'remove' && (config?.goodbye || settings.goodbye) && !isMe) {
-                    let text = (config?.goodbyeText || "Goodbye @user").replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
-                    await sock.sendMessage(id, { text, mentions: [num] });
+            } catch (e) { }
+        });
+
+        // --- 🔌 CONNECTION UPDATES ---
+        sock.ev.on('connection.update', async (u) => { 
+            const { connection, lastDisconnect } = u;
+            if (connection === 'open') {
+                connectionOpenTime = Date.now(); 
+                console.log("\n📡 Vinnie Hub Active | Cloud Settings Synced");
+                try {
+                    if (fs.existsSync('./events/automation.js')) {
+                        require('./events/automation').startBioRotation(sock);
+                    }
+                    if (fs.existsSync('./events/promoWorker.js')) {
+                        require('./events/promoWorker').initPromo(sock);
+                    }
+                } catch (e) { }
+            }
+            if (connection === 'close') {
+                const reason = lastDisconnect?.error?.output?.statusCode;
+                if (reason !== DisconnectReason.loggedOut) {
+                    setTimeout(() => startVinnieHub(), 2000);
                 }
             }
-        } catch (e) { }
-    });
+        });
 
+    } catch (criticalErr) {
+        console.error("❌ CRITICAL BOOT ERROR:", criticalErr.message);
+        console.error(criticalErr.stack);
+        setTimeout(() => startVinnieHub(), 5000);
+    }
+
+    // --- 🧹 CLEANUP TASK ---
     setInterval(async () => {
         try {
             const files = fs.readdirSync(authFolder);
@@ -398,28 +415,9 @@ async function startVinnieHub() {
             }
         } catch (err) { }
     }, 1000 * 60 * 60 * 2); 
-
-    sock.ev.on('connection.update', async (u) => { 
-        const { connection, lastDisconnect } = u;
-        if (connection === 'open') {
-            connectionOpenTime = Date.now(); 
-            console.log("\n📡 Vinnie Hub Active | Cloud Settings Synced");
-            try {
-                const automation = require('./events/automation');
-                automation.startBioRotation(sock);
-                const promoWorker = require('./events/promoWorker');
-                promoWorker.initPromo(sock);
-            } catch (e) { }
-        }
-        if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode;
-            if (reason !== DisconnectReason.loggedOut) {
-                setTimeout(() => startVinnieHub(), 2000);
-            }
-        }
-    });
 }
 
+// --- 🚑 SUPERVISOR ---
 process.on('uncaughtException', async (err) => {
     const errorMsg = err.message || "";
     if (errorMsg.includes('Bad MAC') || errorMsg.includes('Decrypted') || errorMsg.includes('Chain closed')) {
