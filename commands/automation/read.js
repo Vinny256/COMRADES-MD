@@ -4,6 +4,7 @@ const settingsFile = './settings.json';
 
 module.exports = {
     name: "read",
+    category: "automation",
     description: "Toggle auto-read (Blue Tick) automation",
     async execute(sock, msg, args, { from, isMe, settings }) {
         // --- 🛡️ OWNER-ONLY GUARD ---
