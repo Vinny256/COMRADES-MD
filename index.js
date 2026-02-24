@@ -140,7 +140,7 @@ if (!fs.existsSync(settingsFile)) {
         antibot: false,
         welcome: false,
         goodbye: false,
-        autopromo: true
+        autopromo: false
     });
 }
 
@@ -173,7 +173,6 @@ async function startVinnieHub() {
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
-    // --- 🔑 RESTORED SESSION ID RECOVERY ---
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
         if (sessionID && sessionID.startsWith('VINNIE~')) {
@@ -188,27 +187,6 @@ async function startVinnieHub() {
             } catch (err) { }
         }
     }
-
-    const sessionID = process.env.SESSION_ID;
-if (sessionID && sessionID.startsWith('VINNIE~')) {
-    try {
-        const db = client.db("vinnieBot");
-        const sessions = db.collection("sessions");
-        const sessionRecord = await sessions.findOne({ sessionId: sessionID });
-        
-        if (sessionRecord) {
-            console.log("📥 [SYSTEM] Downloading Session from MongoDB...");
-            const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
-            fs.ensureDirSync(authFolder); // Ensure folder exists
-            fs.writeFileSync(credsPath, decryptedData);
-            console.log("✅ [SYSTEM] Session Recovery Complete.");
-        } else {
-            console.log("❌ [SYSTEM] Session ID not found in Database.");
-        }
-    } catch (err) {
-        console.log("❌ [SYSTEM] Recovery Error:", err.message);
-    }
-}
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
@@ -297,12 +275,13 @@ if (sessionID && sessionID.startsWith('VINNIE~')) {
         const isOwner = isMe || (settings.owners && settings.owners.includes(sender));
         const isBanned = settings.banned && settings.banned.includes(sender);
 
-        // 🎮 --- THE GAME INTERCEPTOR ---
+        if (isBanned && isCommand) return; 
+        if (settings.mode === 'private' && !isOwner && isCommand) return; 
+
+        // 🎮 GAME INTERCEPTOR
         if (global.gamestate.has(from)) {
             const activeGame = global.gamestate.get(from);
-            const input = cleanText.toUpperCase();
-            const isJoinAttempt = input === "JOIN";
-            if (!isCommand || isJoinAttempt) {
+            if (!isCommand) {
                 try {
                     const gameCmd = commands.get(activeGame.name);
                     if (gameCmd && gameCmd.handleMove) {
@@ -312,10 +291,6 @@ if (sessionID && sessionID.startsWith('VINNIE~')) {
                 } catch (e) { }
             }
         }
-
-        // --- 🛡️ NUCLEAR GATE ---
-        if (isBanned && isCommand) return; 
-        if (settings.mode === 'private' && !isOwner && isCommand) return; 
 
         loadedWorkers.forEach(worker => {
             if (worker.name.includes('antidelete')) {
@@ -361,40 +336,32 @@ if (sessionID && sessionID.startsWith('VINNIE~')) {
         } catch (e) { }
     });
 
-    // --- 🛡️ THE SMART GROUP ENFORCER (WELCOME/GOODBYE/ANTIBOT) ---
+    // --- 🛡️ SMART GROUP ENFORCER ---
     sock.ev.on('group-participants.update', async (anu) => {
         const { id, participants, action } = anu;
         let metadata;
         try { metadata = await sock.groupMetadata(id); } catch { return; }
-
         try {
             const settings = fs.readJsonSync(settingsFile);
             const db = client.db("vinnieBot");
             const config = await db.collection("group_configs").findOne({ groupId: id });
-
             for (let num of participants) {
                 const isMe = num === jidNormalizedUser(sock.user.id);
                 if (action === 'add') {
                     const isAntiBotEnabled = config?.antibot || settings.antibot;
                     const isBot = num.includes(':') || num.startsWith('1') || num.length > 15;
                     if (isAntiBotEnabled && isBot && !isMe) {
-                        await sock.sendMessage(id, { text: `┏━━━━━ ✿ *ANTIBOT* ✿ ━━━━━┓\n┃\n┃ 🤖 *Bot Detected:* @${num.split('@')[0]}\n┃ 🛡️ *Action:* Automatic Removal\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`, mentions: [num] });
+                        await sock.sendMessage(id, { text: `🛡️ *Antibot:* Removed @${num.split('@')[0]}`, mentions: [num] });
                         return await sock.groupParticipantsUpdate(id, [num], "remove");
                     }
-                    const isWelcomeOn = config?.welcome || settings.welcome;
-                    if (isWelcomeOn && !isMe) {
-                        let customText = config?.welcomeText || "Hello @user, welcome to @group!";
-                        let msgText = customText.replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
-                        await sock.sendMessage(id, { text: `┏━━━━━ ✿ *WELCOME* ✿ ━━━━━┓\n┃\n┃  ${msgText}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`, mentions: [num] });
+                    if ((config?.welcome || settings.welcome) && !isMe) {
+                        let text = (config?.welcomeText || "Welcome @user to @group").replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
+                        await sock.sendMessage(id, { text, mentions: [num] });
                     }
                 }
-                if (action === 'remove') {
-                    const isGoodbyeOn = config?.goodbye || settings.goodbye;
-                    if (isGoodbyeOn && !isMe) {
-                        let customText = config?.goodbyeText || "Farewell @user, we hope to see you again!";
-                        let msgText = customText.replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
-                        await sock.sendMessage(id, { text: `┏━━━━━ ✿ *GOODBYE* ✿ ━━━━━┓\n┃\n┃  ${msgText}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`, mentions: [num] });
-                    }
+                if (action === 'remove' && (config?.goodbye || settings.goodbye) && !isMe) {
+                    let text = (config?.goodbyeText || "Goodbye @user").replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
+                    await sock.sendMessage(id, { text, mentions: [num] });
                 }
             }
         } catch (e) { }
@@ -419,7 +386,6 @@ if (sessionID && sessionID.startsWith('VINNIE~')) {
             try {
                 const automation = require('./events/automation');
                 automation.startBioRotation(sock);
-                
                 const promoWorker = require('./events/promoWorker');
                 promoWorker.initPromo(sock);
             } catch (e) { }
