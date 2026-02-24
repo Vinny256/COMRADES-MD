@@ -4,6 +4,7 @@ const settingsFile = './settings.json';
 
 module.exports = {
     name: "typing",
+    category: "automation",
     description: "Configure 10-second typing automation",
     async execute(sock, msg, args, { from, isMe, settings }) {
         // --- 🛡️ OWNER-ONLY GUARD ---
