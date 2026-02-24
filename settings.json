@@ -10,7 +10,7 @@
   "antimention": false,
   "welcome": false,
   "goodbye": false,
-  "antibot": false
+  "antibot": false,
   "alwaysRecording": true,
   "recordMode": "all"
   
