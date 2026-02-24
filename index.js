@@ -204,7 +204,8 @@ async function startVinnieHub() {
             const command = commands.get(commandName);
             if (command) {
                 try {
-                    await command.execute(sock, msg, args, { prefix, from, isMe: msg.key.fromMe, settings });
+                    // ADDED 'commands' TO THE LIST BELOW - NO OTHER CHANGES MADE
+                    await command.execute(sock, msg, args, { prefix, commands, from, isMe: msg.key.fromMe, settings });
                 } catch (err) { console.error("❌ Cmd Error:", err.message); }
             }
         }
