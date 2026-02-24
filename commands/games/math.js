@@ -3,7 +3,8 @@ module.exports = {
     category: "games",
     desc: "Speed math challenge",
     async execute(sock, msg, args, { from }) {
-        if (global.gamestate.has(from)) {
+        // ✅ ADDED OPTIONAL CHAINING (?.) TO PREVENT "UNDEFINED" CRASH
+        if (global.gamestate?.has?.(from)) {
             return sock.sendMessage(from, { text: "❌ A game is already active here!" });
         }
 
@@ -29,6 +30,8 @@ module.exports = {
             startTime: Date.now()
         };
 
+        // ✅ SAFE SET (Ensures gamestate exists before setting)
+        if (!global.gamestate) global.gamestate = new Map();
         global.gamestate.set(from, gameData);
 
         const challenge = `┏━━━━━ ✿ *V_HUB MATH* ✿ ━━━━━┓\n┃\n┃  ❓ *Solve this fast:* \n┃  👉  *${num1} ${op === '*' ? '×' : op} ${num2} = ?*\n┃\n┃  ⏱️ *Time:* 15 Seconds\n┃  💰 *Reward:* Bragging Rights\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
@@ -37,7 +40,7 @@ module.exports = {
 
         // Auto-delete game if no one answers in 15 seconds
         setTimeout(async () => {
-            if (global.gamestate.has(from) && global.gamestate.get(from).name === "math") {
+            if (global.gamestate?.has?.(from) && global.gamestate?.get?.(from)?.name === "math") {
                 global.gamestate.delete(from);
                 await sock.sendMessage(from, { text: `⏰ *TIME OUT!* No one answered.\nCorrect was: *${answer}*` });
             }
@@ -57,7 +60,7 @@ module.exports = {
                 text: `🏆 *WINNER!* \n\n👤 *User:* ${winner}\n✅ *Answer:* ${game.answer}\n⚡ *Speed:* ${timeTaken} seconds\n\n_Game Over._` 
             }, { quoted: msg });
 
-            global.gamestate.delete(from);
+            global.gamestate?.delete?.(from);
         }
     }
 };
