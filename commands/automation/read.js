@@ -1,36 +1,39 @@
 const fs = require('fs-extra');
+const path = require('path');
 const settingsFile = './settings.json';
 
-const vStyle = (text) => `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-
 module.exports = {
-    name: 'read',
-    category: 'automation',
-    desc: 'Toggle automatic message read (Owners Only)',
-    async execute(sock, msg, args, { from, settings }) {
-        // 🛡️ OWNER SHIELD: Get owners from .env
-        const rawOwners = process.env.OWNER || "";
-        const owners = rawOwners.split(',').map(num => num.trim() + "@s.whatsapp.net");
-        const sender = msg.key.participant || msg.key.remoteJid;
-
-        // Check if sender is an owner or the bot itself
-        if (!owners.includes(sender) && !msg.key.fromMe) {
-            return await sock.sendMessage(from, { text: vStyle("⚠️ *Access Denied*\n┃ This command is reserved\n┃ for V_HUB Owners only.") });
+    name: "read",
+    description: "Toggle auto-read (Blue Tick) automation",
+    async execute(sock, msg, args, { from, isMe, settings }) {
+        // --- 🛡️ OWNER-ONLY GUARD ---
+        if (!isMe) {
+            return sock.sendMessage(from, { 
+                text: "✿ *HUB_SYNC* ✿\n\n❌ *Access Denied:* This command is restricted to the *Commander* only." 
+            }, { quoted: msg });
         }
 
-        const action = args[0]?.toLowerCase();
+        const param = args[0]?.toLowerCase();
+        
+        // --- 🌸 VINNIE FLOWER REACT ---
+        await sock.sendMessage(from, { react: { text: "✿", key: msg.key } });
 
-        if (action === 'on') {
-            settings.autoread = true;
-            fs.writeJsonSync(settingsFile, settings);
-            await sock.sendMessage(from, { text: vStyle("🔵 *Auto-Read ON*\n┃ Bot will now blue-tick\n┃ incoming messages.") });
-        } else if (action === 'off') {
-            settings.autoread = false;
-            fs.writeJsonSync(settingsFile, settings);
-            await sock.sendMessage(from, { text: vStyle("⚪ *Auto-Read OFF*\n┃ Blue ticks disabled.") });
+        if (param === 'on') {
+            settings.bluetick = true;
+        } else if (param === 'off') {
+            settings.bluetick = false;
         } else {
-            const status = settings.autoread ? "ON" : "OFF";
-            await sock.sendMessage(from, { text: vStyle(`Current Status: *${status}*\n┃ Usage:\n┃ .read on\n┃ .read off`) });
+            return sock.sendMessage(from, { 
+                text: `✿ *VINNIE HUB AUTOMATION* ✿\n\n*Current Status:* ${settings.bluetick ? 'ACTIVE ✅' : 'DISABLED ❌'}\n*Usage:* .read on | off` 
+            }, { quoted: msg });
         }
+
+        // Save locally and sync to Cloud
+        fs.writeJsonSync(settingsFile, settings);
+        if (global.saveSettings) await global.saveSettings();
+
+        await sock.sendMessage(from, { 
+            text: `✿ *HUB_SYNC* ✿\n\n✅ *Auto-Read:* ${param === 'on' ? 'Enabled (Instant Blue Tick)' : 'Disabled'}` 
+        }, { quoted: msg });
     }
 };
