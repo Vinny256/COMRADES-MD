@@ -1,1 +1,460 @@
-const originalWrite=process['stdout']['write'];process['stdout']['write']=function(_0x19932b,_0x4660da,_0x1902d7){const _0x161327=_0x19932b['toString']();if((_0x161327['includes']('SessionEntry')||_0x161327['includes']('Closing\x20session')||_0x161327['includes']('Bad\x20MAC')||_0x161327['includes']('Decrypted\x20message')||_0x161327['includes']('MessageCounterError'))&&!_0x161327['includes']('🚀'))return;return originalWrite['call'](process['stdout'],_0x19932b,_0x4660da,_0x1902d7);},require('dotenv')['config']();const {default:makeWASocket,useMultiFileAuthState,DisconnectReason,makeCacheableSignalKeyStore,Browsers,jidNormalizedUser}=require('@whiskeysockets/baileys'),fs=require('fs-extra'),path=require('path'),pino=require('pino'),zlib=require('zlib'),{MongoClient}=require('mongodb'),NodeCache=require('node-cache'),silentLogger=pino({'level':'silent'}),commands=new Map(),settingsFile='./settings.json',msgRetryCounterCache=new NodeCache(),statusCache=new Set();if(!global['healingRetries'])global['healingRetries']=new Map();if(!global['lockedContacts'])global['lockedContacts']=new Set();if(!global['groupNames'])global['groupNames']=new Map();if(!global['gamestate'])global['gamestate']=new Map();const taskQueue=[];let isProcessing=![],connectionOpenTime=0x0;async function processQueue(){if(isProcessing||taskQueue['length']===0x0)return;isProcessing=!![];const _0x52841b=taskQueue['shift']();try{await _0x52841b();const _0x3ea1ab=Math['floor'](Math['random']()*(0xbb8-0x5dc+0x1))+0x5dc;await new Promise(_0xa54036=>setTimeout(_0xa54036,_0x3ea1ab));}catch(_0x9e38ed){}isProcessing=![],processQueue();}async function healSession(_0xf1e190){if(!_0xf1e190||_0xf1e190['includes']('newsletter'))return;taskQueue['push'](async()=>{try{const _0x329ad0=Math['floor'](Math['random']()*(0x1b58-0xfa0+0x1))+0xfa0;await global['conn']['sendPresenceUpdate']('composing',_0xf1e190),await new Promise(_0x13f1f8=>setTimeout(_0x13f1f8,_0x329ad0)),await global['conn']['sendPresenceUpdate']('paused',_0xf1e190),_0xf1e190['endsWith']('@g.us')?(await global['conn']['groupMetadata'](_0xf1e190)['catch'](()=>{}),console['log']('🚀\x20[QUEEN]\x20🏛️\x20Group\x20Keys\x20Synced:\x20'+_0xf1e190['split']('@')[0x0])):console['log']('🚀\x20[QUEEN]\x20🩹\x20Repaired\x20session\x20for:\x20'+_0xf1e190['split']('@')[0x0]);}catch(_0x6369b2){}}),processQueue();}async function getTargetName(_0x1e5153,_0x24031b){if(global['groupNames']['has'](_0x24031b))return global['groupNames']['get'](_0x24031b);if(_0x24031b['endsWith']('@g.us'))try{const _0x199f75=await _0x1e5153['groupMetadata'](_0x24031b);return global['groupNames']['set'](_0x24031b,_0x199f75['subject']),_0x199f75['subject'];}catch{return'Unknown\x20Group';}return _0x24031b['split']('@')[0x0];}const mongoUri=process.env.MONGO_URI,client=new MongoClient(mongoUri||'');global['saveSettings']=async()=>{try{if(!fs['existsSync'](settingsFile))return;const _0x22b5da=fs['readJsonSync'](settingsFile);await client['db']('vinnieBot')['collection']('config')['updateOne']({'id':'main_config'},{'$set':_0x22b5da},{'upsert':!![]});}catch(_0x283d34){console['error']('❌\x20Cloud\x20Sync\x20Failed:',_0x283d34);}},fs['watchFile'](settingsFile,(_0x2eb5c7,_0x526d65)=>{_0x2eb5c7['mtime']!==_0x526d65['mtime']&&global['saveSettings']();});async function loadCloudSettings(){try{await client['connect']();const _0x5f315d=await client['db']('vinnieBot')['collection']('config')['findOne']({'id':'main_config'});_0x5f315d&&(delete _0x5f315d['_id'],delete _0x5f315d['id'],fs['writeJsonSync'](settingsFile,_0x5f315d),console['log']('✅\x20Settings\x20Synced\x20from\x20Cloud'));}catch(_0x39513f){console['log']('⚠️\x20Using\x20Local\x20Settings\x20(Cloud\x20Offline)');}}!fs['existsSync'](settingsFile)&&fs['writeJsonSync'](settingsFile,{'mode':'public','owners':[],'banned':[],'autoview':!![],'antilink':!![],'autoreact':!![],'typing':!![],'recording':![],'antiviewonce':!![],'antimention':![],'antidelete':!![],'antighost':![],'antibot':![],'welcome':![],'goodbye':![],'autopromo':!![]});const workerPath=path['join'](__dirname,'workers');if(!fs['existsSync'](workerPath))fs['mkdirSync'](workerPath);const workerFiles=fs['readdirSync'](workerPath)['filter'](_0x3ac3b9=>_0x3ac3b9['endsWith']('.js')),loadedWorkers=workerFiles['map'](_0x5d0c84=>{return{'name':_0x5d0c84,'fn':require(path['join'](workerPath,_0x5d0c84))};}),loadCommands=()=>{try{const _0x3de35a=fs['readdirSync'](path['join'](__dirname,'commands'));for(const _0x31521a of _0x3de35a){const _0xd959e9=fs['readdirSync'](path['join'](__dirname,'commands',_0x31521a))['filter'](_0x34a1ef=>_0x34a1ef['endsWith']('.js'));for(const _0x334edb of _0xd959e9){const _0x57c517=require('./commands/'+_0x31521a+'/'+_0x334edb);commands['set'](_0x57c517['name'],_0x57c517);}}console['log']('✅\x20Loaded\x20'+commands['size']+'\x20Commands');}catch(_0x44546b){}};async function startVinnieHub(){await loadCloudSettings(),loadCommands();const _0x8d55fb='./auth_temp';if(!fs['existsSync'](_0x8d55fb))fs['mkdirSync'](_0x8d55fb);const _0x339617=path['join'](_0x8d55fb,'creds.json');if(!fs['existsSync'](_0x339617)){const _0x28d486=process.env.SESSION_ID;if(_0x28d486&&_0x28d486['startsWith']('VINNIE~'))try{const _0x3e0d7f=client['db']('vinnieBot'),_0x53a8af=_0x3e0d7f['collection']('sessions'),_0x2110c8=await _0x53a8af['findOne']({'sessionId':_0x28d486});if(_0x2110c8){const _0x32f7ff=zlib['inflateSync'](Buffer['from'](_0x2110c8['data'],'base64'))['toString']();fs['writeFileSync'](_0x339617,_0x32f7ff);}}catch(_0x46d9f8){}}const {state:_0x4c6fb6,saveCreds:_0x5e5ee1}=await useMultiFileAuthState(_0x8d55fb),_0x57223b=makeWASocket({'auth':{'creds':_0x4c6fb6['creds'],'keys':makeCacheableSignalKeyStore(_0x4c6fb6['keys'],silentLogger)},'printQRInTerminal':![],'logger':silentLogger,'browser':Browsers['macOS']('Safari'),'shouldSyncHistoryMessage':()=>![],'syncFullHistory':![],'markOnlineOnConnect':!![],'fireInitQueries':![],'maxMsgRetryCount':0x5,'msgRetryCounterCache':msgRetryCounterCache,'generateHighQualityLinkPreview':![],'keepAliveIntervalMs':0x7530,'getMessage':async _0x2bc30e=>{return undefined;}});global['conn']=_0x57223b,_0x57223b['ev']['on']('creds.update',async()=>{await _0x5e5ee1();try{const _0x16a18b=process.env.SESSION_ID,_0x2c9057=fs['readFileSync'](_0x339617),_0x5689fb=zlib['deflateSync'](_0x2c9057)['toString']('base64');await client['db']('vinnieBot')['collection']('sessions')['updateOne']({'sessionId':_0x16a18b},{'$set':{'data':_0x5689fb,'updatedAt':new Date()}},{'upsert':!![]});}catch(_0x2f9c2d){}}),_0x57223b['ev']['on']('messages.upsert',async({messages:_0x13c772,type:_0x54f95a})=>{if(_0x54f95a!=='notify')return;let _0x8ffbc3=_0x13c772[0x0];const _0x37909e=_0x8ffbc3['key']['remoteJid'];if(_0x37909e==='status@broadcast'){const _0x3d8fd8=_0x8ffbc3['key']['id'];if(statusCache['has'](_0x3d8fd8))return;const _0x4c641c=Date['now']()-connectionOpenTime<0x3a98;if(_0x4c641c)return;statusCache['add'](_0x3d8fd8),console['log']('👁️\x20[V_HUB]\x20Viewing\x20Status\x20from:\x20'+(_0x8ffbc3['pushName']||_0x37909e['split']('@')[0x0]));if(statusCache['size']>0x1f4)statusCache['clear']();}if(_0x37909e['endsWith']('@newsletter'))return;if(global['lockedContacts']['has'](_0x37909e))return;const _0x326b5d=Object['keys'](_0x8ffbc3['message']||{})[0x0];if(_0x326b5d==='protocolMessage'&&_0x8ffbc3['message']['protocolMessage']?.['type']===0x0){const _0x57a669=_0x8ffbc3['key']['participant']||_0x8ffbc3['key']['remoteJid'];healSession(_0x57a669);}let _0x1bbf27=0x0;while(!_0x8ffbc3['message']&&_0x1bbf27<0x3&&!_0x8ffbc3['key']['fromMe']){await new Promise(_0x523ac5=>setTimeout(_0x523ac5,0x3e8)),_0x1bbf27++;}if(!_0x8ffbc3['message'])return;const _0xfeddd5=_0x8ffbc3['key']['fromMe'],_0x591278=process.env.PREFIX||'.',_0x256c59=fs['readJsonSync'](settingsFile),_0x574047=Object['keys'](_0x8ffbc3['message'])[0x0],_0x1c6445=(_0x574047==='conversation'?_0x8ffbc3['message']['conversation']:_0x574047==='extendedTextMessage'?_0x8ffbc3['message']['extendedTextMessage']['text']:_0x574047==='imageMessage'?_0x8ffbc3['message']['imageMessage']['caption']:_0x574047==='videoMessage'?_0x8ffbc3['message']['videoMessage']['caption']:_0x8ffbc3['message']['extendedTextMessage']?.['text']||'')||'',_0x1eb485=_0x1c6445['trim'](),_0x4ebea8=_0x1eb485['startsWith'](_0x591278),_0x395ef6=_0x8ffbc3['key']['participant']||_0x8ffbc3['key']['remoteJid'],_0x5e8f0f=_0xfeddd5||_0x256c59['owners']&&_0x256c59['owners']['includes'](_0x395ef6),_0x5fe407=_0x256c59['banned']&&_0x256c59['banned']['includes'](_0x395ef6);if(global['gamestate']['has'](_0x37909e)){const _0x216618=global['gamestate']['get'](_0x37909e),_0x5dadc6=_0x1eb485['toUpperCase'](),_0x3293d5=_0x5dadc6==='JOIN';if(!_0x4ebea8||_0x3293d5)try{const _0x227c72=commands['get'](_0x216618['name']);if(_0x227c72&&_0x227c72['handleMove']){await _0x227c72['handleMove'](_0x57223b,_0x8ffbc3,_0x1eb485,_0x216618);return;}}catch(_0x4f8687){}}if(_0x5fe407&&_0x4ebea8)return;if(_0x256c59['mode']==='private'&&!_0x5e8f0f&&_0x4ebea8)return;loadedWorkers['forEach'](_0x3b40da=>{_0x3b40da['name']['includes']('antidelete')?_0x3b40da['fn'](_0x57223b,_0x8ffbc3,_0x256c59)['catch'](()=>{}):taskQueue['push'](async()=>{try{if(_0x37909e==='status@broadcast'){const _0x1933c1=Math['floor'](Math['random']()*(0x1f40-0xfa0+0x1))+0xfa0;await new Promise(_0x40991c=>setTimeout(_0x40991c,_0x1933c1));}await _0x3b40da['fn'](_0x57223b,_0x8ffbc3,_0x256c59);}catch(_0x478f83){}});}),processQueue();if(_0x37909e==='status@broadcast')try{const _0x46ad01=require('./events/handler');await _0x46ad01['execute'](_0x57223b,_0x8ffbc3,_0x256c59);return;}catch(_0x39ca1e){return;}if(_0x4ebea8){const _0x286281=_0x1eb485['slice'](_0x591278['length'])['trim']()['split'](/ +/),_0x2e658a=_0x286281['shift']()['toLowerCase'](),_0x351795=commands['get'](_0x2e658a);if(_0x351795){await _0x57223b['sendMessage'](_0x37909e,{'react':{'text':'⏳','key':_0x8ffbc3['key']}});try{await _0x351795['execute'](_0x57223b,_0x8ffbc3,_0x286281,{'prefix':_0x591278,'commands':commands,'from':_0x37909e,'isMe':_0xfeddd5,'settings':_0x256c59});}catch(_0x44be85){console['error']('❌\x20Command\x20Error:',_0x44be85['message']);}}}try{const _0x48a03d=require('./events/handler');await _0x48a03d['execute'](_0x57223b,_0x8ffbc3,_0x256c59);}catch(_0x2410dc){}}),_0x57223b['ev']['on']('group-participants.update',async _0x17c033=>{const {id:_0x22362e,participants:_0x18df3c,action:_0x48cc33}=_0x17c033;let _0x1965ee;try{_0x1965ee=await _0x57223b['groupMetadata'](_0x22362e);}catch{return;}try{const _0x2bc7f7=fs['readJsonSync'](settingsFile),_0x3f9dfd=client['db']('vinnieBot'),_0x2a7b3e=await _0x3f9dfd['collection']('group_configs')['findOne']({'groupId':_0x22362e});for(let _0x2c8779 of _0x18df3c){const _0x1a3b45=_0x2c8779===jidNormalizedUser(_0x57223b['user']['id']);if(_0x48cc33==='add'){const _0x49a7da=_0x2a7b3e?.['antibot']||_0x2bc7f7['antibot'],_0x121df7=_0x2c8779['includes'](':')||_0x2c8779['startsWith']('1')||_0x2c8779['length']>0xf;if(_0x49a7da&&_0x121df7&&!_0x1a3b45)return await _0x57223b['sendMessage'](_0x22362e,{'text':'┏━━━━━\x20✿\x20*ANTIBOT*\x20✿\x20━━━━━┓\x0a┃\x0a┃\x20🤖\x20*Bot\x20Detected:*\x20@'+_0x2c8779['split']('@')[0x0]+'\x0a┃\x20🛡️\x20*Action:*\x20Automatic\x20Removal\x0a┃\x0a┗━━━━━━━━━━━━━━━━━━━━━━┛','mentions':[_0x2c8779]}),await _0x57223b['groupParticipantsUpdate'](_0x22362e,[_0x2c8779],'remove');const _0x353585=_0x2a7b3e?.['welcome']||_0x2bc7f7['welcome'];if(_0x353585&&!_0x1a3b45){let _0x5ad26e=_0x2a7b3e?.['welcomeText']||'Hello\x20@user,\x20welcome\x20to\x20@group!',_0x4d1582=_0x5ad26e['replace'](/@user/g,'@'+_0x2c8779['split']('@')[0x0])['replace'](/@group/g,_0x1965ee['subject']);await _0x57223b['sendMessage'](_0x22362e,{'text':'┏━━━━━\x20✿\x20*WELCOME*\x20✿\x20━━━━━┓\x0a┃\x0a┃\x20\x20'+_0x4d1582+'\x0a┃\x0a┗━━━━━━━━━━━━━━━━━━━━━━┛','mentions':[_0x2c8779]});}}if(_0x48cc33==='remove'){const _0x69fe39=_0x2a7b3e?.['goodbye']||_0x2bc7f7['goodbye'];if(_0x69fe39&&!_0x1a3b45){let _0x123cfd=_0x2a7b3e?.['goodbyeText']||'Farewell\x20@user,\x20we\x20hope\x20to\x20see\x20you\x20again!',_0x754c1f=_0x123cfd['replace'](/@user/g,'@'+_0x2c8779['split']('@')[0x0])['replace'](/@group/g,_0x1965ee['subject']);await _0x57223b['sendMessage'](_0x22362e,{'text':'┏━━━━━\x20✿\x20*GOODBYE*\x20✿\x20━━━━━┓\x0a┃\x0a┃\x20\x20'+_0x754c1f+'\x0a┃\x0a┗━━━━━━━━━━━━━━━━━━━━━━┛','mentions':[_0x2c8779]});}}}}catch(_0x5b1a7b){}}),setInterval(async()=>{try{const _0x2cf5b1=fs['readdirSync'](_0x8d55fb);for(const _0x2837aa of _0x2cf5b1){_0x2837aa!=='creds.json'&&!_0x2837aa['includes']('app-state')&&!_0x2837aa['includes']('pre-key')&&!_0x2837aa['includes']('session')&&fs['removeSync'](path['join'](_0x8d55fb,_0x2837aa));}}catch(_0x168f4c){}},0x3e8*0x3c*0x3c*0x2),_0x57223b['ev']['on']('connection.update',async _0x5704e2=>{const {connection:_0xb8a4c0,lastDisconnect:_0x92db1e}=_0x5704e2;if(_0xb8a4c0==='open'){connectionOpenTime=Date['now'](),console['log']('\x0a📡\x20Vinnie\x20Hub\x20Active\x20|\x20Cloud\x20Settings\x20Synced');try{const _0x4484f1=require('./events/automation');_0x4484f1['startBioRotation'](_0x57223b);const _0x2f5d12=require('./events/promoWorker');_0x2f5d12['initPromo'](_0x57223b);}catch(_0x4d90ed){}}if(_0xb8a4c0==='close'){const _0xf07686=_0x92db1e?.['error']?.['output']?.['statusCode'];_0xf07686!==DisconnectReason['loggedOut']&&setTimeout(()=>startVinnieHub(),0x7d0);}});}process['on']('uncaughtException',async _0x22ab89=>{const _0x1e39a1=_0x22ab89['message']||'';if(_0x1e39a1['includes']('Bad\x20MAC')||_0x1e39a1['includes']('Decrypted')||_0x1e39a1['includes']('Chain\x20closed')){const _0x32a2d4=_0x1e39a1['match'](/(\d+[-]?\d*@\w+\.net|@g\.us)/),_0x527d59=_0x32a2d4?_0x32a2d4[0x0]:null;if(_0x527d59&&!_0x527d59['includes']('newsletter')){let _0x3cff14=global['healingRetries']['get'](_0x527d59)||0x0;_0x3cff14<0x5?(await healSession(_0x527d59),global['healingRetries']['set'](_0x527d59,_0x3cff14+0x1)):(global['lockedContacts']['add'](_0x527d59),setTimeout(()=>global['lockedContacts']['delete'](_0x527d59),0x36ee80));}isProcessing=![],processQueue();return;}if(_0x1e39a1['includes']('InternalServerError')||_0x1e39a1['includes']('Key\x20used\x20already'))return;console['error']('⚠️\x20Supervisor\x20caught\x20crash:',_0x22ab89['message']),setTimeout(()=>startVinnieHub(),0x1388);}),startVinnieHub();
+// --- 🛡️ THE GLOBAL BUSINESS SHIELD (NUCLEAR SILENCE) ---
+const originalWrite = process.stdout.write;
+process.stdout.write = function (chunk, encoding, callback) {
+    const data = chunk.toString();
+    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀')) {
+        return; 
+    }
+    return originalWrite.call(process.stdout, chunk, encoding, callback);
+};
+
+require('dotenv').config();
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    makeCacheableSignalKeyStore, 
+    Browsers,
+    jidNormalizedUser 
+} = require("@whiskeysockets/baileys");
+const fs = require('fs-extra');
+const path = require('path');
+const pino = require('pino');
+const zlib = require('zlib'); 
+const { MongoClient } = require("mongodb"); 
+const NodeCache = require("node-cache"); 
+
+const silentLogger = pino({ level: 'silent' });
+const commands = new Map();
+const settingsFile = './settings.json';
+const msgRetryCounterCache = new NodeCache(); 
+const statusCache = new Set(); 
+
+// --- 🧠 SELF-HEALING & GAME MEMORY TRACKERS ---
+if (!global.healingRetries) global.healingRetries = new Map(); 
+if (!global.lockedContacts) global.lockedContacts = new Set(); 
+if (!global.groupNames) global.groupNames = new Map(); 
+if (!global.gamestate) global.gamestate = new Map(); 
+
+// --- 🚥 THE TASK QUEUE ---
+const taskQueue = [];
+let isProcessing = false;
+let connectionOpenTime = 0; 
+
+async function processQueue() {
+    if (isProcessing || taskQueue.length === 0) return;
+    isProcessing = true;
+    const task = taskQueue.shift();
+    try {
+        await task();
+        const jitter = Math.floor(Math.random() * (3000 - 1500 + 1)) + 1500;
+        await new Promise(res => setTimeout(res, jitter)); 
+    } catch (e) { }
+    isProcessing = false;
+    processQueue();
+}
+
+// --- 🩹 THE QUEEN HEALER ---
+async function healSession(jid) {
+    if (!jid || jid.includes('newsletter')) return; 
+    taskQueue.push(async () => {
+        try {
+            const typingTime = Math.floor(Math.random() * (7000 - 4000 + 1)) + 4000;
+            await global.conn.sendPresenceUpdate('composing', jid);
+            await new Promise(r => setTimeout(r, typingTime));
+            await global.conn.sendPresenceUpdate('paused', jid);
+            
+            if (jid.endsWith('@g.us')) {
+                await global.conn.groupMetadata(jid).catch(() => {});
+                console.log(`🚀 [QUEEN] 🏛️ Group Keys Synced: ${jid.split('@')[0]}`);
+            } else {
+                console.log(`🚀 [QUEEN] 🩹 Repaired session for: ${jid.split('@')[0]}`);
+            }
+        } catch (e) {}
+    });
+    processQueue();
+}
+
+async function getTargetName(sock, jid) {
+    if (global.groupNames.has(jid)) return global.groupNames.get(jid);
+    if (jid.endsWith('@g.us')) {
+        try {
+            const metadata = await sock.groupMetadata(jid);
+            global.groupNames.set(jid, metadata.subject);
+            return metadata.subject;
+        } catch { return "Unknown Group"; }
+    }
+    return jid.split('@')[0];
+}
+
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri || "");
+
+// --- ☁️ MONGODB SETTINGS SYNC WORKER ---
+global.saveSettings = async () => {
+    try {
+        if (!fs.existsSync(settingsFile)) return;
+        const settings = fs.readJsonSync(settingsFile);
+        await client.db("vinnieBot").collection("config").updateOne(
+            { id: "main_config" },
+            { $set: settings },
+            { upsert: true }
+        );
+    } catch (e) { console.error("❌ Cloud Sync Failed:", e); }
+};
+
+// --- 🛡️ THE AUTOMATIC CLOUD WATCHDOG ---
+fs.watchFile(settingsFile, (curr, prev) => {
+    if (curr.mtime !== prev.mtime) {
+        global.saveSettings();
+    }
+});
+
+async function loadCloudSettings() {
+    try {
+        await client.connect();
+        const cloudData = await client.db("vinnieBot").collection("config").findOne({ id: "main_config" });
+        if (cloudData) {
+            delete cloudData._id;
+            delete cloudData.id;
+            fs.writeJsonSync(settingsFile, cloudData);
+            console.log("✅ Settings Synced from Cloud");
+        }
+    } catch (e) { console.log("⚠️ Using Local Settings (Cloud Offline)"); }
+}
+
+if (!fs.existsSync(settingsFile)) {
+    fs.writeJsonSync(settingsFile, { 
+        mode: 'public', 
+        owners: [], 
+        banned: [],
+        autoview: true, 
+        antilink: true, 
+        autoreact: true, 
+        typing: true, 
+        recording: false, 
+        antiviewonce: true, 
+        antimention: false, 
+        antidelete: true,
+        antighost: false,
+        antibot: false,
+        welcome: false,
+        goodbye: false,
+        autopromo: true
+    });
+}
+
+const workerPath = path.join(__dirname, 'workers');
+if (!fs.existsSync(workerPath)) fs.mkdirSync(workerPath);
+const workerFiles = fs.readdirSync(workerPath).filter(file => file.endsWith('.js'));
+
+const loadedWorkers = workerFiles.map(file => {
+    return { name: file, fn: require(path.join(workerPath, file)) };
+});
+
+const loadCommands = () => {
+    try {
+        const folders = fs.readdirSync(path.join(__dirname, 'commands'));
+        for (const folder of folders) {
+            const commandFiles = fs.readdirSync(path.join(__dirname, 'commands', folder)).filter(file => file.endsWith('.js'));
+            for (const file of commandFiles) {
+                const command = require(`./commands/${folder}/${file}`);
+                commands.set(command.name, command);
+            }
+        }
+        console.log(`✅ Loaded ${commands.size} Commands`);
+    } catch (e) { }
+};
+
+async function startVinnieHub() {
+    await loadCloudSettings(); 
+    loadCommands();
+    const authFolder = './auth_temp';
+    if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
+    const credsPath = path.join(authFolder, 'creds.json');
+
+    // --- 🔑 RESTORED SESSION ID RECOVERY ---
+    if (!fs.existsSync(credsPath)) {
+        const sessionID = process.env.SESSION_ID;
+        if (sessionID && sessionID.startsWith('VINNIE~')) {
+            try {
+                const db = client.db("vinnieBot");
+                const sessions = db.collection("sessions");
+                const sessionRecord = await sessions.findOne({ sessionId: sessionID });
+                if (sessionRecord) {
+                    const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
+                    fs.writeFileSync(credsPath, decryptedData);
+                }
+            } catch (err) { }
+        }
+    }
+
+    const sessionID = process.env.SESSION_ID;
+if (sessionID && sessionID.startsWith('VINNIE~')) {
+    try {
+        const db = client.db("vinnieBot");
+        const sessions = db.collection("sessions");
+        const sessionRecord = await sessions.findOne({ sessionId: sessionID });
+        
+        if (sessionRecord) {
+            console.log("📥 [SYSTEM] Downloading Session from MongoDB...");
+            const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
+            fs.ensureDirSync(authFolder); // Ensure folder exists
+            fs.writeFileSync(credsPath, decryptedData);
+            console.log("✅ [SYSTEM] Session Recovery Complete.");
+        } else {
+            console.log("❌ [SYSTEM] Session ID not found in Database.");
+        }
+    } catch (err) {
+        console.log("❌ [SYSTEM] Recovery Error:", err.message);
+    }
+}
+
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    
+    const sock = makeWASocket({
+        auth: { 
+            creds: state.creds, 
+            keys: makeCacheableSignalKeyStore(state.keys, silentLogger) 
+        },
+        printQRInTerminal: false,
+        logger: silentLogger, 
+        browser: Browsers.macOS("Safari"),
+        shouldSyncHistoryMessage: () => false, 
+        syncFullHistory: false,
+        markOnlineOnConnect: true, 
+        fireInitQueries: false,      
+        maxMsgRetryCount: 5, 
+        msgRetryCounterCache, 
+        generateHighQualityLinkPreview: false,
+        keepAliveIntervalMs: 30000, 
+        getMessage: async (key) => { return undefined; } 
+    });
+
+    global.conn = sock; 
+
+    sock.ev.on('creds.update', async () => {
+        await saveCreds(); 
+        try {
+            const sessionID = process.env.SESSION_ID;
+            const credsData = fs.readFileSync(credsPath);
+            const compressed = zlib.deflateSync(credsData).toString('base64');
+            await client.db("vinnieBot").collection("sessions").updateOne(
+                { sessionId: sessionID },
+                { $set: { data: compressed, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        } catch (e) { }
+    });
+
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        let msg = messages[0];
+        const from = msg.key.remoteJid;
+
+        if (from === 'status@broadcast') {
+            const statusID = msg.key.id;
+            if (statusCache.has(statusID)) return; 
+            const isStartupGrace = (Date.now() - connectionOpenTime) < 15000;
+            if (isStartupGrace) return;
+            statusCache.add(statusID);
+            console.log(`👁️ [V_HUB] Viewing Status from: ${msg.pushName || from.split('@')[0]}`);
+            if (statusCache.size > 500) statusCache.clear();
+        }
+
+        if (from.endsWith('@newsletter')) return;
+        if (global.lockedContacts.has(from)) return;
+        
+        const mtype = Object.keys(msg.message || {})[0];
+        if (mtype === 'protocolMessage' && msg.message.protocolMessage?.type === 0) {
+            const repairJid = msg.key.participant || msg.key.remoteJid;
+            healSession(repairJid);
+        }
+
+        let retry = 0;
+        while (!msg.message && retry < 3 && !msg.key.fromMe) {
+            await new Promise(res => setTimeout(res, 1000));
+            retry++;
+        }
+        if (!msg.message) return;
+
+        const isMe = msg.key.fromMe;
+        const prefix = process.env.PREFIX || ".";
+        const settings = fs.readJsonSync(settingsFile);
+
+        const messageType = Object.keys(msg.message)[0];
+        const text = (
+            messageType === 'conversation' ? msg.message.conversation :
+            messageType === 'extendedTextMessage' ? msg.message.extendedTextMessage.text :
+            messageType === 'imageMessage' ? msg.message.imageMessage.caption :
+            messageType === 'videoMessage' ? msg.message.videoMessage.caption :
+            msg.message.extendedTextMessage?.text || ""
+        ) || ""; 
+        
+        const cleanText = text.trim(); 
+        const isCommand = cleanText.startsWith(prefix);
+        const sender = msg.key.participant || msg.key.remoteJid;
+        const isOwner = isMe || (settings.owners && settings.owners.includes(sender));
+        const isBanned = settings.banned && settings.banned.includes(sender);
+
+        // 🎮 --- THE GAME INTERCEPTOR ---
+        if (global.gamestate.has(from)) {
+            const activeGame = global.gamestate.get(from);
+            const input = cleanText.toUpperCase();
+            const isJoinAttempt = input === "JOIN";
+            if (!isCommand || isJoinAttempt) {
+                try {
+                    const gameCmd = commands.get(activeGame.name);
+                    if (gameCmd && gameCmd.handleMove) {
+                        await gameCmd.handleMove(sock, msg, cleanText, activeGame);
+                        return; 
+                    }
+                } catch (e) { }
+            }
+        }
+
+        // --- 🛡️ NUCLEAR GATE ---
+        if (isBanned && isCommand) return; 
+        if (settings.mode === 'private' && !isOwner && isCommand) return; 
+
+        loadedWorkers.forEach(worker => {
+            if (worker.name.includes('antidelete')) {
+                worker.fn(sock, msg, settings).catch(() => {});
+            } else {
+                taskQueue.push(async () => {
+                    try {
+                        if (from === 'status@broadcast') {
+                            const viewDelay = Math.floor(Math.random() * (8000 - 4000 + 1)) + 4000;
+                            await new Promise(r => setTimeout(r, viewDelay));
+                        }
+                        await worker.fn(sock, msg, settings);
+                    } catch (e) { }
+                });
+            }
+        });
+        processQueue();
+
+        if (from === 'status@broadcast') {
+            try {
+                const handler = require('./events/handler');
+                await handler.execute(sock, msg, settings);
+                return; 
+            } catch (e) { return; }
+        }
+
+        if (isCommand) {
+            const args = cleanText.slice(prefix.length).trim().split(/ +/);
+            const commandName = args.shift().toLowerCase();
+            const command = commands.get(commandName);
+            
+            if (command) {
+                await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
+                try {
+                    await command.execute(sock, msg, args, { prefix, commands, from, isMe, settings });
+                } catch (err) { console.error("❌ Command Error:", err.message); }
+            }
+        }
+
+        try {
+            const handler = require('./events/handler');
+            await handler.execute(sock, msg, settings);
+        } catch (e) { }
+    });
+
+    // --- 🛡️ THE SMART GROUP ENFORCER (WELCOME/GOODBYE/ANTIBOT) ---
+    sock.ev.on('group-participants.update', async (anu) => {
+        const { id, participants, action } = anu;
+        let metadata;
+        try { metadata = await sock.groupMetadata(id); } catch { return; }
+
+        try {
+            const settings = fs.readJsonSync(settingsFile);
+            const db = client.db("vinnieBot");
+            const config = await db.collection("group_configs").findOne({ groupId: id });
+
+            for (let num of participants) {
+                const isMe = num === jidNormalizedUser(sock.user.id);
+                if (action === 'add') {
+                    const isAntiBotEnabled = config?.antibot || settings.antibot;
+                    const isBot = num.includes(':') || num.startsWith('1') || num.length > 15;
+                    if (isAntiBotEnabled && isBot && !isMe) {
+                        await sock.sendMessage(id, { text: `┏━━━━━ ✿ *ANTIBOT* ✿ ━━━━━┓\n┃\n┃ 🤖 *Bot Detected:* @${num.split('@')[0]}\n┃ 🛡️ *Action:* Automatic Removal\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`, mentions: [num] });
+                        return await sock.groupParticipantsUpdate(id, [num], "remove");
+                    }
+                    const isWelcomeOn = config?.welcome || settings.welcome;
+                    if (isWelcomeOn && !isMe) {
+                        let customText = config?.welcomeText || "Hello @user, welcome to @group!";
+                        let msgText = customText.replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
+                        await sock.sendMessage(id, { text: `┏━━━━━ ✿ *WELCOME* ✿ ━━━━━┓\n┃\n┃  ${msgText}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`, mentions: [num] });
+                    }
+                }
+                if (action === 'remove') {
+                    const isGoodbyeOn = config?.goodbye || settings.goodbye;
+                    if (isGoodbyeOn && !isMe) {
+                        let customText = config?.goodbyeText || "Farewell @user, we hope to see you again!";
+                        let msgText = customText.replace(/@user/g, `@${num.split('@')[0]}`).replace(/@group/g, metadata.subject);
+                        await sock.sendMessage(id, { text: `┏━━━━━ ✿ *GOODBYE* ✿ ━━━━━┓\n┃\n┃  ${msgText}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`, mentions: [num] });
+                    }
+                }
+            }
+        } catch (e) { }
+    });
+
+    setInterval(async () => {
+        try {
+            const files = fs.readdirSync(authFolder);
+            for (const file of files) {
+                if (file !== 'creds.json' && !file.includes('app-state') && !file.includes('pre-key') && !file.includes('session')) {
+                    fs.removeSync(path.join(authFolder, file));
+                }
+            }
+        } catch (err) { }
+    }, 1000 * 60 * 60 * 2); 
+
+    sock.ev.on('connection.update', async (u) => { 
+        const { connection, lastDisconnect } = u;
+        if (connection === 'open') {
+            connectionOpenTime = Date.now(); 
+            console.log("\n📡 Vinnie Hub Active | Cloud Settings Synced");
+            try {
+                const automation = require('./events/automation');
+                automation.startBioRotation(sock);
+                
+                const promoWorker = require('./events/promoWorker');
+                promoWorker.initPromo(sock);
+            } catch (e) { }
+        }
+        if (connection === 'close') {
+            const reason = lastDisconnect?.error?.output?.statusCode;
+            if (reason !== DisconnectReason.loggedOut) {
+                setTimeout(() => startVinnieHub(), 2000);
+            }
+        }
+    });
+}
+
+process.on('uncaughtException', async (err) => {
+    const errorMsg = err.message || "";
+    if (errorMsg.includes('Bad MAC') || errorMsg.includes('Decrypted') || errorMsg.includes('Chain closed')) {
+        const match = errorMsg.match(/(\d+[-]?\d*@\w+\.net|@g\.us)/);
+        const jid = match ? match[0] : null;
+        if (jid && !jid.includes('newsletter')) {
+            let retries = global.healingRetries.get(jid) || 0;
+            if (retries < 5) {
+                await healSession(jid);
+                global.healingRetries.set(jid, retries + 1);
+            } else {
+                global.lockedContacts.add(jid);
+                setTimeout(() => global.lockedContacts.delete(jid), 3600000);
+            }
+        }
+        isProcessing = false; 
+        processQueue(); 
+        return;
+    }
+    if (errorMsg.includes('InternalServerError') || errorMsg.includes('Key used already')) return;
+    console.error("⚠️ Supervisor caught crash:", err.message);
+    setTimeout(() => startVinnieHub(), 5000);
+});
+
+startVinnieHub();
