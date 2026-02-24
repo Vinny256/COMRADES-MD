@@ -1,6 +1,7 @@
 const fs = require('fs-extra');
 const settingsFile = './settings.json';
 
+// V_HUB Styling for public/shout mode
 const vStyle = (text) => `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
 if (!global.msgStorage) global.msgStorage = {};
@@ -9,28 +10,29 @@ module.exports = async (sock, msg) => {
     try {
         const from = msg.key.remoteJid;
         const msgId = msg.key.id;
+        const isGroup = from.endsWith('@g.us');
 
-        // 🛡️ IGNORE SELF-STATUS: Stop log clutter
-        if (from === 'status@broadcast' && msg.key.participant?.includes('254768666068')) {
-            return;
-        }
+        // 🛡️ IGNORE SELF-STATUS & LOG CLUTTER
+        if (from === 'status@broadcast') return;
 
-        // 1. ROBUST STORAGE
+        // 1. ROBUST STORAGE (Always running in background)
         if (msg.message && !msg.message.protocolMessage) {
-            // Store a deep copy of the message immediately
             global.msgStorage[msgId] = JSON.parse(JSON.stringify(msg));
-            
-            // Auto-clean memory (2 hours)
             setTimeout(() => { 
                 if (global.msgStorage[msgId]) delete global.msgStorage[msgId]; 
-            }, 7200000);
+            }, 7200000); // 2 Hours
         }
 
-        // 2. SETTINGS CHECK
+        // 2. SMART SETTINGS CHECK
         const currentSettings = fs.readJsonSync(settingsFile);
-        if (!currentSettings.antidelete) return; 
+        const config = currentSettings.antidelete || { mode: 'off', dest: 'chat' };
 
-        // 3. DETECTION
+        // Exit if Anti-delete is off or if it doesn't match the current chat type
+        if (config.mode === 'off') return;
+        if (config.mode === 'groups' && !isGroup) return;
+        if (config.mode === 'inbox' && isGroup) return;
+
+        // 3. DETECTION OF DELETE (Protocol Message Type 0)
         const isRevoke = msg.message?.protocolMessage && msg.message.protocolMessage.type === 0;
         
         if (isRevoke) {
@@ -40,30 +42,40 @@ module.exports = async (sock, msg) => {
             if (originalMsg) {
                 const sender = originalMsg.key.participant || originalMsg.key.remoteJid;
                 
-                // Alert the chat
-                await sock.sendMessage(from, { 
-                    text: vStyle(`🚫 *V_HUB ANTIDELETE*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Delete Attempt\n┃ Status: *RESTORED*`),
-                    mentions: [sender]
-                });
+                // --- 🎯 ROUTING LOGIC ---
+                // If dest is 'inbox', send it to your personal DM. Otherwise, the current chat.
+                const targetChat = config.dest === 'inbox' ? sock.user.id : from;
+                
+                // --- 🤫 QUIET LOGIC ---
+                // Shout only if it's a group AND destination is 'chat'. 
+                // Otherwise (Private DM or Inbox Routing), stay quiet.
+                const isSilent = !isGroup || config.dest === 'inbox';
 
-                await new Promise(res => setTimeout(res, 800));
+                if (isSilent) {
+                    await sock.sendMessage(targetChat, { 
+                        text: `*『 RESTORED 』*\n👤 *From:* @${sender.split('@')[0]}`,
+                        mentions: [sender]
+                    });
+                } else {
+                    await sock.sendMessage(targetChat, { 
+                        text: vStyle(`🚫 *V_HUB ANTIDELETE*\n┃ User: @${sender.split('@')[0]}\n┃ Action: Delete Attempt\n┃ Status: *RESTORED*`),
+                        mentions: [sender]
+                    });
+                }
 
-                // 🚀 IMPROVED RESTORATION: Send actual content instead of copyNForward
+                await new Promise(res => setTimeout(res, 500));
+
+                // 🚀 RESTORATION
                 const mtype = Object.keys(originalMsg.message)[0];
                 
-                // If it's just text, send it simply
                 if (mtype === 'conversation' || mtype === 'extendedTextMessage') {
                     const textContent = originalMsg.message.conversation || originalMsg.message.extendedTextMessage.text;
-                    await sock.sendMessage(from, { text: `┃ *Deleted Content:* \n\n${textContent}` });
-                } 
-                // For everything else (Images, Video, Audio, Stickers)
-                else {
-                    // This uses a built-in Baileys relay to send the message back
-                    // It is much more stable than copyNForward for deleted keys
-                    await sock.sendMessage(from, { forward: originalMsg }, { quoted: originalMsg });
+                    await sock.sendMessage(targetChat, { text: `┃ *Content:* ${textContent}` });
+                } else {
+                    // For Media: Forward it so it loads correctly
+                    await sock.sendMessage(targetChat, { forward: originalMsg }, { quoted: originalMsg });
                 }
                 
-                // Cleanup
                 delete global.msgStorage[deletedId];
             }
         }
