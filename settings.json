@@ -11,5 +11,7 @@
   "welcome": false,
   "goodbye": false,
   "antibot": false
+  "alwaysRecording": true,
+  "recordMode": "all"
   
 }
