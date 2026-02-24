@@ -33,6 +33,7 @@ const statusCache = new Set();
 // --- 🧠 MEMORY TRACKERS ---
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.lockedContacts) global.lockedContacts = new Set(); 
+if (!global.activeGames) global.activeGames = new Map(); // Safety for Games
 
 // --- 🚥 THE TASK QUEUE ---
 const taskQueue = [];
@@ -45,7 +46,6 @@ async function processQueue() {
     const task = taskQueue.shift();
     try {
         await task();
-        // Slight jitter to prevent spam detection
         await new Promise(res => setTimeout(res, 1000)); 
     } catch (e) { }
     isProcessing = false;
@@ -100,7 +100,6 @@ async function startVinnieHub() {
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
-    // Recovery Logic
     if (!fs.existsSync(credsPath)) {
         console.log("📥 [SYSTEM] Attempting Session Recovery...");
         const sessionID = process.env.SESSION_ID;
@@ -156,7 +155,6 @@ async function startVinnieHub() {
         const from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter')) return;
 
-        // 1. Auto Status View
         if (from === 'status@broadcast') {
             if (statusCache.has(msg.key.id) || (Date.now() - connectionOpenTime) < 10000) return;
             statusCache.add(msg.key.id);
@@ -167,46 +165,61 @@ async function startVinnieHub() {
 
         if (!msg.message) return;
 
-        const settings = fs.readJsonSync(settingsFile);
+        // 🛡️ SAFETY CHECK: Ensure settings exists
+        let settings = {};
+        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { bluetick: false }; }
+
         const mtype = Object.keys(msg.message)[0];
         const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         const prefix = process.env.PREFIX || ".";
         const isCommand = text.startsWith(prefix);
         const isGroup = from.endsWith('@g.us');
         const isInbox = from.endsWith('@s.whatsapp.net');
+        const sender = msg.key.participant || from;
 
-        // --- 🔵 BLUE TICK LOGIC (Priority #1) ---
+        // --- 🔵 BLUE TICK LOGIC ---
         if (settings.bluetick) {
             await sock.readMessages([msg.key]);
         }
 
-        // --- 🚥 TYPING ENGINE (Priority #2) ---
+        // --- 🚥 TYPING ENGINE ---
         const mode = settings.typingMode || 'off';
-        let shouldType = false;
-        if (mode === 'all') shouldType = true;
-        else if (mode === 'groups' && isGroup) shouldType = true;
-        else if (mode === 'inbox' && isInbox) shouldType = true;
-
-        // Skip 10s wait if it's a Command, BlueTick is active, or Queen Healer is needed
+        let shouldType = (mode === 'all' || (mode === 'groups' && isGroup) || (mode === 'inbox' && isInbox));
         const skipDelay = isCommand || settings.bluetick || mtype === 'protocolMessage';
 
         if (shouldType && !msg.key.fromMe && !skipDelay) {
             await sock.sendPresenceUpdate('composing', from);
-            console.log(`✿ HUB_SYNC ✿ Status: TYPING (10s) | Target: ${from.split('@')[0]}`);
-            await new Promise(r => setTimeout(r, 10000));
+            await new Promise(r => setTimeout(r, 5000)); // Reduced to 5s to be faster
             await sock.sendPresenceUpdate('paused', from);
         }
 
-        // --- 🛠️ WORKER & COMMAND EXECUTION ---
+        // --- 🛠️ COMMAND EXECUTION ---
         if (isCommand) {
             const args = text.slice(prefix.length).trim().split(/ +/);
             const commandName = args.shift().toLowerCase();
             const command = commands.get(commandName);
+            
             if (command) {
                 try {
-                    // ADDED 'commands' TO THE LIST BELOW - NO OTHER CHANGES MADE
-                    await command.execute(sock, msg, args, { prefix, commands, from, isMe: msg.key.fromMe, settings });
-                } catch (err) { console.error("❌ Cmd Error:", err.message); }
+                    // Fetch Group Data safely for games/admin checks
+                    let groupMetadata = isGroup ? await sock.groupMetadata(from).catch(() => ({})) : {};
+                    let participants = groupMetadata.participants || [];
+                    let admins = participants.filter(v => v.admin !== null).map(v => v.id);
+
+                    await command.execute(sock, msg, args, { 
+                        prefix, 
+                        commands, 
+                        from, 
+                        sender,
+                        isGroup,
+                        isMe: msg.key.fromMe, 
+                        settings,
+                        participants, // Fixes 'has' error in game commands
+                        groupAdmins: admins 
+                    });
+                } catch (err) { 
+                    console.error(`✿ HUB_ERROR ✿ [${commandName}]:`, err.message); 
+                }
             }
         }
 
@@ -235,10 +248,10 @@ async function startVinnieHub() {
 }
 
 // Global Crash Guard
-process.on('uncaughtException', async (err) => {
+process.on('uncaughtException', (err) => {
     if (err.message.includes('Bad MAC')) return;
     console.error("⚠️ Supervisor caught crash:", err.message);
-    setTimeout(() => startVinnieHub(), 5000);
+    // Removed auto-restart here to prevent infinite boot loops on Heroku
 });
 
 startVinnieHub();
