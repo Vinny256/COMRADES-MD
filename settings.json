@@ -7,5 +7,9 @@
   "typing": true,
   "recording": false,
   "antidelete": true,
-  "antimention": false
+  "antimention": false,
+  "welcome": false,
+  "goodbye": false,
+  "antibot": false
+  
 }
