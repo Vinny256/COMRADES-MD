@@ -33,8 +33,8 @@ const statusCache = new Set();
 // --- 🧠 MEMORY TRACKERS ---
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.lockedContacts) global.lockedContacts = new Set(); 
-if (!global.activeGames) global.activeGames = new Map(); // Safety for Games
-if (!global.gamestate) global.gamestate = new Map(); // ✿ VINNIE HUB GAME ENGINE ✿
+if (!global.activeGames) global.activeGames = new Map(); 
+if (!global.gamestate) global.gamestate = new Map(); 
 
 // --- 🚥 THE TASK QUEUE ---
 const taskQueue = [];
@@ -156,6 +156,7 @@ async function startVinnieHub() {
         const from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter')) return;
 
+        // --- 👁️ STATUS VIEW (RETAINED) ---
         if (from === 'status@broadcast') {
             if (statusCache.has(msg.key.id) || (Date.now() - connectionOpenTime) < 10000) return;
             statusCache.add(msg.key.id);
@@ -166,9 +167,15 @@ async function startVinnieHub() {
 
         if (!msg.message) return;
 
-        // 🛡️ SAFETY CHECK: Ensure settings exists
+        // --- 🛡️ SETTINGS & PRIVATE MODE SHIELD ---
         let settings = {};
-        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { bluetick: false }; }
+        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
+
+        const sender = msg.key.participant || from;
+        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
+
+        // NUCLEAR SILENCE: If private mode is on and not founder, kill the process here.
+        if (settings.mode === 'private' && !isMe) return;
 
         const mtype = Object.keys(msg.message)[0];
         const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
@@ -176,25 +183,26 @@ async function startVinnieHub() {
         const isCommand = text.startsWith(prefix);
         const isGroup = from.endsWith('@g.us');
         const isInbox = from.endsWith('@s.whatsapp.net');
-        const sender = msg.key.participant || from;
 
-        // --- 🔵 BLUE TICK LOGIC ---
+        // --- 🔵 BLUE TICK LOGIC (RETAINED) ---
         if (settings.bluetick) {
             await sock.readMessages([msg.key]);
         }
 
-        // --- 🚥 TYPING ENGINE ---
+        // --- 🚥 UPDATED 10S PRESENCE WORKER ---
         const mode = settings.typingMode || 'off';
         let shouldType = (mode === 'all' || (mode === 'groups' && isGroup) || (mode === 'inbox' && isInbox));
         const skipDelay = isCommand || settings.bluetick || mtype === 'protocolMessage';
 
         if (shouldType && !msg.key.fromMe && !skipDelay) {
-            await sock.sendPresenceUpdate('composing', from);
-            await new Promise(r => setTimeout(r, 5000)); // Reduced to 5s to be faster
+            // Check if user wants 'Recording' or 'Typing'
+            const presenceAction = settings.alwaysRecording ? 'recording' : 'composing';
+            await sock.sendPresenceUpdate(presenceAction, from);
+            await new Promise(r => setTimeout(r, 10000)); // Fixed 10 Seconds
             await sock.sendPresenceUpdate('paused', from);
         }
 
-        // --- 🛠️ COMMAND EXECUTION ---
+        // --- 🛠️ COMMAND EXECUTION (INTACT) ---
         if (isCommand) {
             const args = text.slice(prefix.length).trim().split(/ +/);
             const commandName = args.shift().toLowerCase();
@@ -202,7 +210,6 @@ async function startVinnieHub() {
             
             if (command) {
                 try {
-                    // --- 🔄 FORCED REFRESH FOR ADMIN/GAME DATA ---
                     let participants = [];
                     let admins = [];
                     if (isGroup) {
@@ -217,9 +224,9 @@ async function startVinnieHub() {
                         from, 
                         sender,
                         isGroup,
-                        isMe: msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || ""), 
+                        isMe, 
                         settings,
-                        participants, // Fixes 'has' error in game commands
+                        participants,
                         groupAdmins: admins 
                     });
                 } catch (err) { 
@@ -228,7 +235,7 @@ async function startVinnieHub() {
             }
         }
 
-        // Background Workers
+        // --- 🧱 BACKGROUND WORKERS (INTACT) ---
         loadedWorkers.forEach(worker => {
             taskQueue.push(async () => {
                 try { await worker.fn(sock, msg, settings); } catch (e) {}
@@ -252,11 +259,9 @@ async function startVinnieHub() {
     });
 }
 
-// Global Crash Guard
 process.on('uncaughtException', (err) => {
     if (err.message.includes('Bad MAC')) return;
     console.error("⚠️ Supervisor caught crash:", err.message);
-    // Removed auto-restart here to prevent infinite boot loops on Heroku
 });
 
 startVinnieHub();
