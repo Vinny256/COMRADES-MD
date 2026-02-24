@@ -1,31 +1,38 @@
 const fs = require('fs-extra');
 const settingsFile = './settings.json';
 
-module.exports = async (sock, msg, settings) => {
+module.exports = async (sock, msg) => {
     try {
-        // --- 🛡️ THE SYNC CHECK ---
-        // We use your 'autoreact' setting from the command above
-        if (!settings.autoreact) return;
+        // 1. 🛡️ GRID SYNC: Load fresh settings every time a status appears
+        const settings = fs.readJsonSync(settingsFile);
+        
+        // Check if the overall feature is ON
+        if (!settings.status || !settings.status.autoReact) return;
 
         const from = msg.key.remoteJid;
 
-        // --- 🚥 STATUS BROADCAST LOGIC ---
-        // React to statuses while keeping the encryption keys safe
+        // 2. 🚥 STATUS BROADCAST LOGIC
         if (from === 'status@broadcast') {
-            const statusEmojis = ["🚀", "⚡", "🔥", "✅", "💎", "✨"];
-            const selectedEmoji = statusEmojis[Math.floor(Math.random() * statusEmojis.length)];
+            // Priority 1: User-set emoji from .status set [emoji]
+            // Priority 2: Random Hub Emojis (Backup)
+            const hubEmojis = ["🚀", "⚡", "🔥", "✅", "💎", "✨", "🌸"];
+            const backupEmoji = hubEmojis[Math.floor(Math.random() * hubEmojis.length)];
+            
+            const finalEmoji = settings.status.emoji || backupEmoji;
 
+            // 3. SEND REACTION
+            // We use statusJidList to ensure the reaction actually shows up on the recipient's phone
             await sock.sendMessage(
                 from, 
-                { react: { text: selectedEmoji, key: msg.key } }, 
+                { react: { text: finalEmoji, key: msg.key } }, 
                 { statusJidList: [msg.key.participant] }
             );
             
-            // Your custom logging style preserved in console
-            console.log(`✿ HUB_SYNC ✿ Status React: ${selectedEmoji} | User: ${msg.key.participant.split('@')[0]}`);
+            // ✿ HUB_SYNC LOGGING ✿
+            console.log(`✿ HUB_SYNC ✿ Status React: ${finalEmoji} | Target: ${msg.key.participant.split('@')[0]}`);
         }
 
     } catch (e) {
-        // Keeps the queue moving if a session error occurs
+        // Silent catch to keep the message stream flowing without crashing on bad decryption
     }
 };
