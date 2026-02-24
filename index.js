@@ -167,30 +167,51 @@ const loadCommands = () => {
 };
 
 async function startVinnieHub() {
-    await loadCloudSettings(); 
-    loadCommands();
+    // --- 1️⃣ MOVE RECOVERY TO THE TOP (PRIORITY #1) ---
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
     if (!fs.existsSync(credsPath)) {
+        console.log("📥 [SYSTEM] Attempting Session Recovery...");
         const sessionID = process.env.SESSION_ID;
         if (sessionID && sessionID.startsWith('VINNIE~')) {
             try {
+                // Connect manually here to ensure we don't wait for the settings worker
+                await client.connect(); 
                 const db = client.db("vinnieBot");
                 const sessions = db.collection("sessions");
                 const sessionRecord = await sessions.findOne({ sessionId: sessionID });
+                
                 if (sessionRecord) {
                     const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
                     fs.writeFileSync(credsPath, decryptedData);
+                    console.log("✅ [SYSTEM] Session recovered from Database!");
+                } else {
+                    console.log("❌ [SYSTEM] Session ID not found in MongoDB.");
                 }
-            } catch (err) { }
+            } catch (err) { 
+                console.log("❌ [SYSTEM] Recovery Error:", err.message);
+            }
+        } else {
+            console.log("⚠️ [SYSTEM] No valid SESSION_ID found in Environment.");
         }
     }
 
+    // --- 2️⃣ NOW LOAD EVERYTHING ELSE ---
+    try {
+        await loadCloudSettings(); 
+    } catch (e) {
+        console.log("⚠️ [SYSTEM] Skipping Cloud Settings (using local)");
+    }
+    
+    loadCommands();
+
+    // --- 3️⃣ INITIALIZE CONNECTION ---
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
-    const sock = makeWASocket({
+
+  const sock = makeWASocket({
         auth: { 
             creds: state.creds, 
             keys: makeCacheableSignalKeyStore(state.keys, silentLogger) 
