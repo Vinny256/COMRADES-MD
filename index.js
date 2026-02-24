@@ -144,12 +144,19 @@ if (!fs.existsSync(settingsFile)) {
     });
 }
 
+// --- 🛡️ SAFE WORKER LOADER (REPLACED CRASHING MAP) ---
 const workerPath = path.join(__dirname, 'workers');
 if (!fs.existsSync(workerPath)) fs.mkdirSync(workerPath);
 const workerFiles = fs.readdirSync(workerPath).filter(file => file.endsWith('.js'));
 
-const loadedWorkers = workerFiles.map(file => {
-    return { name: file, fn: require(path.join(workerPath, file)) };
+const loadedWorkers = [];
+workerFiles.forEach(file => {
+    try {
+        const workerFn = require(path.join(workerPath, file));
+        loadedWorkers.push({ name: file, fn: workerFn });
+    } catch (e) {
+        console.log(`❌ [CRITICAL] Worker file ${file} has an error:`, e.message);
+    }
 });
 
 const loadCommands = () => {
@@ -167,7 +174,7 @@ const loadCommands = () => {
 };
 
 async function startVinnieHub() {
-    // --- 🔑 PRIORITY #1: SESSION RECOVERY (RESTORED & IMPROVED) ---
+    // --- 🔑 PRIORITY #1: SESSION RECOVERY ---
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
@@ -198,6 +205,7 @@ async function startVinnieHub() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     
     try {
+        console.log("⚙️ [SYSTEM] Initializing WhatsApp Connection...");
         const sock = makeWASocket({
             auth: { 
                 creds: state.creds, 
@@ -219,7 +227,6 @@ async function startVinnieHub() {
 
         global.conn = sock; 
 
-        // --- 📥 CREDENTIAL UPDATES ---
         sock.ev.on('creds.update', async () => {
             await saveCreds(); 
             try {
@@ -234,7 +241,6 @@ async function startVinnieHub() {
             } catch (e) { }
         });
 
-        // --- 📩 MESSAGE HANDLER ---
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             if (type !== 'notify') return;
             let msg = messages[0];
@@ -344,7 +350,6 @@ async function startVinnieHub() {
             } catch (e) { }
         });
 
-        // --- 🛡️ GROUP EVENT HANDLER ---
         sock.ev.on('group-participants.update', async (anu) => {
             const { id, participants, action } = anu;
             let metadata;
@@ -375,7 +380,6 @@ async function startVinnieHub() {
             } catch (e) { }
         });
 
-        // --- 🔌 CONNECTION UPDATES ---
         sock.ev.on('connection.update', async (u) => { 
             const { connection, lastDisconnect } = u;
             if (connection === 'open') {
@@ -404,7 +408,6 @@ async function startVinnieHub() {
         setTimeout(() => startVinnieHub(), 5000);
     }
 
-    // --- 🧹 CLEANUP TASK ---
     setInterval(async () => {
         try {
             const files = fs.readdirSync(authFolder);
@@ -417,7 +420,6 @@ async function startVinnieHub() {
     }, 1000 * 60 * 60 * 2); 
 }
 
-// --- 🚑 SUPERVISOR ---
 process.on('uncaughtException', async (err) => {
     const errorMsg = err.message || "";
     if (errorMsg.includes('Bad MAC') || errorMsg.includes('Decrypted') || errorMsg.includes('Chain closed')) {
