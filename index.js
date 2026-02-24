@@ -34,6 +34,7 @@ const statusCache = new Set();
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.lockedContacts) global.lockedContacts = new Set(); 
 if (!global.activeGames) global.activeGames = new Map(); // Safety for Games
+if (!global.gamestate) global.gamestate = new Map(); // ✿ VINNIE HUB GAME ENGINE ✿
 
 // --- 🚥 THE TASK QUEUE ---
 const taskQueue = [];
@@ -201,10 +202,14 @@ async function startVinnieHub() {
             
             if (command) {
                 try {
-                    // Fetch Group Data safely for games/admin checks
-                    let groupMetadata = isGroup ? await sock.groupMetadata(from).catch(() => ({})) : {};
-                    let participants = groupMetadata.participants || [];
-                    let admins = participants.filter(v => v.admin !== null).map(v => v.id);
+                    // --- 🔄 FORCED REFRESH FOR ADMIN/GAME DATA ---
+                    let participants = [];
+                    let admins = [];
+                    if (isGroup) {
+                        const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
+                        participants = metadata.participants || [];
+                        admins = participants.filter(v => v.admin !== null).map(v => v.id);
+                    }
 
                     await command.execute(sock, msg, args, { 
                         prefix, 
@@ -212,7 +217,7 @@ async function startVinnieHub() {
                         from, 
                         sender,
                         isGroup,
-                        isMe: msg.key.fromMe, 
+                        isMe: msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || ""), 
                         settings,
                         participants, // Fixes 'has' error in game commands
                         groupAdmins: admins 
