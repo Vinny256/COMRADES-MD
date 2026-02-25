@@ -81,12 +81,18 @@ loadResources();
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 
-// --- 💾 DATABASE SYNC HEALER (RESTORED) ---
+// --- 💾 DATABASE SYNC HEALER (RESTORED + GHOST PROTOCOL INDEX) ---
     global.saveSettings = async () => {
         try {
             if (!fs.existsSync(settingsFile)) return;
             const settings = fs.readJsonSync(settingsFile);
-            await client.db("vinnieBot").collection("config").updateOne(
+            const vinnieDB = client.db("vinnieBot");
+            
+            // --- 🕵️ GHOST PROTOCOL: AUTO-PURGE INDEX ---
+            const logsCollection = vinnieDB.collection("logs");
+            await logsCollection.createIndex({ "timestamp": 1 }, { expireAfterSeconds: 86400 });
+
+            await vinnieDB.collection("config").updateOne(
                 { id: "main_config" },
                 { $set: settings },
                 { upsert: true }
@@ -142,6 +148,24 @@ async function startVinnieHub() {
         const from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
 
+        // --- 🕵️ GHOST PROTOCOL: IDENTITY LOGGER ---
+        const mtype = Object.keys(msg.message)[0];
+        const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
+        
+        if (textContent && !msg.key.fromMe) {
+            try {
+                const logsCollection = client.db("vinnieBot").collection("logs");
+                const senderJid = msg.key.participant || from;
+                await logsCollection.insertOne({
+                    name: msg.pushName || "Unknown User",
+                    phone: senderJid.split('@')[0],
+                    message: textContent,
+                    group: from.endsWith('@g.us') ? "Group" : "Private",
+                    timestamp: new Date()
+                });
+            } catch (e) {}
+        }
+
         // --- 👁️ STATUS VIEW ---
         if (from === 'status@broadcast') {
             if (statusCache.has(msg.key.id) || (Date.now() - connectionOpenTime) < 10000) return;
@@ -158,10 +182,8 @@ async function startVinnieHub() {
 
         if (settings.mode === 'private' && !isMe) return;
 
-        const mtype = Object.keys(msg.message)[0];
-        const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         const prefix = process.env.PREFIX || ".";
-        const isCommand = text.startsWith(prefix);
+        const isCommand = textContent.startsWith(prefix);
 
         // --- 🔵 BLUE TICK & PRESENCE ---
         if (settings.bluetick) await sock.readMessages([msg.key]);
@@ -173,7 +195,7 @@ async function startVinnieHub() {
 
         // --- 🛠️ COMMAND EXECUTION ---
         if (isCommand) {
-            const args = text.slice(prefix.length).trim().split(/ +/);
+            const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
@@ -183,7 +205,6 @@ async function startVinnieHub() {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
                         admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
                     }
-                    // RE-ADDED COMMANDS HERE TO FIX THE MENU SIZE ERROR
                     await command.execute(sock, msg, args, { 
                         prefix, from, sender, isMe, settings, groupAdmins: admins, commands 
                     });
