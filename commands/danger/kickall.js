@@ -5,7 +5,7 @@ module.exports = {
     async execute(sock, msg, args, { from, isMe, prefix }) {
         const sender = msg.key.participant || msg.key.remoteJid;
 
-        // --- 1. ACCESS DENIED STYLING ---
+        // --- 1. OWNER-ONLY ACCESS SHIELD ---
         if (!isMe) {
             await sock.sendMessage(from, { react: { text: "⚠️", key: msg.key } });
             return sock.sendMessage(from, { 
@@ -14,36 +14,33 @@ module.exports = {
             }, { quoted: msg });
         }
 
-        // --- 2. THE WORKING ADMIN LOGIC ---
+        // --- 2. THE "MIRROR" ADMIN CHECK ---
         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
         const participants = metadata.participants || [];
         
-        // Use the exact same admin mapping as your working group command
-        const admins = participants.filter(p => p.admin).map(p => p.id);
-        
-        // Get the bot's number without suffixes (e.g., 254xxx)
+        // Find the bot in the list by checking if the number matches
+        // This avoids JID vs LID confusion
         const botNumber = sock.user.id.split(':')[0].split('@')[0];
-        
-        // BRUTE FORCE CHECK: See if ANY admin ID contains the bot's number
-        const botIsAdmin = admins.some(adminId => adminId.includes(botNumber));
+        const botInGroup = participants.find(p => p.id.includes(botNumber));
+
+        // If the bot exists in the group and has the 'admin' property (truthy)
+        const botIsAdmin = botInGroup && !!botInGroup.admin;
         
         if (!botIsAdmin) {
             await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
             return sock.sendMessage(from, { 
-                text: "✿ *V_HUB ERROR* ✿\n\nCommand aborted. I need **Admin Rights** to execute this protocol." 
+                text: "✿ *V_HUB ERROR* ✿\n\nI cannot execute the purge. Please promote me to **Admin** first." 
             });
         }
 
         // --- 3. TARGET FILTERING ---
-        // Find the bot's full ID from the participant list to avoid kicking itself
-        const botFullId = participants.find(p => p.id.includes(botNumber))?.id;
-        
+        // Filter out the bot (using its group-specific ID) and the sender
         const toRemove = participants
             .map(p => p.id)
-            .filter(id => id !== botFullId && id !== sender);
+            .filter(id => id !== botInGroup.id && id !== sender);
 
         if (toRemove.length === 0) {
-            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external targets found." });
+            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external members found to purge." });
         }
 
         // --- 4. INITIATION ---
@@ -53,7 +50,7 @@ module.exports = {
             text: `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓\n┃\n┃ ☢️ *PROTOCOL:* Nuclear Purge\n┃ 👥 *Targets:* ${toRemove.length}\n┃ ⚡ *Status:* background_exec\n┃\n┃ _Bot remains active for others._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
         });
 
-        // --- 5. BACKGROUND EXECUTION (NON-BLOCKING) ---
+        // --- 5. BACKGROUND EXECUTION ---
         (async () => {
             let removedCount = 0;
             let totalToClear = toRemove.length;
