@@ -2,75 +2,165 @@ module.exports = {
     name: "kickall",
     category: "danger",
     desc: "V_HUB PROTOCOL: Total Group Purge",
+
     async execute(sock, msg, args, { from, isMe, prefix }) {
+
         const sender = msg.key.participant || msg.key.remoteJid;
 
-        // 1. OWNER ONLY
+        // ─────────────────────────────
+        // 1️⃣ OWNER ONLY
+        // ─────────────────────────────
         if (!isMe) {
             await sock.sendMessage(from, { react: { text: "⚠️", key: msg.key } });
-            return sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *V_HUB SECURITY* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Protocol:* Restricted (Nuclear)\n┃ 👤 *User:* @${sender.split('@')[0]}\n┃ ⚠️ *Note:* You do not have the \n┃      clearance for this protocol.\n┃\n┃ _Integrity Shield Active._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+            return sock.sendMessage(from, {
+                text:
+`┏━━━━━ ✿ *V_HUB SECURITY* ✿ ━━━━━┓
+┃
+┃ 🛡️ *Protocol:* Restricted (Nuclear)
+┃ 👤 *User:* @${sender.split('@')[0]}
+┃ ⚠️ *Note:* You do not have the
+┃      clearance for this protocol.
+┃
+┃ _Integrity Shield Active._
+┗━━━━━━━━━━━━━━━━━━━━━━┛`,
                 mentions: [sender]
             }, { quoted: msg });
         }
 
-        // 2. FETCH DATA & CACHE
-        const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
-        const participants = metadata.participants || [];
-        
-        // 3. IMPROVED ADMIN CHECK (MIRRORING YOUR WORKING CODE)
-        // Find the bot's ID in the group list (handles LID vs JID)
-        const botNumber = sock.user.id.split(':')[0].split('@')[0];
-        const botEntry = participants.find(p => (p.id || "").includes(botNumber) || (p.pn || "").includes(botNumber));
-        
-        const botIsAdmin = botEntry && !!botEntry.admin;
-        
-        if (!botIsAdmin) {
-            await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
-            return sock.sendMessage(from, { 
-                text: "✿ *V_HUB ERROR* ✿\n\nBot is not an admin. I cannot execute a purge without Admin privileges." 
+        // ─────────────────────────────
+        // 2️⃣ GROUP ONLY CHECK
+        // ─────────────────────────────
+        if (!from.endsWith("@g.us")) {
+            return sock.sendMessage(from, {
+                text: "⚠️ This command can only be used inside a group."
+            }, { quoted: msg });
+        }
+
+        // ─────────────────────────────
+        // 3️⃣ FETCH GROUP METADATA
+        // ─────────────────────────────
+        let metadata;
+        try {
+            metadata = await sock.groupMetadata(from);
+        } catch (err) {
+            return sock.sendMessage(from, {
+                text: "❌ Failed to fetch group metadata."
             });
         }
 
-        // 4. FILTERING (PROTECT BOT & OWNER)
-        const toRemove = participants
-            .map(p => p.id)
-            .filter(id => id !== botEntry.id && id !== sender);
+        const participants = metadata.participants || [];
 
-        if (toRemove.length === 0) {
-            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo targets found." });
+        // ─────────────────────────────
+        // 4️⃣ BOT ADMIN CHECK (FIXED)
+        // ─────────────────────────────
+        const botJid = sock.user.id.split(":")[0] + "@s.whatsapp.net";
+        const botEntry = participants.find(p => p.id === botJid);
+
+        const botIsAdmin =
+            botEntry?.admin === "admin" ||
+            botEntry?.admin === "superadmin";
+
+        if (!botIsAdmin) {
+            await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
+            return sock.sendMessage(from, {
+                text:
+`┏━━━━━ ✿ *V_HUB ERROR* ✿ ━━━━━┓
+┃
+┃ ❌ *Status:* Bot is not Admin
+┃ 🛑 Cannot execute purge.
+┃
+┗━━━━━━━━━━━━━━━━━━━━━━┛`
+            });
         }
 
-        // 5. THE NUCLEAR MESSAGE
+        // ─────────────────────────────
+        // 5️⃣ FILTER TARGETS
+        //    - Protect bot
+        //    - Protect sender (owner)
+        //    - Protect admins
+        // ─────────────────────────────
+        const toRemove = participants
+            .filter(p =>
+                p.id !== botJid &&
+                p.id !== sender &&
+                !p.admin // do not try removing admins
+            )
+            .map(p => p.id);
+
+        if (toRemove.length === 0) {
+            return sock.sendMessage(from, {
+                text:
+`┏━━━━━ ✿ *V_HUB INFO* ✿ ━━━━━┓
+┃
+┃ 👥 No removable targets found.
+┃ 🛡️ Admins & Owner Protected.
+┃
+┗━━━━━━━━━━━━━━━━━━━━━━┛`
+            });
+        }
+
+        // ─────────────────────────────
+        // 6️⃣ START PURGE
+        // ─────────────────────────────
         await sock.sendMessage(from, { react: { text: "☢️", key: msg.key } });
-        await sock.sendMessage(from, { 
-            text: `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓\n┃\n┃ ☢️ *PROTOCOL:* Nuclear Purge\n┃ 👥 *Targets:* ${toRemove.length}\n┃ ⚡ *Status:* background_exec\n┃\n┃ _Bot remains active for others._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+
+        await sock.sendMessage(from, {
+            text:
+`┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓
+┃
+┃ ☢️ *PROTOCOL:* Nuclear Purge
+┃ 👥 *Targets:* ${toRemove.length}
+┃ ⚡ *Mode:* Controlled Execution
+┃
+┃ _Standby..._
+┗━━━━━━━━━━━━━━━━━━━━━━┛`
         });
 
-        // 6. BACKGROUND PURGE (NON-BLOCKING)
+        // ─────────────────────────────
+        // 7️⃣ BACKGROUND REMOVAL
+        // ─────────────────────────────
         (async () => {
+
             let removedCount = 0;
+
             for (let jid of toRemove) {
                 try {
-                    // CRITICAL FIX: We use the ID directly from the metadata list
-                    // This ensures we use the LID if the user is a LID user
                     await sock.groupParticipantsUpdate(from, [jid], "remove");
                     removedCount++;
-                    
+
+                    // Update every 20 removals
                     if (removedCount % 20 === 0) {
-                        await sock.sendMessage(from, { 
-                            text: `┏━━━━━ ✿ *PURGE UPDATE* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Removed:* ${removedCount}\n┃ ⏳ *Remaining:* ${toRemove.length - removedCount}\n┃ ⚡ *Note:* Face the Music...\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                        await sock.sendMessage(from, {
+                            text:
+`┏━━━━━ ✿ *PURGE UPDATE* ✿ ━━━━━┓
+┃
+┃ 🛡️ Removed: ${removedCount}
+┃ ⏳ Remaining: ${toRemove.length - removedCount}
+┃
+┗━━━━━━━━━━━━━━━━━━━━━━┛`
                         });
                     }
-                    await new Promise(res => setTimeout(res, 2000)); 
-                } catch (e) {
-                    console.log(`Failed to remove ${jid}:`, e.message);
+
+                    // Safe delay (avoid WhatsApp rate-limit)
+                    await new Promise(res => setTimeout(res, 3000));
+
+                } catch (err) {
+                    console.log("Failed to remove:", jid, err.message);
                 }
             }
 
-            await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *PURGE COMPLETE* ✿ ━━━━━┓\n┃\n┃ ✅ *Total Purged:* ${removedCount}\n┃ 🔄 *Status:* Group Cleared.\n┃\n┃ _Vinnie Hub Protocol Finished._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+            await sock.sendMessage(from, {
+                text:
+`┏━━━━━ ✿ *PURGE COMPLETE* ✿ ━━━━━┓
+┃
+┃ ✅ Total Purged: ${removedCount}
+┃ 🔄 Group Stabilized.
+┃
+┃ _Vinnie Hub Protocol Finished._
+┗━━━━━━━━━━━━━━━━━━━━━━┛`
             });
-        })(); 
+
+        })();
+
     }
 };
