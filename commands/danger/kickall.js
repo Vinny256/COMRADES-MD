@@ -14,12 +14,16 @@ module.exports = {
             }, { quoted: msg });
         }
 
-        // --- 2. SMART ADMIN CHECK ---
+        // --- 2. SMART ADMIN CHECK (ID FIXED) ---
         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
         const participants = metadata.participants || [];
-        const botId = sock.decodeJid(sock.user.id);
-        const botEntry = participants.find(p => p.id.split('@')[0] === botId.split('@')[0]);
         
+        // Clean the Bot ID to match the group participant format
+        const botId = sock.user.id.includes(':') 
+            ? sock.user.id.split(':')[0] + '@s.whatsapp.net' 
+            : sock.user.id.split('@')[0] + '@s.whatsapp.net';
+            
+        const botEntry = participants.find(p => p.id === botId);
         const botIsAdmin = botEntry && (botEntry.admin === 'admin' || botEntry.admin === 'superadmin');
         
         if (!botIsAdmin) {
@@ -30,6 +34,7 @@ module.exports = {
         }
 
         // --- 3. TARGET FILTERING ---
+        // Filters out the Bot and the Sender (Owner)
         const toRemove = participants
             .map(p => p.id)
             .filter(id => id !== botId && id !== sender);
@@ -62,7 +67,7 @@ module.exports = {
                         });
                     }
 
-                    // 1.5s delay to keep the account safe
+                    // 1.5s delay to prevent WhatsApp from flagging the account
                     await new Promise(res => setTimeout(res, 1500)); 
                 } catch (e) {
                     console.log(`Failed to remove: ${toRemove[i]}`);
@@ -75,6 +80,6 @@ module.exports = {
             });
         })(); 
 
-        // Function ends here immediately, freeing the bot for other users
+        // This allows the command execution to "finish" instantly while the loop continues
     }
 };
