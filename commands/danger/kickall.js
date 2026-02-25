@@ -5,7 +5,7 @@ module.exports = {
     async execute(sock, msg, args, { from, isMe, prefix }) {
         const sender = msg.key.participant || msg.key.remoteJid;
 
-        // 1. OWNER CHECK
+        // 1. OWNER ONLY
         if (!isMe) {
             await sock.sendMessage(from, { react: { text: "⚠️", key: msg.key } });
             return sock.sendMessage(from, { 
@@ -14,56 +14,57 @@ module.exports = {
             }, { quoted: msg });
         }
 
-        // 2. IDENTITY MIRROR ADMIN CHECK
+        // 2. FETCH DATA & CACHE
         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
         const participants = metadata.participants || [];
         
-        // FIND THE BOT: We check for 'fromMe' in the metadata or match the number
+        // 3. IMPROVED ADMIN CHECK (MIRRORING YOUR WORKING CODE)
+        // Find the bot's ID in the group list (handles LID vs JID)
         const botNumber = sock.user.id.split(':')[0].split('@')[0];
-        const botInList = participants.find(p => p.id.includes(botNumber));
-
-        // CHECK ADMIN STATUS OF THE FOUND IDENTITY
-        if (!botInList || !botInList.admin) {
+        const botEntry = participants.find(p => (p.id || "").includes(botNumber) || (p.pn || "").includes(botNumber));
+        
+        const botIsAdmin = botEntry && !!botEntry.admin;
+        
+        if (!botIsAdmin) {
             await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
             return sock.sendMessage(from, { 
-                text: "✿ *V_HUB ERROR* ✿\n\nI am not recognized as an Admin in this group's Registry. Please re-promote me." 
+                text: "✿ *V_HUB ERROR* ✿\n\nBot is not an admin. I cannot execute a purge without Admin privileges." 
             });
         }
 
-        // 3. TARGET FILTERING
-        // Use the EXACT ID found in the group list for the bot
-        const botGroupJid = botInList.id; 
+        // 4. FILTERING (PROTECT BOT & OWNER)
         const toRemove = participants
             .map(p => p.id)
-            .filter(id => id !== botGroupJid && id !== sender);
+            .filter(id => id !== botEntry.id && id !== sender);
 
         if (toRemove.length === 0) {
-            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external targets found." });
+            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo targets found." });
         }
 
-        // 4. INITIATION
+        // 5. THE NUCLEAR MESSAGE
         await sock.sendMessage(from, { react: { text: "☢️", key: msg.key } });
         await sock.sendMessage(from, { 
             text: `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓\n┃\n┃ ☢️ *PROTOCOL:* Nuclear Purge\n┃ 👥 *Targets:* ${toRemove.length}\n┃ ⚡ *Status:* background_exec\n┃\n┃ _Bot remains active for others._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
         });
 
-        // 5. BACKGROUND EXECUTION
+        // 6. BACKGROUND PURGE (NON-BLOCKING)
         (async () => {
             let removedCount = 0;
-            for (let i = 0; i < toRemove.length; i++) {
+            for (let jid of toRemove) {
                 try {
-                    // CRITICAL: We pass an array of IDs
-                    await sock.groupParticipantsUpdate(from, [toRemove[i]], "remove");
+                    // CRITICAL FIX: We use the ID directly from the metadata list
+                    // This ensures we use the LID if the user is a LID user
+                    await sock.groupParticipantsUpdate(from, [jid], "remove");
                     removedCount++;
                     
                     if (removedCount % 20 === 0) {
                         await sock.sendMessage(from, { 
-                            text: `┏━━━━━ ✿ *PURGE UPDATE* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Removed:* ${removedCount}\n┃ ⏳ *Remaining:* ${toRemove.length - removedCount}\n┃ ⚡ *Note:* Remaining members to\n┃      Face the Music...\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                            text: `┏━━━━━ ✿ *PURGE UPDATE* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Removed:* ${removedCount}\n┃ ⏳ *Remaining:* ${toRemove.length - removedCount}\n┃ ⚡ *Note:* Face the Music...\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
                         });
                     }
-                    await new Promise(res => setTimeout(res, 2000)); // Slightly slower for stability
+                    await new Promise(res => setTimeout(res, 2000)); 
                 } catch (e) {
-                    console.log(`Failed to remove ${toRemove[i]}:`, e);
+                    console.log(`Failed to remove ${jid}:`, e.message);
                 }
             }
 
