@@ -9,63 +9,104 @@ process.stdout.write = function (chunk, encoding, callback) {
 };
 
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    makeCacheableSignalKeyStore, 
+    Browsers,
+    fetchLatestBaileysVersion 
+} = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
 const zlib = require('zlib'); 
 const { MongoClient } = require("mongodb"); 
 const NodeCache = require("node-cache"); 
-const config = require('./config');
-const { taskQueue, processQueue } = require('./helpers/queue');
 
 const silentLogger = pino({ level: 'silent' });
 const commands = new Map();
-const statusCache = new Set(); 
+const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
+const statusCache = new Set(); 
 
-// --- 🧠 MEMORY TRACKERS (RESTORED) ---
-global.healingRetries = global.healingRetries || new Map(); 
-global.lockedContacts = global.lockedContacts || new Set(); 
-global.activeGames = global.activeGames || new Map(); 
-global.gamestate = global.gamestate || new Map(); 
-let connectionOpenTime = 0;
+// --- 🧠 MEMORY TRACKERS (RETAINED) ---
+if (!global.healingRetries) global.healingRetries = new Map(); 
+if (!global.lockedContacts) global.lockedContacts = new Set(); 
+if (!global.activeGames) global.activeGames = new Map(); 
+if (!global.gamestate) global.gamestate = new Map(); 
 
-// --- 🧱 DYNAMIC LOADERS ---
+// --- 🚥 THE TASK QUEUE (RAM SHIELD) ---
+const taskQueue = [];
+let isProcessing = false;
+let connectionOpenTime = 0; 
+
+async function processQueue() {
+    if (isProcessing || taskQueue.length === 0) return;
+    isProcessing = true;
+    const task = taskQueue.shift();
+    try {
+        await task();
+        await new Promise(res => setTimeout(res, 1000)); 
+    } catch (e) { }
+    isProcessing = false;
+    processQueue();
+}
+
+// --- 🧱 DYNAMIC LOADER (FIXED TO FIND ALL COMMANDS) ---
 const loadedWorkers = [];
-const loadAll = () => {
-    // Workers
-    fs.readdirSync('./workers').forEach(file => {
-        try { loadedWorkers.push(require(`./workers/${file}`)); } catch (e) {}
-    });
-    // Commands
-    const folders = fs.readdirSync('./commands');
-    for (const folder of folders) {
-        fs.readdirSync(`./commands/${folder}`).forEach(file => {
-            const cmd = require(`./commands/${folder}/${file}`);
-            commands.set(cmd.name, cmd);
+const loadResources = () => {
+    // 1. Load Workers
+    if (fs.existsSync('./workers')) {
+        fs.readdirSync('./workers').filter(f => f.endsWith('.js')).forEach(file => {
+            try { loadedWorkers.push(require(`./workers/${file}`)); } catch (e) { console.log(`❌ Worker Error: ${file}`); }
         });
     }
+
+    // 2. Load Commands (Recursive - Scans every subfolder)
+    const cmdPath = path.join(__dirname, 'commands');
+    if (fs.existsSync(cmdPath)) {
+        const readCommands = (dir) => {
+            fs.readdirSync(dir).forEach(file => {
+                const fullPath = path.join(dir, file);
+                if (fs.statSync(fullPath).isDirectory()) {
+                    readCommands(fullPath);
+                } else if (file.endsWith('.js')) {
+                    try {
+                        const command = require(fullPath);
+                        if (command.name) commands.set(command.name, command);
+                    } catch (e) { console.log(`❌ Cmd Error: ${file}`); }
+                }
+            });
+        };
+        readCommands(cmdPath);
+    }
+    console.log(`🚀 V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers`);
 };
-loadAll();
+loadResources();
+
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri || "");
 
 async function startVinnieHub() {
-    const client = new MongoClient(config.mongoUri || "");
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
-    // --- 📥 SESSION RECOVERY (RESTORED) ---
-    if (!fs.existsSync(credsPath) && config.sessionId?.startsWith('VINNIE~')) {
-        try {
-            await client.connect(); 
-            const sessionRecord = await client.db("vinnieBot").collection("sessions").findOne({ sessionId: config.sessionId });
-            if (sessionRecord) {
-                const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
-                fs.writeFileSync(credsPath, decryptedData);
-                console.log("✅ [SYSTEM] Session recovered!");
-            }
-        } catch (err) { }
+    // --- 📥 SESSION RECOVERY ---
+    if (!fs.existsSync(credsPath)) {
+        const sessionID = process.env.SESSION_ID;
+        if (sessionID?.startsWith('VINNIE~')) {
+            try {
+                await client.connect(); 
+                const sessionRecord = await client.db("vinnieBot").collection("sessions").findOne({ sessionId: sessionID });
+                if (sessionRecord) {
+                    const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
+                    fs.writeFileSync(credsPath, decryptedData);
+                    console.log("✅ Session Recovered from DB");
+                }
+            } catch (err) { }
+        }
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
@@ -73,7 +114,7 @@ async function startVinnieHub() {
     const sock = makeWASocket({
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
-        markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000
+        markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
     });
 
     sock.ev.on('creds.update', async () => {
@@ -82,7 +123,7 @@ async function startVinnieHub() {
             const credsData = fs.readFileSync(credsPath);
             const compressed = zlib.deflateSync(credsData).toString('base64');
             await client.db("vinnieBot").collection("sessions").updateOne(
-                { sessionId: config.sessionId },
+                { sessionId: process.env.SESSION_ID },
                 { $set: { data: compressed, updatedAt: new Date() } },
                 { upsert: true }
             );
@@ -103,24 +144,30 @@ async function startVinnieHub() {
             return;
         }
 
-        const isMe = msg.key.fromMe || msg.key.participant?.split('@')[0] === config.ownerNumber || from.split('@')[0] === config.ownerNumber;
-        if (config.mode === 'private' && !isMe) return;
+        // --- 🛡️ SHIELDS ---
+        let settings = {};
+        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
+        const sender = msg.key.participant || from;
+        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
+
+        if (settings.mode === 'private' && !isMe) return;
 
         const mtype = Object.keys(msg.message)[0];
         const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
-        const isCommand = text.startsWith(config.prefix);
+        const prefix = process.env.PREFIX || ".";
+        const isCommand = text.startsWith(prefix);
 
         // --- 🔵 BLUE TICK & PRESENCE ---
-        if (config.bluetick) await sock.readMessages([msg.key]);
-        if (!isMe && !isCommand) {
-            const action = config.alwaysRecording ? 'recording' : 'composing';
+        if (settings.bluetick) await sock.readMessages([msg.key]);
+        if (!isMe && !isCommand && settings.typingMode !== 'off') {
+            const action = settings.alwaysRecording ? 'recording' : 'composing';
             await sock.sendPresenceUpdate(action, from);
             setTimeout(() => sock.sendPresenceUpdate('paused', from), 10000);
         }
 
-        // --- 🛠️ COMMANDS ---
+        // --- 🛠️ COMMAND EXECUTION ---
         if (isCommand) {
-            const args = text.slice(config.prefix.length).trim().split(/ +/);
+            const args = text.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
@@ -130,15 +177,19 @@ async function startVinnieHub() {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
                         admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
                     }
-                    await command.execute(sock, msg, args, { prefix: config.prefix, isMe, settings: config, groupAdmins: admins });
-                } catch (e) { }
+                    await command.execute(sock, msg, args, { 
+                        prefix, from, sender, isMe, settings, groupAdmins: admins 
+                    });
+                } catch (err) {
+                    if (!err.message.includes('Bad MAC')) console.error(`Error [${cmdName}]:`, err.message);
+                }
             }
         }
 
-        // --- 🧱 WORKERS (RAM SAVER QUEUE) ---
+        // --- 🧱 WORKERS (IN THE QUEUE) ---
         loadedWorkers.forEach(worker => {
             taskQueue.push(async () => {
-                try { await worker(sock, msg, config); } catch (e) {}
+                try { await worker(sock, msg, settings); } catch (e) {}
             });
         });
         processQueue();
@@ -149,13 +200,12 @@ async function startVinnieHub() {
         if (u.connection === 'close' && u.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
             setTimeout(() => startVinnieHub(), 3000);
         }
-        console.log("📡 Vinnie Hub Status Update:", u.connection || "waiting");
+        console.log("📡 Connection Status:", u.connection);
     });
 }
 
 process.on('uncaughtException', (err) => {
-    if (err.message.includes('Bad MAC')) return;
-    console.error("⚠️ Supervisor caught crash:", err.message);
+    if (!err.message.includes('Bad MAC')) console.error("⚠️ Crash:", err.message);
 });
 
 startVinnieHub();
