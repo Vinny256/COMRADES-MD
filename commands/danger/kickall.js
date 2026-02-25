@@ -5,7 +5,7 @@ module.exports = {
     async execute(sock, msg, args, { from, isMe, prefix }) {
         const sender = msg.key.participant || msg.key.remoteJid;
 
-        // --- 1. ACCESS DENIED STYLING ---
+        // --- 1. OWNER-ONLY ACCESS SHIELD ---
         if (!isMe) {
             await sock.sendMessage(from, { react: { text: "⚠️", key: msg.key } });
             return sock.sendMessage(from, { 
@@ -14,33 +14,33 @@ module.exports = {
             }, { quoted: msg });
         }
 
-        // --- 2. SMART ADMIN CHECK (ID FIXED) ---
+        // --- 2. ADMIN CHECK (USING YOUR WORKING LOGIC) ---
         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
         const participants = metadata.participants || [];
         
-        // Clean the Bot ID to match the group participant format
-        const botId = sock.user.id.includes(':') 
-            ? sock.user.id.split(':')[0] + '@s.whatsapp.net' 
-            : sock.user.id.split('@')[0] + '@s.whatsapp.net';
-            
-        const botEntry = participants.find(p => p.id === botId);
-        const botIsAdmin = botEntry && (botEntry.admin === 'admin' || botEntry.admin === 'superadmin');
+        // This is exactly how your group.js finds admins
+        const admins = participants.filter(p => p.admin).map(p => p.id);
+        
+        // Get the bot's clean ID
+        const botId = sock.decodeJid ? sock.decodeJid(sock.user.id) : (sock.user.id.split(':')[0] + '@s.whatsapp.net');
+        
+        // Check if the bot is in the admin list
+        const botIsAdmin = admins.includes(botId);
         
         if (!botIsAdmin) {
             await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
             return sock.sendMessage(from, { 
-                text: "✿ *V_HUB ERROR* ✿\n\nCommand aborted. I need **Admin Rights** to execute this protocol." 
+                text: "✿ *V_HUB ERROR* ✿\n\nI cannot execute the purge. Please promote me to **Admin** first." 
             });
         }
 
-        // --- 3. TARGET FILTERING ---
-        // Filters out the Bot and the Sender (Owner)
+        // --- 3. FILTERING TARGETS ---
         const toRemove = participants
             .map(p => p.id)
             .filter(id => id !== botId && id !== sender);
 
         if (toRemove.length === 0) {
-            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external targets found." });
+            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external members found to purge." });
         }
 
         // --- 4. INITIATION ---
@@ -67,7 +67,7 @@ module.exports = {
                         });
                     }
 
-                    // 1.5s delay to prevent WhatsApp from flagging the account
+                    // 1.5s delay to keep the account safe
                     await new Promise(res => setTimeout(res, 1500)); 
                 } catch (e) {
                     console.log(`Failed to remove: ${toRemove[i]}`);
@@ -79,7 +79,5 @@ module.exports = {
                 text: `┏━━━━━ ✿ *PURGE COMPLETE* ✿ ━━━━━┓\n┃\n┃ ✅ *Total Purged:* ${removedCount}\n┃ 🔄 *Status:* Group Cleared.\n┃\n┃ _Vinnie Hub Protocol Finished._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
             });
         })(); 
-
-        // This allows the command execution to "finish" instantly while the loop continues
     }
 };
