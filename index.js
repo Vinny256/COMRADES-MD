@@ -81,6 +81,19 @@ loadResources();
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 
+// --- 💾 DATABASE SYNC HEALER (RESTORED) ---
+    global.saveSettings = async () => {
+        try {
+            if (!fs.existsSync(settingsFile)) return;
+            const settings = fs.readJsonSync(settingsFile);
+            await client.db("vinnieBot").collection("config").updateOne(
+                { id: "main_config" },
+                { $set: settings },
+                { upsert: true }
+            );
+        } catch (e) { }
+    };
+
 async function startVinnieHub() {
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
