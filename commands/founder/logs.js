@@ -5,17 +5,24 @@ module.exports = {
     category: "founder",
     desc: "V_HUB: View server logs",
     async execute(sock, msg, args, { from, isMe }) {
-        if (!isMe) return;
+        if (!isMe) {
+            // Your new vocal security fallback
+            return sock.sendMessage(from, { 
+                text: "┏━━━━━ ✿ *V_HUB SECURITY* ✿ ━━━━━┓\n┃\n┃ 🛡️ *ACCESS DENIED*\n┃ ⚠️ *Note:* Log access is founder-only.\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛" 
+            });
+        }
 
         await sock.sendMessage(from, { react: { text: "📜", key: msg.key } });
         
-        // On Heroku, we use 'tail'. On local, this might vary.
-        exec('tail -n 20', (err, stdout, stderr) => {
-            if (err) return sock.sendMessage(from, { text: `❌ Log Fetch Failed: ${err.message}` });
+        // We attempt to read from standard linux log locations or the app's output
+        // On Heroku, 'heroku logs' isn't available inside the dyno, 
+        // but sometimes logs are piped to a temporary file.
+        exec('tail -n 20 /app/.logs 2>/dev/null || tail -n 20 logs.txt 2>/dev/null || echo "No log file found. Check Heroku Dashboard."', (err, stdout, stderr) => {
             
-            const output = stdout || stderr || "No logs found.";
+            const output = stdout || stderr || "No logs captured in file.";
+            
             sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *LOGS* ✿ ━━━━━┓\n\n${output}\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                text: `┏━━━━━ ✿ *LOGS* ✿ ━━━━━┓\n\n${output.trim()}\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
             });
         });
     }
