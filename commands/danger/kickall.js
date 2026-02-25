@@ -5,61 +5,76 @@ module.exports = {
     async execute(sock, msg, args, { from, isMe, prefix }) {
         const sender = msg.key.participant || msg.key.remoteJid;
 
-        // --- 1. OWNER-ONLY ACCESS SHIELD ---
+        // --- 1. ACCESS DENIED STYLING ---
         if (!isMe) {
-            await sock.sendMessage(from, { react: { text: "🚫", key: msg.key } });
+            await sock.sendMessage(from, { react: { text: "⚠️", key: msg.key } });
             return sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *ACCESS DENIED* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Protocol:* Restricted\n┃ 👤 *User:* @${sender.split('@')[0]}\n┃ ⚠️ *Note:* This command is for the \n┃      Core Developer only.\n┃\n┃ _System integrity maintained._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                text: `┏━━━━━ ✿ *V_HUB SECURITY* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Protocol:* Restricted (Nuclear)\n┃ 👤 *User:* @${sender.split('@')[0]}\n┃ ⚠️ *Note:* You do not have the \n┃      clearance for this protocol.\n┃\n┃ _Integrity Shield Active._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
                 mentions: [sender]
             }, { quoted: msg });
         }
 
-        // --- 2. FRESH ADMIN CHECK (REAL-TIME) ---
-        // We fetch fresh metadata here to ensure the bot knows it's admin
+        // --- 2. SMART ADMIN CHECK ---
         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
         const participants = metadata.participants || [];
-        const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        const botId = sock.decodeJid(sock.user.id);
+        const botEntry = participants.find(p => p.id.split('@')[0] === botId.split('@')[0]);
         
-        const botIsAdmin = participants.some(p => p.id === botId && (p.admin === 'admin' || p.admin === 'superadmin'));
+        const botIsAdmin = botEntry && (botEntry.admin === 'admin' || botEntry.admin === 'superadmin');
         
         if (!botIsAdmin) {
             await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
             return sock.sendMessage(from, { 
-                text: "✿ *V_HUB ERROR* ✿\n\nI cannot execute the purge. Please promote me to **Admin** first." 
+                text: "✿ *V_HUB ERROR* ✿\n\nCommand aborted. I need **Admin Rights** to execute this protocol." 
             });
         }
 
-        // --- 3. FILTERING TARGETS ---
-        // We exclude the bot itself and YOU (the person who sent the command)
+        // --- 3. TARGET FILTERING ---
         const toRemove = participants
             .map(p => p.id)
             .filter(id => id !== botId && id !== sender);
 
         if (toRemove.length === 0) {
-            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external members found to purge." });
+            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external targets found." });
         }
 
-        // --- 4. EXECUTION PROTOCOL ---
-        // React with 'Nuclear' emoji to show the process started
+        // --- 4. INITIATION ---
         await sock.sendMessage(from, { react: { text: "☢️", key: msg.key } });
         
         await sock.sendMessage(from, { 
-            text: `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓\n┃\n┃ ☢️ *PROTOCOL:* Nuclear Purge\n┃ 👥 *Members:* ${toRemove.length}\n┃ ⚡ *Status:* Initiating...\n┃\n┃ _Warning: This action is final._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+            text: `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓\n┃\n┃ ☢️ *PROTOCOL:* Nuclear Purge\n┃ 👥 *Targets:* ${toRemove.length}\n┃ ⚡ *Status:* background_exec\n┃\n┃ _Bot remains active for others._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
         });
 
-        // Loop through participants with a 1-second delay to avoid WhatsApp Ban
-        for (let jid of toRemove) {
-            try {
-                await sock.groupParticipantsUpdate(from, [jid], "remove");
-                // Delay to stay under the radar
-                await new Promise(res => setTimeout(res, 1000)); 
-            } catch (e) {
-                console.log(`Failed to remove: ${jid}`);
-            }
-        }
+        // --- 5. BACKGROUND EXECUTION (NON-BLOCKING) ---
+        (async () => {
+            let removedCount = 0;
+            let totalToClear = toRemove.length;
 
-        // Final Reaction and Message
-        await sock.sendMessage(from, { react: { text: "✅", key: msg.key } });
-        await sock.sendMessage(from, { text: "✿ *PURGE COMPLETE* ✿\n\nThe group has been cleared. 🔄" });
+            for (let i = 0; i < toRemove.length; i++) {
+                try {
+                    await sock.groupParticipantsUpdate(from, [toRemove[i]], "remove");
+                    removedCount++;
+                    
+                    // EVERY 20 MEMBERS: Send a status update
+                    if (removedCount % 20 === 0) {
+                        await sock.sendMessage(from, { 
+                            text: `┏━━━━━ ✿ *PURGE UPDATE* ✿ ━━━━━┓\n┃\n┃ 🛡️ *Removed:* ${removedCount}\n┃ ⏳ *Remaining:* ${totalToClear - removedCount}\n┃ ⚡ *Note:* Remaining members to\n┃      Face the Music...\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                        });
+                    }
+
+                    // 1.5s delay to keep the account safe
+                    await new Promise(res => setTimeout(res, 1500)); 
+                } catch (e) {
+                    console.log(`Failed to remove: ${toRemove[i]}`);
+                }
+            }
+
+            // FINAL REPORT
+            await sock.sendMessage(from, { 
+                text: `┏━━━━━ ✿ *PURGE COMPLETE* ✿ ━━━━━┓\n┃\n┃ ✅ *Total Purged:* ${removedCount}\n┃ 🔄 *Status:* Group Cleared.\n┃\n┃ _Vinnie Hub Protocol Finished._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+            });
+        })(); 
+
+        // Function ends here immediately, freeing the bot for other users
     }
 };
