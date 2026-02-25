@@ -1,19 +1,17 @@
-const config = {
-    // Connection Settings
-    sessionId: process.env.SESSION_ID || '',
-    mongoUri: process.env.MONGO_URI || '',
-    owner: process.env.OWNER_NUMBER || '254...',
-    
-    // Bot Features (Toggles)
-    autoReact: process.env.AUTO_REACT === 'true',
-    autoEmoji: process.env.AUTO_REACT_EMOJI || '🔥',
-    antiDelete: process.env.ANTI_DELETE === 'true',
-    recordMode: process.env.RECORD_MODE || 'all',
-    prefix: process.env.PREFIX || '.',
-    
-    // Heroku Management
-    appName: process.env.HEROKU_APP_NAME || '',
-    apiKey: process.env.HEROKU_API_KEY || ''
-};
+const fs = require('fs-extra');
+const settingsFile = './settings.json';
 
-module.exports = config;
+let settings = {};
+try { 
+    settings = fs.readJsonSync(settingsFile); 
+} catch(e) { 
+    settings = { mode: 'public', bluetick: false, typingMode: 'off' }; 
+}
+
+module.exports = {
+    ...settings,
+    prefix: process.env.PREFIX || ".",
+    ownerNumber: (process.env.OWNER_NUMBER || "254768666068").split('@')[0],
+    mongoUri: process.env.MONGO_URI,
+    sessionId: process.env.SESSION_ID
+};
