@@ -14,33 +14,34 @@ module.exports = {
             }, { quoted: msg });
         }
 
-        // --- 2. THE "MIRROR" ADMIN CHECK ---
+        // --- 2. RAW DIGIT ADMIN CHECK (FIXES THE "WHY") ---
         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
         const participants = metadata.participants || [];
         
-        // Find the bot in the list by checking if the number matches
-        // This avoids JID vs LID confusion
-        const botNumber = sock.user.id.split(':')[0].split('@')[0];
-        const botInGroup = participants.find(p => p.id.includes(botNumber));
+        // Extract only the numbers from the bot's ID (e.g., 254768666068)
+        const botNumber = sock.user.id.replace(/\D/g, ''); 
 
-        // If the bot exists in the group and has the 'admin' property (truthy)
-        const botIsAdmin = botInGroup && !!botInGroup.admin;
+        // Find the participant entry where the ID contains the bot's numbers
+        const botEntry = participants.find(p => p.id.includes(botNumber));
         
+        // Check if that entry has admin rights
+        const botIsAdmin = botEntry && (botEntry.admin === 'admin' || botEntry.admin === 'superadmin');
+
         if (!botIsAdmin) {
             await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
             return sock.sendMessage(from, { 
-                text: "✿ *V_HUB ERROR* ✿\n\nI cannot execute the purge. Please promote me to **Admin** first." 
+                text: "✿ *V_HUB ERROR* ✿\n\nI cannot execute the purge. My number is not on the **Admin List** of this group metadata." 
             });
         }
 
         // --- 3. TARGET FILTERING ---
-        // Filter out the bot (using its group-specific ID) and the sender
+        // We use the botEntry.id (whatever format it is) to make sure the bot doesn't kick itself
         const toRemove = participants
             .map(p => p.id)
-            .filter(id => id !== botInGroup.id && id !== sender);
+            .filter(id => id !== botEntry.id && id !== sender);
 
         if (toRemove.length === 0) {
-            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external members found to purge." });
+            return sock.sendMessage(from, { text: "✿ *V_HUB INFO* ✿\n\nNo external targets found." });
         }
 
         // --- 4. INITIATION ---
