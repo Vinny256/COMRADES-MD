@@ -9,14 +9,7 @@ process.stdout.write = function (chunk, encoding, callback) {
 };
 
 require('dotenv').config();
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    makeCacheableSignalKeyStore, 
-    Browsers,
-    fetchLatestBaileysVersion 
-} = require("@whiskeysockets/baileys");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
@@ -177,8 +170,9 @@ async function startVinnieHub() {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
                         admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
                     }
+                    // RE-ADDED COMMANDS HERE TO FIX THE MENU SIZE ERROR
                     await command.execute(sock, msg, args, { 
-                        prefix, from, sender, isMe, settings, groupAdmins: admins 
+                        prefix, from, sender, isMe, settings, groupAdmins: admins, commands 
                     });
                 } catch (err) {
                     if (!err.message.includes('Bad MAC')) console.error(`Error [${cmdName}]:`, err.message);
