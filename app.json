@@ -6,30 +6,37 @@
   "keywords": ["whatsapp", "bot", "baileys", "vinnie", "comrade"],
   "env": {
     "SESSION_ID": {
-      "description": "Enter your Session ID from Vinnie's Generator (VINNIE-SESSION~...)",
+      "description": "Enter your Session ID (VINNIE-SESSION~...)",
       "required": true
     },
     "MONGO_URI": {
-      "description": "The MongoDB connection string for storing session data.",
+      "description": "MongoDB connection string.",
       "value": "mongodb+srv://vinnykaranja973:kajara254@cluster0.jw2kdbk.mongodb.net/?appName=Cluster0",
       "required": true
     },
     "OWNER_NUMBER": {
-      "description": "Your phone number in international format (e.g., 254712345678)",
+      "description": "Your number (e.g., 254712345678)",
       "required": true
     },
-    "HEROKU_API_KEY": {
-      "description": "Your Heroku API Key (Account Settings > API Key)",
-      "required": true
+    "AUTO_REACT": {
+      "description": "React to statuses automatically? (true/false)",
+      "value": "true"
     },
-    "HEROKU_APP_NAME": {
-      "description": "The exact name you gave this app above",
-      "required": true
+    "AUTO_REACT_EMOJI": {
+      "description": "Emoji for status reactions.",
+      "value": "🔥"
+    },
+    "ANTI_DELETE": {
+      "description": "Resend deleted messages? (true/false)",
+      "value": "true"
+    },
+    "RECORD_MODE": {
+      "description": "Recording mode (all/private/group)",
+      "value": "all"
     },
     "PREFIX": {
-      "description": "The symbol to trigger commands",
-      "value": ".",
-      "required": false
+      "description": "Command trigger symbol",
+      "value": "."
     }
   },
   "formation": {
