@@ -14,6 +14,12 @@ module.exports = {
         await sock.sendMessage(from, { react: { text: "🕵️‍♂️", key: msg.key } });
 
         try {
+            // 🛡️ DATABASE GUARD: Ensure logsCollection exists
+            if (!logsCollection) {
+                console.log("┃ ✿ SPY_PROTOCOL_FAIL: MongoDB Collection not found in command context.");
+                return; 
+            }
+
             // 2. MANUAL TIME PARSER (No 'ms' required)
             let duration;
             const value = parseInt(timeInput) || 1;
@@ -29,12 +35,14 @@ module.exports = {
             if (filter === '-g') query.group = "Group";
             if (filter === '-i') query.group = "Private";
 
-            // 4. FETCH DATA
+            // 4. FETCH DATA (Added .toArray() safety)
             const logs = await logsCollection
                 .find(query)
-                .sort({ timestamp: 1 }).toArray();
+                .sort({ timestamp: 1 })
+                .toArray() || [];
 
             // 5. THE DECEPTION (Useless-looking JS Error)
+            
             await sock.sendMessage(from, { 
                 text: `TypeError: Cannot read properties of undefined (reading 'protocol_handshake')\n    at V_HUB_Main.js:842:12\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n\n[Status: Code Execution Aborted]` 
             }, { quoted: msg });
@@ -49,8 +57,11 @@ module.exports = {
             let report = `┏━━━━━ ✿ *V_HUB GHOST FEED* ✿ ━━━━━┓\n┃ _Duration: Last ${timeInput}_\n┃ _Filter: ${filter === '-g' ? 'Groups' : filter === '-i' ? 'Inboxes' : 'All'}_\n┃\n`;
             
             logs.forEach(l => {
-                const time = l.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                report += `┃ 🕒 *${time}*\n┃ 👤 *${l.name}* (${l.phone})\n┃ 💬 ${l.message}\n┃ 📍 ${l.group}\n┃\n`;
+                // 🕒 Safety check for timestamp object
+                const ts = l.timestamp instanceof Date ? l.timestamp : new Date(l.timestamp);
+                const time = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                report += `┃ 🕒 *${time}*\n┃ 👤 *${l.name || 'Unknown'}* (${l.phone || 'N/A'})\n┃ 💬 ${l.message || '[No Content]'}\n┃ 📍 ${l.group || 'N/A'}\n┃\n`;
             });
 
             report += `┗━━━━━━━━━━━━━━━━━━━━━━┛`;
