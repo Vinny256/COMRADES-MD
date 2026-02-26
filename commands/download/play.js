@@ -4,7 +4,7 @@ const ytdl = require('@distube/ytdl-core');
 module.exports = {
     name: "play",
     category: "downloader",
-    desc: "Premium YouTube Downloader",
+    desc: "Premium YouTube Downloder",
     async execute(sock, msg, args, { prefix, from }) {
         const query = args.join(" ");
         if (!query) return sock.sendMessage(from, { text: "┃ ❌ Usage: .play [name]" });
