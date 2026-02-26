@@ -23,7 +23,6 @@ module.exports = {
             if (!video) throw new Error("Not_Found");
 
             // Phase 2: Found State & Switch to Thumbnail
-            // We delete the text box to make room for the "Premium" Image card
             await sock.sendMessage(from, { delete: key });
 
             const thumbMsg = await sock.sendMessage(from, {
@@ -32,13 +31,12 @@ module.exports = {
             });
 
             // Phase 3: Download with Progress Bar
-            // This will use the lib we built to edit the thumbnail caption
             const filePath = await downloadMedia(video.url, 'mp3', sock, from, thumbMsg.key);
 
             // Phase 4: Send Audio & Finalize
             await sock.sendMessage(from, { 
                 audio: fs.readFileSync(filePath), 
-                mimetype: 'audio/mp4',
+                mimetype: 'audio/mpeg', // ✅ Fixed
                 fileName: `${video.title}.mp3`
             }, { quoted: msg });
 
