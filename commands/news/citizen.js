@@ -4,44 +4,52 @@ const cheerio = require('cheerio');
 module.exports = {
     name: "citizen",
     category: "news",
-    async execute(sock, msg, args, { from }) {
-        await sock.sendMessage(from, { react: { text: "📰", key: msg.key } });
+    async execute(sock, msg, args, { from, prefix }) {
+        await sock.sendMessage(from, { react: { text: "🔓", key: msg.key } });
 
         try {
-            const { data } = await axios.get('https://www.citizen.digital/news');
+            // 🌐 Fetching with a real browser header to bypass the 'Lock'
+            const { data } = await axios.get('https://www.citizen.digital/news', {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+            });
+            
             const $ = cheerio.load(data);
             
-            // We grab the first (latest) news item to create the Card
-            const latest = $('.headline').first();
-            const title = latest.text().trim();
-            const link = "https://www.citizen.digital" + latest.find('a').attr('href');
-            const img = "https://i.imgur.com/XHUY4VI.jpeg"; // Default banner
+            // Grabbing the very first breaking news item
+            const firstNews = $('a.relative.block').first();
+            const title = firstNews.find('h1, h2, h3').first().text().trim() || "Latest Headline";
+            const link = firstNews.attr('href').startsWith('http') ? firstNews.attr('href') : "https://www.citizen.digital" + firstNews.attr('href');
+            const thumb = firstNews.find('img').attr('data-src') || firstNews.find('img').attr('src') || "https://i.imgur.com/XHUY4VI.jpeg";
 
-            // --- 🗂️ THE CAROUSEL CARD LAYOUT ---
+            // --- 🗂️ THE CAROUSEL LIST ---
             const sections = [
                 {
-                    title: "🗞️ Latest News Headlines",
+                    title: "📰 TOP STORY OPTIONS",
                     rows: [
-                        { title: "📖 Read Full Story", rowId: `${prefix}getnews ${link}`, description: title },
-                        { title: "🔗 Copy Link", rowId: `${prefix}copy ${link}`, description: "Get URL to share" }
+                        { title: "📖 Read Full Article", rowId: `${prefix}readnews ${link}`, description: "Open full story in browser" },
+                        { title: "🔗 Share Link", rowId: `${prefix}copy ${link}`, description: "Get the URL to share with friends" }
                     ]
                 }
             ];
 
             const listMessage = {
-                text: `\n*${title}*\n\nPSK condemns secret recording of former DP Gachagua at pharmacy...`,
-                footer: "© 2026 | Vinnie News Hub",
+                text: `\n🔥 *BREAKING NEWS*\n\n*${title}*\n\n_Stay updated with Vinnie Digital Hub for real-time news alerts across Kenya._`,
+                footer: "© 2026 | VINNIE NEWS VAULT",
                 title: "💠 CITIZEN DIGITAL NEWS",
-                buttonText: "📰 View Story Options",
+                buttonText: "SELECT ACTION",
                 sections,
                 contextInfo: {
+                    // This forces the "Big Card" look from your screenshot
                     externalAdReply: {
-                        title: "BREAKING: CITIZEN TV",
-                        body: "Tap for the latest updates",
-                        thumbnailUrl: img,
+                        title: "CITIZEN TV: LIVE UPDATES",
+                        body: title,
+                        thumbnailUrl: thumb,
                         mediaType: 1,
                         showAdAttribution: true,
-                        renderLargerThumbnail: true
+                        renderLargerThumbnail: true,
+                        sourceUrl: link
                     }
                 }
             };
@@ -49,7 +57,8 @@ module.exports = {
             await sock.sendMessage(from, listMessage, { quoted: msg });
 
         } catch (e) {
-            await sock.sendMessage(from, { text: "⚠️ News Vault currently locked." });
+            console.error("Scraper Error:", e.message);
+            await sock.sendMessage(from, { text: `⚠️ *News Vault Lock:* Site is currently unreachable. Try again in 5 minutes.` });
         }
     }
 };
