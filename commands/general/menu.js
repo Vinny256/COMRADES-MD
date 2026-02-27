@@ -70,8 +70,9 @@ module.exports = {
             text: menu,
             contextInfo: {
                 // 🛡️ IMPROVED VERIFIED INJECTION 🛡️
-                participant: '0@s.whatsapp.net',
-                verifiedBadge: true, 
+                participant: '16505361212@s.whatsapp.net', 
+                verifiedBadge: true,
+                showAdAttribution: true, 
                 // -----------------------------
                 externalAdReply: {
                     title: "VINNIE DIGITAL HUB",
