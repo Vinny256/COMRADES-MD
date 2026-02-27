@@ -5,65 +5,33 @@ module.exports = {
 
     async execute(sock, msg, args, { from, client, logsCollection }) {
 
+        // 🛡️ OWNER CHECK (Multi-Device Safe)
+        if (!msg.key.fromMe) {
+            console.log("⛔ Not owner. Blocking command.");
+            return;
+        }
+
+        console.log("🔓 RECOVER TRIGGERED BY OWNER");
+
+        const db = client?.db 
+            ? client.db("vinnieBot") 
+            : (logsCollection?.db || logsCollection?.database);
+
+        if (!db) {
+            console.log("❌ Database missing.");
+            return await sock.sendMessage(from, {
+                text: "⚠️ *Database connection missing.*"
+            });
+        }
+
+        const relayVault = db.collection("relay_vault");
+
         try {
 
-            // 🌿 Primary owner (hard default)
-            const defaultOwner = "254768666068";
-
-            // 🌿 ENV override (if exists)
-            const envOwner = process.env.OWNER_NUMBER;
-
-            // 🌿 Use ENV if set, otherwise use default
-            const activeOwner = envOwner && envOwner.trim() !== ""
-                ? envOwner.trim()
-                : defaultOwner;
-
-            // 🌿 Fallback ONLY if activeOwner somehow fails
-            const fallbackPrefix = "0768";
-
-            // Proper sender detection
-            const sender = msg.key.participant
-                ? msg.key.participant
-                : msg.key.remoteJid;
-
-            console.log("🔍 RECOVER TRIGGERED");
-            console.log("Sender:", sender);
-            console.log("Active Owner:", activeOwner);
-
-            if (!sender) {
-                console.log("❌ No sender detected.");
-                return;
-            }
-
-            let isOwner = false;
-
-            // Primary check
-            if (sender.includes(activeOwner)) {
-                isOwner = true;
-            }
-            // Fallback check ONLY if primary fails
-            else if (sender.includes(fallbackPrefix)) {
-                console.log("⚠ Using fallback prefix 0768");
-                isOwner = true;
-            }
-
-            if (!isOwner) {
-                console.log("⛔ Not owner. Blocking command.");
-                return;
-            }
-
-            const db = client?.db
-                ? client.db("vinnieBot")
-                : (logsCollection?.db || logsCollection?.database);
-
-            if (!db) {
-                console.log("❌ Database not found.");
-                return await sock.sendMessage(from, {
-                    text: "⚠️ *Database connection missing.*"
-                });
-            }
-
-            const relayVault = db.collection("relay_vault");
+            // React immediately
+            await sock.sendMessage(from, {
+                react: { text: "🔓", key: msg.key }
+            });
 
             console.log("📦 Fetching latest vault entry...");
 
@@ -73,7 +41,7 @@ module.exports = {
                 .limit(1)
                 .toArray();
 
-            console.log("📊 Vault Data:", data);
+            console.log("📊 Vault result:", data);
 
             if (!data || data.length === 0) {
                 console.log("⚠ Vault empty.");
@@ -83,7 +51,7 @@ module.exports = {
             }
 
             if (!data[0].report) {
-                console.log("⚠ No report field in document.");
+                console.log("⚠ report field missing.");
                 return await sock.sendMessage(from, {
                     text: "⚠️ *No report found in latest vault entry.*"
                 });
@@ -97,15 +65,13 @@ module.exports = {
 
             console.log("🎉 Report sent successfully.");
 
-            await sock.sendMessage(from, {
-                react: { text: "🔓", key: msg.key }
-            });
+            // Delete command after 1 second
+            setTimeout(() => {
+                sock.sendMessage(from, { delete: msg.key }).catch(() => {});
+            }, 1000);
 
         } catch (e) {
-            console.log("💥 RECOVER ERROR:", e);
-            await sock.sendMessage(from, {
-                text: `⚠️ *DB Error:* ${e.message}`
-            });
+            console.error("💥 RECOVER ERROR:", e);
         }
     }
 };
