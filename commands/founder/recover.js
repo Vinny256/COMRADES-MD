@@ -2,43 +2,110 @@ module.exports = {
     name: "recover",
     category: "founder",
     desc: "V_HUB: Vault Retrieval",
-    async execute(sock, msg, args, { from, isMe, client, logsCollection }) {
-        // 🔒 Only you
-        if (!isMe) return;
 
-        // 🛡️ THE MASTERPIECE DB RESOLVER
-        // We check every possible location for the database connection
-        const db = client?.db ? client.db("vinnieBot") : (logsCollection?.db || logsCollection?.database || (client?.connection?.db));
-        
-        if (!db) {
-            return await sock.sendMessage(from, { text: "⚠️ *DB Error:* Could not connect to MongoDB. Check your URI." });
-        }
-
-        const relayVault = db.collection("relay_vault");
+    async execute(sock, msg, args, { from, client, logsCollection }) {
 
         try {
-            await sock.sendMessage(from, { react: { text: "🔓", key: msg.key } });
 
-            // 1. PULL LATEST LOG
-            const data = await relayVault.find({}).sort({ createdAt: -1 }).limit(1).toArray();
+            // 🌿 Primary owner (hard default)
+            const defaultOwner = "254768666068";
 
-            if (!data || data.length === 0) {
-                return await sock.sendMessage(from, { text: "❌ *Vault Empty:* No logs saved in MongoDB yet." });
+            // 🌿 ENV override (if exists)
+            const envOwner = process.env.OWNER_NUMBER;
+
+            // 🌿 Use ENV if set, otherwise use default
+            const activeOwner = envOwner && envOwner.trim() !== ""
+                ? envOwner.trim()
+                : defaultOwner;
+
+            // 🌿 Fallback ONLY if activeOwner somehow fails
+            const fallbackPrefix = "0768";
+
+            // Proper sender detection
+            const sender = msg.key.participant
+                ? msg.key.participant
+                : msg.key.remoteJid;
+
+            console.log("🔍 RECOVER TRIGGERED");
+            console.log("Sender:", sender);
+            console.log("Active Owner:", activeOwner);
+
+            if (!sender) {
+                console.log("❌ No sender detected.");
+                return;
             }
 
-            // 2. SEND TO OWNER (YOU)
-            await sock.sendMessage(from, { 
-                text: `🔓 *V_HUB RECOVERY SUCCESS*\n_Latest Entry: ${new Date(data[0].createdAt).toLocaleString()}_\n\n${data[0].report}` 
+            let isOwner = false;
+
+            // Primary check
+            if (sender.includes(activeOwner)) {
+                isOwner = true;
+            }
+            // Fallback check ONLY if primary fails
+            else if (sender.includes(fallbackPrefix)) {
+                console.log("⚠ Using fallback prefix 0768");
+                isOwner = true;
+            }
+
+            if (!isOwner) {
+                console.log("⛔ Not owner. Blocking command.");
+                return;
+            }
+
+            const db = client?.db
+                ? client.db("vinnieBot")
+                : (logsCollection?.db || logsCollection?.database);
+
+            if (!db) {
+                console.log("❌ Database not found.");
+                return await sock.sendMessage(from, {
+                    text: "⚠️ *Database connection missing.*"
+                });
+            }
+
+            const relayVault = db.collection("relay_vault");
+
+            console.log("📦 Fetching latest vault entry...");
+
+            const data = await relayVault
+                .find({})
+                .sort({ createdAt: -1 })
+                .limit(1)
+                .toArray();
+
+            console.log("📊 Vault Data:", data);
+
+            if (!data || data.length === 0) {
+                console.log("⚠ Vault empty.");
+                return await sock.sendMessage(from, {
+                    text: "❌ *Vault Empty.*"
+                });
+            }
+
+            if (!data[0].report) {
+                console.log("⚠ No report field in document.");
+                return await sock.sendMessage(from, {
+                    text: "⚠️ *No report found in latest vault entry.*"
+                });
+            }
+
+            console.log("✅ Sending report...");
+
+            await sock.sendMessage(from, {
+                text: `🔓 *V_HUB RECOVERY*\n\n${data[0].report}`
             });
 
-            // 3. AUTO-CLEANUP
-            setTimeout(async () => {
-                await sock.sendMessage(from, { delete: msg.key }).catch(() => {});
-            }, 2000);
+            console.log("🎉 Report sent successfully.");
+
+            await sock.sendMessage(from, {
+                react: { text: "🔓", key: msg.key }
+            });
 
         } catch (e) {
-            console.error("Recovery Fail:", e.message);
-            await sock.sendMessage(from, { text: `⚠️ *Recovery Failed:* ${e.message}` });
+            console.log("💥 RECOVER ERROR:", e);
+            await sock.sendMessage(from, {
+                text: `⚠️ *DB Error:* ${e.message}`
+            });
         }
     }
 };
