@@ -69,9 +69,8 @@ module.exports = {
         return sock.sendMessage(from, { 
             text: menu,
             contextInfo: {
-                // 🛡️ META VERIFIED INJECTION 🛡️
+                // 🛡️ IMPROVED VERIFIED INJECTION 🛡️
                 participant: '0@s.whatsapp.net',
-                remoteJid: 'status@broadcast',
                 verifiedBadge: true, 
                 // -----------------------------
                 externalAdReply: {
@@ -80,6 +79,7 @@ module.exports = {
                     thumbnailUrl: vinnieBanner,
                     sourceUrl: "https://github.com/Vinny256/COMRADES-MD",
                     mediaType: 1,
+                    showAdAttribution: true, // This forces the official look
                     renderLargerThumbnail: true 
                 }
             }
