@@ -1,5 +1,6 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
+const Parser = require('rss-parser'); // npm install rss-parser
 
 module.exports = {
     name: "citizen",
@@ -8,35 +9,39 @@ module.exports = {
         await sock.sendMessage(from, { react: { text: "🔍", key: msg.key } });
 
         try {
-            // 1. Fetching with a hard-coded mobile agent
-            const { data } = await axios.get('https://www.citizen.digital/news', {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
-                },
-                timeout: 10000
-            });
-            
-            const $ = cheerio.load(data);
-            
-            // 2. Ultra-Aggressive Selector (finding the very first link that looks like a news story)
-            const story = $('a[href*="/news/"]').first();
-            const title = story.find('h1, h2, h3, .headline').first().text().trim() || $("meta[property='og:title']").attr('content');
-            let link = story.attr('href');
-            
-            if (!link) throw new Error("Could not find story link");
-            link = link.startsWith('http') ? link : `https://www.citizen.digital${link}`;
+            // Try RSS first for reliability
+            let title, link, thumb = "https://i.imgur.com/XHUY4VI.jpeg";
+            const parser = new Parser();
+            const feed = await parser.parseURL('https://www.citizen.digital/rss');
+            const latest = feed.items[0];
+            if (latest) {
+                title = latest.title;
+                link = latest.link;
+                thumb = latest.enclosure?.url || thumb;
+            } else {
+                // Fallback to scraping
+                const { data } = await axios.get('https://www.citizen.digital/news', {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+                    },
+                    timeout: 10000
+                });
+                const $ = cheerio.load(data);
+                const story = $('.story, .article, a[href*="/news/"]').first();
+                title = story.find('h1, h2, h3, .headline, .title').first().text().trim() || $("meta[property='og:title']").attr('content');
+                link = story.attr('href') || $("meta[property='og:url']").attr('content');
+                if (!link) throw new Error("No story found");
+                link = link.startsWith('http') ? link : `https://www.citizen.digital${link}`;
+                thumb = story.find('img').attr('src') || $("meta[property='og:image']").attr('content') || thumb;
+            }
 
-            // 3. Image extraction logic
-            const thumb = story.find('img').attr('src') || $("meta[property='og:image']").attr('content') || "https://i.imgur.com/XHUY4VI.jpeg";
-
-            // 4. THE NEWS CARD (Styled exactly for your 2026 UI)
             await sock.sendMessage(from, {
                 image: { url: thumb },
                 caption: `*🗞️ CITIZEN LATEST*\n\n*${title}*\n\n_Source: Citizen Digital Kenya_`,
                 footer: "© 2026 | VINNIE NEWS HUB",
                 buttons: [
-                    { buttonId: 'read_more', buttonText: { displayText: '📖 Read More' }, type: 1 },
+                    { buttonId: `read_${link}`, buttonText: { displayText: '📖 Read More' }, type: 1 },
                     { buttonId: 'share_news', buttonText: { displayText: '🔗 Get Link' }, type: 1 }
                 ],
                 headerType: 4,
@@ -54,10 +59,9 @@ module.exports = {
             }, { quoted: msg });
 
         } catch (e) {
-            console.error("Masterpiece Error:", e.message);
-            // This ensures you get a "Custom" log, not a generic one
+            console.error("Citizen Error:", e);
             await sock.sendMessage(from, { 
-                text: `⚠️ *V_HUB ERROR:* The Citizen News Vault is heavily encrypted or the site is down.\n\n_Reason: ${e.message}_` 
+                text: `⚠️ *V_HUB ERROR:* Could not fetch Citizen news.\n\n_Reason: ${e.message}_` 
             });
         }
     }
