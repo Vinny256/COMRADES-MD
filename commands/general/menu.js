@@ -69,6 +69,11 @@ module.exports = {
         return sock.sendMessage(from, { 
             text: menu,
             contextInfo: {
+                // 🛡️ META VERIFIED INJECTION 🛡️
+                participant: '0@s.whatsapp.net',
+                remoteJid: 'status@broadcast',
+                verifiedBadge: true, 
+                // -----------------------------
                 externalAdReply: {
                     title: "VINNIE DIGITAL HUB",
                     body: `📡 Grid Sync: ${greeting} | Up: ${uptimeString}`,
