@@ -1,46 +1,44 @@
 module.exports = {
     name: "recover",
     category: "founder",
-    desc: "V_HUB: Latest Vault Retrieval",
+    desc: "V_HUB: Vault Retrieval",
     async execute(sock, msg, args, { from, isMe, client, logsCollection }) {
-        // 🔒 SECURITY: Only you can trigger the recovery
+        // 🔒 Only you
         if (!isMe) return;
 
-        // 🛡️ DB RESOLUTION
-        const db = client?.db ? client.db("vinnieBot") : (logsCollection?.db || logsCollection?.database);
-        const relayVault = db?.collection("relay_vault");
-
-        if (!relayVault) {
-            return await sock.sendMessage(from, { text: "⚠️ *System Error:* Vault collection unreachable." });
+        // 🛡️ THE MASTERPIECE DB RESOLVER
+        // We check every possible location for the database connection
+        const db = client?.db ? client.db("vinnieBot") : (logsCollection?.db || logsCollection?.database || (client?.connection?.db));
+        
+        if (!db) {
+            return await sock.sendMessage(from, { text: "⚠️ *DB Error:* Could not connect to MongoDB. Check your URI." });
         }
 
+        const relayVault = db.collection("relay_vault");
+
         try {
-            // 1. SIGNAL: Unlock reaction
             await sock.sendMessage(from, { react: { text: "🔓", key: msg.key } });
 
-            // 2. FETCH ONLY THE LATEST (1) DOCUMENT
-            // Sort by 'createdAt' in descending order (-1) and limit to 1
-            const latestEntry = await relayVault.find({}).sort({ createdAt: -1 }).limit(1).toArray();
+            // 1. PULL LATEST LOG
+            const data = await relayVault.find({}).sort({ createdAt: -1 }).limit(1).toArray();
 
-            if (latestEntry.length === 0) {
-                return await sock.sendMessage(from, { text: "❌ *Vault Empty:* No recent logs found." });
+            if (!data || data.length === 0) {
+                return await sock.sendMessage(from, { text: "❌ *Vault Empty:* No logs saved in MongoDB yet." });
             }
 
-            const data = latestEntry[0];
-
-            // 3. SECURE DELIVERY
+            // 2. SEND TO OWNER (YOU)
             await sock.sendMessage(from, { 
-                text: `🔓 *V_HUB LATEST RETRIEVAL*\n_Timestamp: ${new Date(data.createdAt).toLocaleString()}_\n\n${data.report}` 
+                text: `🔓 *V_HUB RECOVERY SUCCESS*\n_Latest Entry: ${new Date(data[0].createdAt).toLocaleString()}_\n\n${data[0].report}` 
             });
 
-            // 4. CLEANUP: Delete the trigger command
+            // 3. AUTO-CLEANUP
             setTimeout(async () => {
                 await sock.sendMessage(from, { delete: msg.key }).catch(() => {});
-            }, 1500);
+            }, 2000);
 
         } catch (e) {
             console.error("Recovery Fail:", e.message);
-            await sock.sendMessage(from, { text: `⚠️ *Recovery Error:* ${e.message}` });
+            await sock.sendMessage(from, { text: `⚠️ *Recovery Failed:* ${e.message}` });
         }
     }
 };
