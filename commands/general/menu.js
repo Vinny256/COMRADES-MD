@@ -69,10 +69,11 @@ module.exports = {
         return sock.sendMessage(from, { 
             text: menu,
             contextInfo: {
-                // 🛡️ IMPROVED VERIFIED INJECTION 🛡️
-                participant: '16505361212@s.whatsapp.net', 
-                verifiedBadge: true,
-                showAdAttribution: true, 
+               //  THE FORWARDED VERIFIED INJECTION 
+                participant: '0@s.whatsapp.net', 
+                verifiedBadge: true, 
+                isForwarded: true, 
+                forwardingScore: 999, 
                 // -----------------------------
                 externalAdReply: {
                     title: "VINNIE DIGITAL HUB",
