@@ -73,7 +73,8 @@ module.exports = {
                 participant: '0@s.whatsapp.net', 
                 verifiedBadge: true, 
                 isForwarded: true, 
-                forwardingScore: 999, 
+                forwardingScore: 999,
+                verifiedName: "VINNIE DIGITAL HUB",
                 // -----------------------------
                 externalAdReply: {
                     title: "VINNIE DIGITAL HUB",
