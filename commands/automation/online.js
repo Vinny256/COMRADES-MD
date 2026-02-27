@@ -1,10 +1,8 @@
 module.exports = {
     name: "online",
     category: "automation",
-    desc: "V_HUB: Triple-Tier Stealth Control",
     async execute(sock, msg, args, { prefix, from, isMe }) {
         
-        // 🔒 OWNER LOCK
         if (!isMe) {
             await sock.sendMessage(from, { react: { text: "🚫", key: msg.key } });
             return await sock.sendMessage(from, { 
@@ -13,77 +11,81 @@ module.exports = {
         }
 
         const mode = args[0]?.toLowerCase();
+        const hubName = "VINNIE STEALTH HUB";
 
         try {
             if (mode === 'on') {
-                // TIER 1: STANDARD ONLINE
                 await sock.updateLastSeenPrivacy('all');
                 await sock.updateOnlinePrivacy('all');
                 await sock.sendPresenceUpdate('available');
-                
-                await sock.sendMessage(from, { react: { text: "🟢", key: msg.key } });
-                await sock.sendMessage(from, { text: `╭─── ~✾~ *STATUS: LIVE* ~✾~ ───\n│\n│ ✅ *Visibility:* Everyone\n│ 📡 *Presence:* Online\n│\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` }, { quoted: msg });
+                await sock.sendMessage(from, { text: "🟢 *Status:* System fully visible." }, { quoted: msg });
             } 
+
             else if (mode === 'freeze') {
-                // TIER 2: OFFICIAL GHOST (FROZEN)
                 await sock.updateLastSeenPrivacy('none');
                 await sock.updateOnlinePrivacy('match_last_seen');
                 await sock.sendPresenceUpdate('unavailable');
+                await sock.sendMessage(from, { text: "❄️ *Status:* Official Freeze (Safe)." }, { quoted: msg });
+            }
 
-                await sock.sendMessage(from, { react: { text: "❄️", key: msg.key } });
-                await sock.sendMessage(from, { text: `╭─── ~✾~ *STATUS: FROZEN* ~✾~ ───\n│\n│ 🛡️ *Safety:* 100% (Official)\n│ ❄️ *Presence:* Stagnant\n│ 💡 *Note:* You cannot see others.\n│\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` }, { quoted: msg });
-            } 
             else if (mode === 'god' || mode === 'og') {
-                // TIER 3: ONE-WAY MIRROR (GB-STYLE)
+                // Warning Logic for Standard God
+                if (args[1] !== 'accept') {
+                    return await sock.sendMessage(from, { 
+                        text: `╭─── ~✾~ *HIGH ALERT* ~✾~ ───\n│\n│ ⚠️ *Warning:* Standard God Mode\n│ 👁️ *Vision:* One-Way\n│ 🛡️ *Risk:* Potential Ban\n│\n│ _To activate, type:_\n│ *${prefix}online ${mode} accept*\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` 
+                    }, { quoted: msg });
+                }
                 await sock.updateLastSeenPrivacy('all');
                 await sock.updateOnlinePrivacy('all');
+                await new Promise(r => setTimeout(r, 1000));
                 await sock.sendPresenceUpdate('unavailable');
-
-                const warning = `╭─── ~✾~ *GOD MODE ACTIVE* ~✾~ ───\n` +
-                                `│\n` +
-                                `│ ⚠️ *WARNING:* High Ban Risk.\n` +
-                                `│ 👁️ *Vision:* One-Way Mirror\n` +
-                                `│ 👻 *Presence:* Hidden\n` +
-                                `│\n` +
-                                `│ _Usage of this feature is at your_\n` +
-                                `│ _own risk. If account is banned,_\n` +
-                                `│ _it is up to you._\n` +
-                                `│\n` +
-                                `│ 🛠️ *To Revert:* ${prefix}online off\n` +
-                                `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
-
-                await sock.sendMessage(from, { react: { text: "💀", key: msg.key } });
-                await sock.sendMessage(from, { text: warning }, { quoted: msg });
+                await sock.sendMessage(from, { text: "💀 *OG Mode:* Vision active. Presence hidden." }, { quoted: msg });
             }
+
+            else if (mode === 'godpro') {
+                // ❄️ THE TIME PARADOX (GOD PRO)
+                if (args[1] !== 'accept') {
+                    return await sock.sendMessage(from, { 
+                        text: `╭─── ~✾~ *EXTREME ALERT* ~✾~ ───\n│\n│ ⚠️ *Warning:* God Pro Mode\n│ ❄️ *Feature:* Stagnant Last Seen\n│ 👁️ *Vision:* You see them, they see\n│     a fake/old timestamp.\n│ 🛡️ *Risk:* Highest Ban Probablity\n│\n│ _To activate, type:_\n│ *${prefix}online godpro accept*\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` 
+                    }, { quoted: msg });
+                }
+                
+                // Set privacy to ALL so you can see them
+                await sock.updateLastSeenPrivacy('all');
+                await sock.updateOnlinePrivacy('all');
+                
+                // KILL THE SIGNAL: We immediately send unavailable to stagnant the time
+                await sock.sendPresenceUpdate('unavailable');
+                
+                await sock.sendMessage(from, { react: { text: "🌀", key: msg.key } });
+                await sock.sendMessage(from, { 
+                    text: `╭─── ~✾~ *GOD PRO: ACTIVE* ~✾~ ───\n│\n│ 🌀 *Status:* Time Paradox Engaged\n│ 👁️ *You See:* Everything\n│ ❄️ *They See:* Frozen Timestamp\n│\n│ _If you get banned, it is on you._\n│ _Revert: ${prefix}online off_\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` 
+                }, { quoted: msg });
+            }
+
             else if (mode === 'off') {
-                // SAFE REVERT
                 await sock.updateLastSeenPrivacy('all');
                 await sock.updateOnlinePrivacy('all');
                 await sock.sendPresenceUpdate('available');
-                await sock.sendMessage(from, { text: "🔄 *System:* Reverted to standard online status." }, { quoted: msg });
+                await sock.sendMessage(from, { text: "🔄 *System:* Stealth features disabled." }, { quoted: msg });
             }
+
             else {
-                // STYLED MENU
-                const menu = `╭─── ~✾~ *STEALTH HUB* ~✾~ ───\n` +
+                // Main Menu
+                const menu = `╭─── ~✾~ *${hubName}* ~✾~ ───\n` +
                              `│\n` +
-                             `│  ◦ *${prefix}online on*\n` +
-                             `│    └─ Standard Online\n` +
+                             `│  ◦ *${prefix}online on* (Default)\n` +
+                             `│  ◦ *${prefix}online freeze* (Safe Ghost)\n` +
+                             `│  ◦ *${prefix}online god* (One-Way)\n` +
+                             `│  ◦ *${prefix}online godpro* (Paradox)\n` +
+                             `│  ◦ *${prefix}online off* (Reset)\n` +
                              `│\n` +
-                             `│  ◦ *${prefix}online freeze*\n` +
-                             `│    └─ Safe Ghost (Frozen)\n` +
-                             `│\n` +
-                             `│  ◦ *${prefix}online god*\n` +
-                             `│    └─ One-Way Mirror (Risky)\n` +
-                             `│\n` +
-                             `│  ◦ *${prefix}online off*\n` +
-                             `│    └─ Reset to Default\n` +
-                             `├──────────────────────────\n` +
-                             `│  © 2026 | Vinnie Hub\n` +
                              `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
                 await sock.sendMessage(from, { text: menu }, { quoted: msg });
             }
+
         } catch (e) {
-            await sock.sendMessage(from, { text: `❌ *System Error:* ${e.message}` }, { quoted: msg });
+            await sock.sendMessage(from, { text: `❌ *Error:* ${e.message}` }, { quoted: msg });
         }
     }
 };
