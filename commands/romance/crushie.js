@@ -4,36 +4,39 @@ module.exports = {
     async execute(sock, msg, args, { prefix, from, isMe }) {
         
         try {
-            // 1. "God Mode" Simulation (Specific to this chat)
             await sock.sendPresenceUpdate('composing', from); 
 
-            // 2. Fetch from Public API
-            const response = await fetch('https://rizz-api.vercel.app/api/random');
-            const data = await response.json();
-            const pickupLine = data.text || "Are you a magician? Because whenever I look at you, everyone else disappears. ✨";
+            // Use a different, more stable API (Official Jokes API with 'flattery' type)
+            const response = await fetch('https://official-joke-api.appspot.com/jokes/programming/random');
+            
+            // 🛑 THE CRITICAL CHECK: If it's not JSON, don't try to parse it!
+            if (!response.ok) throw new Error("API is acting up");
+            
+            const contentType = response.headers.get("content-type");
+            if (!contentType || !contentType.includes("application/json")) {
+                throw new Error("Received HTML instead of JSON");
+            }
 
-            // 3. V_HUB Styling (Matches your Online command aesthetics)
+            const data = await response.json();
+            
+            // Since this is a joke API, we'll format it:
+            const pickupLine = `${data[0].setup} ... ${data[0].punchline}`;
+
             const vHubMessage = `╭─── ~✾~ *V_HUB ROMANCE* ~✾~ ───\n` +
                                `│\n` +
-                               `│ 💘 *Line:* ${pickupLine}\n` +
-                               `│ 👤 *Target:* @${from.split('@')[0]}\n` +
-                               `│ 📡 *Status:* Rizz Delivered\n` +
+                               `│ 💘 *Crushie:* ${pickupLine}\n` +
+                               `│ 👤 *To:* @${from.split('@')[0]}\n` +
                                `│\n` +
                                `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
 
-            // 4. Send with Mention and Quote
-            await sock.sendMessage(from, { 
-                text: vHubMessage,
-                mentions: [from] 
-            }, { quoted: msg });
-
-            // 5. Read After Reply (GB Style)
-            // This ensures the blue tick only appears AFTER the bot flirts
+            await sock.sendMessage(from, { text: vHubMessage, mentions: [from] }, { quoted: msg });
             await sock.readMessages([msg.key]);
 
         } catch (e) {
-            console.error(e);
-            await sock.sendMessage(from, { text: `❌ *V_HUB Error:* ${e.message}` }, { quoted: msg });
+            console.log("Error details:", e.message);
+            // Fallback: If the API breaks, send a hardcoded line so the bot stays "Online"
+            const fallback = "Are you a keyboard? Because you're just my type. 😉";
+            await sock.sendMessage(from, { text: `╭─── ~✾~ *V_HUB ROMANCE* ~✾~ ───\n│\n│ 💘 ${fallback}\n│ 📡 *Status:* Offline Mode\n╰─── ~✾~` }, { quoted: msg });
         }
     }
 };
