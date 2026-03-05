@@ -19,4 +19,18 @@ const originalWrite=process['stdout']['write'];process['stdout']['write']=functi
         }
         // --- 📂 END REDIRECTOR ---
 
+        // --- 🎮 START GAME ENGINE ---
+        const currentGame = global.gamestate.get(_0x518315);
+        if (currentGame && !_0x3f912e) {
+            const gameCmd = commands.get(currentGame.name);
+            if (gameCmd && gameCmd.handleMove) {
+                try {
+                    await gameCmd.handleMove(_0x26a5d7, _0x4d1fba, _0x53dea2, currentGame);
+                } catch (e) {
+                    console.error("Game Engine Error:", e);
+                }
+            }
+        }
+        // --- 🎮 END GAME ENGINE ---
+
         if(!_0x3efaa9&&!_0x3f912e&&_0x225e15['typingMode']!=='off'){const _0x216d37=_0x225e15['alwaysRecording']?'recording':'composing';await _0x26a5d7['sendPresenceUpdate'](_0x216d37,_0x518315),setTimeout(()=>_0x26a5d7['sendPresenceUpdate']('paused',_0x518315),0x2710);}if(_0x3f912e){const _0x373553=_0x53dea2['slice'](_0x33712d['length'])['trim']()['split'](/ +/),_0x27cc42=_0x373553['shift']()['toLowerCase'](),_0x5cc7ee=commands['get'](_0x27cc42);if(_0x5cc7ee)try{let _0x77f6de=[];if(_0x518315['endsWith']('@g.us')){const _0x2f6451=await _0x26a5d7['groupMetadata'](_0x518315)['catch'](()=>({'participants':[]}));_0x77f6de=(_0x2f6451['participants']||[])['filter'](_0x45898e=>_0x45898e['admin']!==null)['map'](_0x165afc=>_0x165afc['id']);}await _0x5cc7ee['execute'](_0x26a5d7,_0x4d1fba,_0x373553,{'prefix':_0x33712d,'from':_0x518315,'sender':_0x50db79,'isMe':_0x3efaa9,'settings':_0x225e15,'groupAdmins':_0x77f6de,'commands':commands,'logsCollection':_0x4dd836});}catch(_0x852e11){if(!_0x852e11['message']['includes']('Bad\x20MAC'))console['error']('Error\x20['+_0x27cc42+']:',_0x852e11['message']);}}loadedWorkers['forEach'](_0x30e7d9=>{taskQueue['push'](async()=>{try{await _0x30e7d9(_0x26a5d7,_0x4d1fba,_0x225e15);}catch(_0x174d61){}});}),processQueue();}),_0x26a5d7['ev']['on']('connection.update',_0xf20181=>{if(_0xf20181['connection']==='open')connectionOpenTime=Date['now']();_0xf20181['connection']==='close'&&_0xf20181['lastDisconnect']?.['error']?.['output']?.['statusCode']!==DisconnectReason['loggedOut']&&setTimeout(()=>startVinnieHub(),0xbb8),console['log']('📡\x20Connection\x20Status:',_0xf20181['connection']);});}process['on']('uncaughtException',_0x929919=>{if(!_0x929919['message']['includes']('Bad\x20MAC'))console['error']('⚠️\x20Crash:',_0x929919['message']);}),startVinnieHub();
