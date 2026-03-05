@@ -26,7 +26,16 @@ module.exports = {
 
         global.gamestate.set(from, gameData);
 
-        const joinMsg = `┏━━━━━ ✿ *WCG SURVIVAL* ✿ ━━━━━┓\n┃\n┃  🎮 *Host:* ${player1Name}\n┃  🏆 *Mode:* PvP Survival\n┃\n┃  👉 *Type "join" to enter!*\n┃  ⏳ *Joining ends in:* 60s\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        const joinMsg = `╭─── ~✾~ *WCG SURVIVAL* ~✾~ ───\n` +
+                        `│\n` +
+                        `│ 🎮 *Host:* ${player1Name}\n` +
+                        `│ 🏆 *Mode:* PvP Survival\n` +
+                        `│\n` +
+                        `│ 👉 *Type "join" to enter!*\n` +
+                        `│ ⏳ *Joining ends in:* 60s\n` +
+                        `│\n` +
+                        `╰─── ~✾~ *V_HUB GAMES* ~✾~ ───`;
+        
         await sock.sendMessage(from, { text: joinMsg });
 
         // 1 Minute Join Timeout
@@ -35,7 +44,7 @@ module.exports = {
             if (currentGame && currentGame.status === "WAITING") {
                 if (currentGame.players.length < 2) {
                     global.gamestate.delete(from);
-                    await sock.sendMessage(from, { text: "❌ Game cancelled: Not enough players joined." });
+                    await sock.sendMessage(from, { text: "❌ *V_HUB:* Game cancelled: Not enough players joined." });
                 } else {
                     startGame(sock, from, currentGame);
                 }
@@ -48,7 +57,7 @@ module.exports = {
         const sender = msg.key.participant || from;
         const input = text.trim().toUpperCase();
 
-        // --- JOIN LOGIC (Any Case) ---
+        // --- JOIN LOGIC (Triggered by anyone typing "join") ---
         if (game.status === "WAITING" && input === "JOIN") {
             if (game.players.includes(sender)) return;
             
@@ -57,7 +66,14 @@ module.exports = {
             game.playerNames.push(pName);
             game.scores[sender] = 0;
             
-            return sock.sendMessage(from, { text: `✅ *${pName}* joined the arena!` });
+            await sock.sendMessage(from, { text: `✅ *${pName}* has entered the arena!` });
+
+            // 🚀 AUTO-START: Start immediately if 2 players are present
+            if (game.players.length >= 2) {
+                clearTimeout(game.timer); // Stop the 60s join countdown
+                startGame(sock, from, game);
+            }
+            return;
         }
 
         // --- GAMEPLAY LOGIC ---
@@ -114,7 +130,7 @@ module.exports = {
     }
 };
 
-// --- HELPERS ---
+// --- HELPERS (Keep these outside exports) ---
 
 async function checkWord(word) {
     try {
@@ -128,7 +144,7 @@ async function checkWord(word) {
 function startGame(sock, from, game) {
     game.status = "PLAYING";
     const user = game.playerNames[0];
-    const msg = `🚩 *GAME STARTING!*\n\n👤 *First Player:* ${user}\n🎯 *Goal:* Name ${game.requiredWords} words\n⏳ You have 15s per word!\n\n👉 *Type any English word to begin:*`;
+    const msg = `🚩 *V_HUB: GAME STARTING!*\n\n👤 *First Player:* ${user}\n🎯 *Goal:* Name ${game.requiredWords} words\n⏳ You have 15s per word!\n\n👉 *Type any English word to begin:*`;
     sock.sendMessage(from, { text: msg });
     startTurnTimer(sock, from, game);
 }
@@ -144,7 +160,7 @@ function startTurnTimer(sock, from, game) {
         const winner = currentGame.playerNames[winnerIndex];
         const winScore = currentGame.scores[currentGame.players[winnerIndex]] || 0;
 
-        const endMsg = `⏰ *TIME OUT!*\n\n💀 ${loser} failed to respond in 15s!\n🏆 *WINNER:* ${winner}\n💰 *Final Points:* ${winScore}\n\n_Game Over._`;
+        const endMsg = `⏰ *TIME OUT!*\n\n💀 ${loser} failed to respond!\n🏆 *WINNER:* ${winner}\n💰 *Final Points:* ${winScore}\n\n_Game Over._`;
         
         await sock.sendMessage(from, { text: endMsg });
         global.gamestate.delete(from);
