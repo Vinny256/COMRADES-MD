@@ -15,29 +15,11 @@ module.exports = {
         const minutesUp = Math.floor((uptimeSeconds % 3600) / 60);
         const uptimeString = `${hoursUp}h ${minutesUp}m`;
 
-        // --- Header Configuration ---
         const hubName = "VINNIE DIGITAL HUB";
-        
-        let menu = `╭─── ~✾~ *${hubName}* ~✾~ ───\n`;
-        menu += `│\n`;
-        menu += `│  🌸 *${greeting},* ${msg.pushName || 'Comrade'}\n`;
-        menu += `│  ⚙️ *Prefix:* [ ${prefix} ]\n`;
-        menu += `│  📊 *Commands:* ${commands.size}\n`;
-        menu += `│  💧 *Impact:* Infinite\n`;
-        menu += `│\n`;
-        menu += `├────── 『 🛰️ STATUS 』 ──────\n`;
-        menu += `│\n`;
-        menu += `│  👤 *Owner:* Vinnie\n`;
-        menu += `│  🚀 *Platform:* Heroku\n`;
-        menu += `│  ⏳ *Uptime:* ${uptimeString}\n`;
-        menu += `│  🔐 *Mode:* ${settings.mode?.toUpperCase() || 'PUBLIC'}\n`;
-        menu += `│\n`;
-        menu += `├──────────────────────────\n`;
-        menu += `│\n`;
+        const vinnieBanner = "https://i.imgur.com/XHUY4VI.jpeg";
 
-        // Group commands by category
+        // --- Group commands by category ---
         const cats = {};
-        
         if (commands) {
             commands.forEach(cmd => {
                 const category = (cmd.category || "unassigned").toLowerCase();
@@ -45,44 +27,74 @@ module.exports = {
                 cats[category].push(cmd.name);
             });
         }
-
-        // --- Categories Section ---
         const sortedCategories = Object.keys(cats).sort();
-        
-        for (let cat of sortedCategories) {
-            menu += `│  *──『 ${cat.toUpperCase()} 』──*\n`;
-            cats[cat].forEach(cmdName => {
-                menu += `│    ◦ ${prefix}${cmdName}\n`;
+
+        let menu = `╭─── ~✾~ *${hubName}* ~✾~ ───\n`;
+        menu += `│\n`;
+        menu += `│  🌸 *${greeting},* ${msg.pushName || 'Comrade'}\n`;
+        menu += `│  📊 *Commands:* ${commands.size}\n`;
+        menu += `│  ⏳ *Uptime:* ${uptimeString}\n`;
+        menu += `│\n`;
+
+        // --- 📂 LOGIC: Folder Selection vs. Main Menu ---
+        const selection = args[0];
+
+        if (!selection || selection === "00") {
+            // --- MAIN MENU: List Folders ---
+            menu += `├────── 『 🛰️ CATEGORIES 』 ──────\n`;
+            menu += `│\n`;
+            sortedCategories.forEach((cat, index) => {
+                menu += `│  *[ ${index + 1} ]* ${cat.toUpperCase()}\n`;
             });
             menu += `│\n`;
+            menu += `│  💡 *Tip:* Type *${prefix}menu [number]*\n`;
+            menu += `│  _Example: ${prefix}menu 1_\n`;
+        } 
+        else if (!isNaN(selection)) {
+            // --- CATEGORY VIEW: List commands for specific folder ---
+            const catIndex = parseInt(selection) - 1;
+            const selectedCat = sortedCategories[catIndex];
+
+            if (selectedCat) {
+                menu += `├────── 『 📂 ${selectedCat.toUpperCase()} 』 ──────\n`;
+                menu += `│\n`;
+                cats[selectedCat].forEach(cmdName => {
+                    menu += `│  ◦ ${prefix}${cmdName}\n`;
+                });
+                menu += `│\n`;
+                menu += `│  *[ 0 ]* Back to Folders\n`;
+                menu += `│  *[ 00 ]* Main Menu\n`;
+            } else if (selection === "0") {
+                // Return to categories (handled by re-running menu without args)
+                return this.execute(sock, msg, [], { prefix, commands, from, settings });
+            } else {
+                menu += `│  ❌ *Invalid Category Number*\n`;
+                menu += `│  Type *${prefix}menu* for list.\n`;
+            }
         }
-        
+
         // --- Footer Section ---
+        menu += `│\n`;
         menu += `├──────────────────────────\n`;
-        menu += `│    © 2026 | Vinnie Hub\n`;
+        menu += `│   © 2026 | Vinnie Hub\n`;
         menu += `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
 
-        // --- 🖼️ OPTIMIZED IMGUR LINK ---
-        const vinnieBanner = "https://i.imgur.com/XHUY4VI.jpeg";
-
-        // --- 🌸 SEND WITH VANTAGE STYLE ---
+        // --- 🌸 SEND WITH VANTAGE STYLE (Keeping all your original styling) ---
         return sock.sendMessage(from, { 
             text: menu,
             contextInfo: {
-               //  THE FORWARDED VERIFIED INJECTION 
                 participant: '0@s.whatsapp.net', 
                 verifiedBadge: true, 
                 isForwarded: true, 
                 forwardingScore: 999,
                 verifiedName: "VINNIE DIGITAL HUB",
-                // -----------------------------
                 externalAdReply: {
                     title: "VINNIE DIGITAL HUB",
                     body: `📡 Grid Sync: ${greeting} | Up: ${uptimeString}`,
                     thumbnailUrl: vinnieBanner,
                     sourceUrl: "https://github.com/Vinny256/COMRADES-MD",
                     mediaType: 1,
-                    showAdAttribution: true, // This forces the official look
+                    showAdAttribution: true, 
                     renderLargerThumbnail: true 
                 }
             }
