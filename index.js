@@ -35,10 +35,7 @@ async function processQueue() {
     if (isProcessing || taskQueue.length === 0) return;
     isProcessing = true;
     const task = taskQueue.shift();
-    try {
-        await task();
-        await new Promise(res => setTimeout(res, 1000)); 
-    } catch (e) { }
+    try { await task(); await new Promise(res => setTimeout(res, 1000)); } catch (e) { }
     isProcessing = false;
     processQueue();
 }
@@ -59,7 +56,10 @@ const loadResources = () => {
                 else if (file.endsWith('.js')) {
                     try {
                         const command = require(fullPath);
-                        if (command.name) commands.set(command.name, command);
+                        if (command.name) {
+                            if (Array.isArray(command.name)) command.name.forEach(n => commands.set(n, command));
+                            else commands.set(command.name, command);
+                        }
                     } catch (e) { console.log(`❌ Cmd Error: ${file}`); }
                 }
             });
@@ -97,6 +97,7 @@ async function startVinnieHub() {
         }
     } catch (err) { }
 
+    // --- 🛠️ SESSION HEALING & RECOVERY ---
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
         if (sessionID?.startsWith('VINNIE~')) {
@@ -148,16 +149,14 @@ async function startVinnieHub() {
         const sender = msg.key.participant || from;
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
-        // --- 📊 LOGGING & DB LOGS ---
-        if (!msg.key.fromMe) {
-            console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
-            try {
-                await client.db("vinnieBot").collection("logs").insertOne({
-                    name: msg.pushName || "User", phone: sender.split('@')[0],
-                    message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
-                });
-            } catch (e) {}
-        }
+        // --- 📊 GLOBAL LOGGING (Everyone) ---
+        console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
+        try {
+            await client.db("vinnieBot").collection("logs").insertOne({
+                name: msg.pushName || "User", phone: sender.split('@')[0],
+                message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
+            });
+        } catch (e) {}
 
         // --- 👁️ STATUS VIEW ---
         if (from === 'status@broadcast') {
@@ -168,24 +167,23 @@ async function startVinnieHub() {
             return;
         }
 
-        if (settings.mode === 'private' && !isMe) return;
+        // --- 🎙️ NUCLEAR PRESENCE (Every message triggers 1 min recording/typing) ---
+        if (!msg.key.fromMe && settings.typingMode !== 'off') {
+            const action = settings.alwaysRecording ? 'recording' : 'composing';
+            console.log(`🎙️ Presence: ${action} triggered by ${msg.pushName}`);
+            await sock.sendPresenceUpdate(action, from);
+            setTimeout(() => sock.sendPresenceUpdate('paused', from), 60000);
+        }
 
-        const prefix = process.env.PREFIX || ".";
-        const isCommand = textContent.startsWith(prefix);
-
-        // --- 🔵 BLUE TICK (Works for Everyone) ---
+        // --- 🔵 NUCLEAR BLUE TICK ---
         if (settings.bluetick) {
             await sock.readMessages([msg.key]);
         }
 
-        // --- 🎙️ PRESENCE: RECORDING/TYPING (1 MINUTE) ---
-        if (!msg.key.fromMe && settings.typingMode !== 'off') {
-            const action = settings.alwaysRecording ? 'recording' : 'composing';
-            console.log(`🎙️ Presence: ${action} in ${from}`);
-            await sock.sendPresenceUpdate(action, from);
-            // Extends recording for 1 minute (60s)
-            setTimeout(() => sock.sendPresenceUpdate('paused', from), 60000);
-        }
+        if (settings.mode === 'private' && !isMe) return;
+
+        const prefix = process.env.PREFIX || ".";
+        const isCommand = textContent.startsWith(prefix);
 
         // --- 🕹️ GAME ENGINE ---
         const currentGame = global.gamestate.get(from);
@@ -206,7 +204,7 @@ async function startVinnieHub() {
             }
         }
 
-        // --- 🛠️ COMMAND EXECUTION ---
+        // --- 🛠️ UNIVERSAL COMMAND EXECUTION ---
         if (isCommand) {
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
@@ -219,6 +217,7 @@ async function startVinnieHub() {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
                         admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
                     }
+                    // FIXED: Now passes to the execute function for everyone
                     await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, groupAdmins: admins, commands, logsCollection: client.db("vinnieBot").collection("logs") });
                 } catch (err) { console.error(`Error [${cmdName}]:`, err.message); }
             }
@@ -236,11 +235,14 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', (u) => {
         if (u.connection === 'open') {
             connectionOpenTime = Date.now();
-            console.log("✅ VINNIE HUB: Connected & Encryption Synced");
+            console.log("✅ VINNIE HUB: Online & Encryption Synced");
         }
-        if (u.connection === 'close' && u.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
-            console.log("⚠️ Connection Lost: Healing Session...");
-            setTimeout(() => startVinnieHub(), 3000);
+        if (u.connection === 'close') {
+            const statusCode = u.lastDisconnect?.error?.output?.statusCode;
+            if (statusCode !== DisconnectReason.loggedOut) {
+                console.log("⚠️ Connection Lost: Attempting Reconnect...");
+                setTimeout(() => startVinnieHub(), 3000);
+            }
         }
     });
 }
