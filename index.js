@@ -1,9 +1,8 @@
-// --- 🛡️ THE GLOBAL BUSINESS SHIELD (NUCLEAR SILENCE) ---
+// --- 🛡️ THE GLOBAL BUSINESS SHIELD (RESTORED LOGS) ---
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
-    // SILENCE ERRORS BUT ALLOW 🚀 AND ✅ LOGS
-    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀') && !data.includes('✅')) {
+    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀') && !data.includes('✅') && !data.includes('🎙️')) {
         return; 
     }
     return originalWrite.call(process.stdout, chunk, encoding, callback);
@@ -24,9 +23,7 @@ const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 const statusCache = new Set(); 
 
-// --- 🧠 MEMORY TRACKERS ---
 if (!global.healingRetries) global.healingRetries = new Map(); 
-if (!global.lockedContacts) global.lockedContacts = new Set(); 
 if (!global.activeGames) global.activeGames = new Map(); 
 if (!global.gamestate) global.gamestate = new Map(); 
 
@@ -76,17 +73,11 @@ loadResources();
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 
-// --- 💾 DATABASE SYNC HEALER ---
 global.saveSettings = async () => {
     try {
         if (!fs.existsSync(settingsFile)) return;
         const settings = fs.readJsonSync(settingsFile);
-        const vinnieDB = client.db("vinnieBot");
-        await vinnieDB.collection("config").updateOne(
-            { id: "main_config" },
-            { $set: settings },
-            { upsert: true }
-        );
+        await client.db("vinnieBot").collection("config").updateOne({ id: "main_config" }, { $set: settings }, { upsert: true });
         console.log("💾 Settings Backed up to Cloud");
     } catch (e) { }
 };
@@ -96,20 +87,16 @@ async function startVinnieHub() {
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
-    // --- 📥 DATABASE CONNECTION & SETTINGS RECOVERY ---
     try {
         await client.connect();
-        console.log("📡 MongoDB Connected");
-        // Pull Settings from DB before starting to avoid Heroku Reset
         const dbConfig = await client.db("vinnieBot").collection("config").findOne({ id: "main_config" });
         if (dbConfig) {
             delete dbConfig._id; delete dbConfig.id;
             fs.writeJsonSync(settingsFile, dbConfig);
             console.log("📥 Settings Pulled from Cloud");
         }
-    } catch (err) { console.log("⚠️ DB Error: Using local settings."); }
+    } catch (err) { }
 
-    // --- 🛠️ SESSION HEALING ---
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
         if (sessionID?.startsWith('VINNIE~')) {
@@ -118,7 +105,7 @@ async function startVinnieHub() {
                 if (sessionRecord) {
                     const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
                     fs.writeFileSync(credsPath, decryptedData);
-                    console.log("✅ SESSION HEALED: Keys Synchronized");
+                    console.log("✅ SESSION HEALED");
                 }
             } catch (err) { }
         }
@@ -155,44 +142,52 @@ async function startVinnieHub() {
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         
-        const vinnieDB = client.db("vinnieBot");
-        const logsCollection = vinnieDB.collection("logs");
+        let settings = {};
+        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
+        
+        const sender = msg.key.participant || from;
+        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
-        // --- 📊 LIVE LOGGING ---
-        if (textContent && !msg.key.fromMe) {
-            console.log(`💬 Message: ${textContent} | From: ${msg.pushName || 'User'}`);
+        // --- 📊 LOGGING & DB LOGS ---
+        if (!msg.key.fromMe) {
+            console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
             try {
-                const senderJid = msg.key.participant || from;
-                await logsCollection.insertOne({
-                    name: msg.pushName || "Unknown User",
-                    phone: senderJid.split('@')[0],
-                    message: textContent,
-                    group: from.endsWith('@g.us') ? "Group" : "Private",
-                    timestamp: new Date()
+                await client.db("vinnieBot").collection("logs").insertOne({
+                    name: msg.pushName || "User", phone: sender.split('@')[0],
+                    message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
                 });
             } catch (e) {}
         }
 
-        // --- 👁️ STATUS VIEW + LOG ---
+        // --- 👁️ STATUS VIEW ---
         if (from === 'status@broadcast') {
             if (statusCache.has(msg.key.id) || (Date.now() - connectionOpenTime) < 10000) return;
             statusCache.add(msg.key.id);
-            console.log(`✨ Status Viewed: ${msg.pushName || 'Contact'}`);
+            console.log(`✨ Status Viewed: ${msg.pushName}`);
             await sock.readMessages([msg.key]);
             return;
         }
-
-        let settings = {};
-        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
-        const sender = msg.key.participant || from;
-        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
         if (settings.mode === 'private' && !isMe) return;
 
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
 
-        // --- 🕹️ GAME ENGINE (PRIORITY 1) ---
+        // --- 🔵 BLUE TICK (Works for Everyone) ---
+        if (settings.bluetick) {
+            await sock.readMessages([msg.key]);
+        }
+
+        // --- 🎙️ PRESENCE: RECORDING/TYPING (1 MINUTE) ---
+        if (!msg.key.fromMe && settings.typingMode !== 'off') {
+            const action = settings.alwaysRecording ? 'recording' : 'composing';
+            console.log(`🎙️ Presence: ${action} in ${from}`);
+            await sock.sendPresenceUpdate(action, from);
+            // Extends recording for 1 minute (60s)
+            setTimeout(() => sock.sendPresenceUpdate('paused', from), 60000);
+        }
+
+        // --- 🕹️ GAME ENGINE ---
         const currentGame = global.gamestate.get(from);
         if (currentGame && !isCommand) {
             const gameCmd = commands.get(currentGame.name);
@@ -202,7 +197,7 @@ async function startVinnieHub() {
             }
         }
 
-        // --- 📂 MENU REDIRECTOR (PRIORITY 2) ---
+        // --- 📂 MENU REDIRECTOR ---
         if (!isCommand && /^\d+$/.test(textContent.trim())) {
             const menuCmd = commands.get('menu');
             if (menuCmd) {
@@ -211,14 +206,7 @@ async function startVinnieHub() {
             }
         }
 
-        if (settings.bluetick) await sock.readMessages([msg.key]);
-        if (!isMe && !isCommand && settings.typingMode !== 'off') {
-            const action = settings.alwaysRecording ? 'recording' : 'composing';
-            await sock.sendPresenceUpdate(action, from);
-            setTimeout(() => sock.sendPresenceUpdate('paused', from), 10000);
-        }
-
-        // --- 🛠️ COMMANDS ---
+        // --- 🛠️ COMMAND EXECUTION ---
         if (isCommand) {
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
@@ -231,14 +219,12 @@ async function startVinnieHub() {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
                         admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
                     }
-                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, groupAdmins: admins, commands, logsCollection });
-                } catch (err) {
-                    if (!err.message.includes('Bad MAC')) console.error(`Error [${cmdName}]:`, err.message);
-                }
+                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, groupAdmins: admins, commands, logsCollection: client.db("vinnieBot").collection("logs") });
+                } catch (err) { console.error(`Error [${cmdName}]:`, err.message); }
             }
         }
 
-        // --- 🧱 WORKERS (In Queue) ---
+        // --- 🧱 WORKERS ---
         loadedWorkers.forEach(worker => {
             taskQueue.push(async () => {
                 try { await worker(sock, msg, settings); } catch (e) {}
@@ -250,20 +236,12 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', (u) => {
         if (u.connection === 'open') {
             connectionOpenTime = Date.now();
-            console.log("✅ VINNIE HUB: Connected & Sync Verified");
+            console.log("✅ VINNIE HUB: Connected & Encryption Synced");
         }
-        if (u.connection === 'close') {
-            const statusCode = u.lastDisconnect?.error?.output?.statusCode;
-            if (statusCode !== DisconnectReason.loggedOut) {
-                console.log("⚠️ Connection Lost: Healing Session...");
-                setTimeout(() => startVinnieHub(), 3000);
-            }
+        if (u.connection === 'close' && u.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+            console.log("⚠️ Connection Lost: Healing Session...");
+            setTimeout(() => startVinnieHub(), 3000);
         }
     });
 }
-
-process.on('uncaughtException', (err) => {
-    if (!err.message.includes('Bad MAC')) console.error("⚠️ Crash:", err.message);
-});
-
 startVinnieHub();
