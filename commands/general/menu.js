@@ -6,16 +6,14 @@ module.exports = {
         let greeting = hours < 12 ? "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌅" : hours < 17 ? "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏɴ ☀️" : hours < 21 ? "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌆" : "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌙";
 
         const uptimeSeconds = process.uptime();
-        const hoursUp = Math.floor(uptimeSeconds / 3600);
-        const minutesUp = Math.floor((uptimeSeconds % 3600) / 60);
-        const uptimeString = `${hoursUp}ʜ ${minutesUp}ᴍ`;
+        const uptimeString = `${Math.floor(uptimeSeconds / 3600)}ʜ ${Math.floor((uptimeSeconds % 3600) / 60)}ᴍ`;
 
         const hubName = "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ";
         
-        // 🔥 GITHUB RAW LINK (Upload your video to assets/menu.mp4 in your repo)
-        // Format: https://raw.githubusercontent.com/USER/REPO/BRANCH/PATH
+        // 🚀 GITHUB DIRECT LINK (Upload your menu video with song to assets/menu.mp4)
         const vinnieVideo = "https://raw.githubusercontent.com/Vinny256/COMRADES-MD/main/assets/menu.mp4"; 
         const vinnieThumb = "https://i.imgur.com/XHUY4VI.jpeg";
+        const channelLink = "https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h";
 
         const cats = {};
         commands.forEach(cmd => {
@@ -54,37 +52,37 @@ module.exports = {
 
         menu += `┃\n┣──────────────────────────\n┃   © 2026 | ᴠɪɴɴɪᴇ ʜᴜʙ\n┗━━━━━ ~✾~ *ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ* ~✾~ ━━━━━┛`;
 
-        // --- 🚀 GHOST REDIRECT ENGINE ---
+        // --- 🚀 NUCLEAR AUDIO-VIDEO ENGINE ---
         let videoContent = global.vinnieMenuCache ? global.vinnieMenuCache : { url: vinnieVideo };
 
         const sentMsg = await sock.sendMessage(from, { 
             video: videoContent,
             caption: menu,
-            gifPlayback: true,
+            mimetype: 'video/mp4',
             contextInfo: {
                 participant: '0@s.whatsapp.net', 
                 verifiedBadge: true, 
                 forwardingScore: 999,
                 isForwarded: true,
-                // --- 🛡️ RESTORED CHANNEL OPTIONS ---
+                // --- 🛡️ OFFICIAL CHANNEL SYNC ---
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363305104443156@newsletter',
+                    newsletterJid: '120363305104443156@newsletter', // Your unique Channel JID
                     newsletterName: "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ᴜᴘᴅᴀᴛᴇs",
                     serverMessageId: 1
                 },
                 externalAdReply: {
                     title: hubName,
-                    body: `sʏsᴛᴇᴍ ᴏɴʟɪɴᴇ | ᴜᴘᴛɪᴍᴇ: ${uptimeString}`,
+                    body: `ᴏꜰꜰɪᴄɪᴀʟ ᴜᴘᴅᴀᴛᴇs | ᴜᴘᴛɪᴍᴇ: ${uptimeString}`,
                     mediaType: 2,
                     thumbnailUrl: vinnieThumb,
-                    sourceUrl: "https://github.com/Vinny256/COMRADES-MD",
+                    sourceUrl: channelLink, // Your new channel link
                     showAdAttribution: true,
                     renderLargerThumbnail: true
                 }
             }
         }, { quoted: msg });
 
-        // Cache the video ID for instant 0.5s response next time
+        // Cache the video ID for instant delivery to the next user
         if (!global.vinnieMenuCache && sentMsg.message?.videoMessage) {
             global.vinnieMenuCache = sentMsg.message.videoMessage;
         }
