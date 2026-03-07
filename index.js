@@ -135,7 +135,7 @@ async function startVinnieHub() {
         const sender = msg.key.participant || from;
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
-        // --- 📊 ASYNC LOGGING (Background - Won't slow down response) ---
+        // --- 📊 ASYNC LOGGING ---
         if (!msg.key.fromMe) {
             console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
             client.db("vinnieBot").collection("logs").insertOne({
@@ -207,9 +207,13 @@ async function startVinnieHub() {
             }
         }
 
-        // --- 🧱 PARALLEL WORKERS (No Queue Delay) ---
+        // --- 🧱 SMART PARALLEL WORKERS (Fix for TypeError) ---
         loadedWorkers.forEach(worker => {
-            worker(sock, msg, settings).catch(e => {});
+            if (typeof worker === 'function') {
+                worker(sock, msg, settings).catch(e => {});
+            } else if (worker && typeof worker.execute === 'function') {
+                worker.execute(sock, msg, settings).catch(e => {});
+            }
         });
     });
 
