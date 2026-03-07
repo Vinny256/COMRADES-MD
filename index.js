@@ -1,65 +1,269 @@
-const originalWrite=process['stdout']['write'];process['stdout']['write']=function(_0x178b3e,_0xf4906d,_0x13e923){const _0x278083=_0x178b3e['toString']();if((_0x278083['includes']('SessionEntry')||_0x278083['includes']('Closing\x20session')||_0x278083['includes']('Bad\x20MAC')||_0x278083['includes']('Decrypted\x20message')||_0x278083['includes']('MessageCounterError'))&&!_0x278083['includes']('🚀'))return;return originalWrite['call'](process['stdout'],_0x178b3e,_0xf4906d,_0x13e923);},require('dotenv')['config']();const {default:makeWASocket,useMultiFileAuthState,DisconnectReason,makeCacheableSignalKeyStore,Browsers,fetchLatestBaileysVersion}=require('@whiskeysockets/baileys'),fs=require('fs-extra'),path=require('path'),pino=require('pino'),zlib=require('zlib'),{MongoClient}=require('mongodb'),NodeCache=require('node-cache'),silentLogger=pino({'level':'silent'}),commands=new Map(),settingsFile='./settings.json',msgRetryCounterCache=new NodeCache(),statusCache=new Set();if(!global['healingRetries'])global['healingRetries']=new Map();if(!global['lockedContacts'])global['lockedContacts']=new Set();if(!global['activeGames'])global['activeGames']=new Map();if(!global['gamestate'])global['gamestate']=new Map();const taskQueue=[];let isProcessing=![],connectionOpenTime=0x0;async function processQueue(){if(isProcessing||taskQueue['length']===0x0)return;isProcessing=!![];const _0x4e648a=taskQueue['shift']();try{await _0x4e648a(),await new Promise(_0x353ea1=>setTimeout(_0x353ea1,0x3e8));}catch(_0x5cfb5e){}isProcessing=![],processQueue();}const loadedWorkers=[],loadResources=()=>{fs['existsSync']('./workers')&&fs['readdirSync']('./workers')['filter'](_0x1cc13c=>_0x1cc13c['endsWith']('.js'))['forEach'](_0x405dbe=>{try{loadedWorkers['push'](require('./workers/'+_0x405dbe));}catch(_0x528763){console['log']('❌\x20Worker\x20Error:\x20'+_0x405dbe);}});const _0x3e3d58=path['join'](__dirname,'commands');if(fs['existsSync'](_0x3e3d58)){const _0x40e2dc=_0x51ebd2=>{fs['readdirSync'](_0x51ebd2)['forEach'](_0x5f478a=>{const _0x95dfcf=path['join'](_0x51ebd2,_0x5f478a);if(fs['statSync'](_0x95dfcf)['isDirectory']())_0x40e2dc(_0x95dfcf);else{if(_0x5f478a['endsWith']('.js'))try{const _0x24cdcb=require(_0x95dfcf);if(_0x24cdcb['name'])commands['set'](_0x24cdcb['name'],_0x24cdcb);}catch(_0x195626){console['log']('❌\x20Cmd\x20Error:\x20'+_0x5f478a);}}});};_0x40e2dc(_0x3e3d58);}console['log']('🚀\x20V-HUB\x20ONLINE\x20|\x20'+commands['size']+'\x20Commands\x20|\x20'+loadedWorkers['length']+'\x20Workers');};loadResources();const mongoUri=process.env.MONGO_URI,client=new MongoClient(mongoUri||'');
-
-// --- 💾 DATABASE SYNC LOGIC ---
-global['saveSettings']=async()=>{
-    try{
-        if(!fs['existsSync'](settingsFile))return;
-        const _0xf03d97=fs['readJsonSync'](settingsFile);
-        const _0x403700=client['db']('vinnieBot');
-        // Save settings to 'config' collection permanently
-        await _0x403700['collection']('config')['updateOne']({'id':'main_config'},{'$set':_0xf03d97},{'upsert':!![]});
-        console.log('✅ V-HUB: Settings synced to MongoDB');
-    }catch(_0x3fa5c7){ console.error('❌ DB Save Error:', _0x3fa5c7); }
+// --- 🛡️ THE GLOBAL BUSINESS SHIELD (NUCLEAR SILENCE) ---
+const originalWrite = process.stdout.write;
+process.stdout.write = function (chunk, encoding, callback) {
+    const data = chunk.toString();
+    // SILENCE ERRORS BUT ALLOW 🚀 AND ✅ LOGS
+    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀') && !data.includes('✅')) {
+        return; 
+    }
+    return originalWrite.call(process.stdout, chunk, encoding, callback);
 };
 
-async function startVinnieHub(){
-    // 1. Ensure DB connection is live
-    await client.connect().catch(() => console.log("⚠️ MongoDB Connection Failed"));
-    
-    // 2. LOAD SETTINGS FROM DB (This prevents the Heroku reset)
+require('dotenv').config();
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const fs = require('fs-extra');
+const path = require('path');
+const pino = require('pino');
+const zlib = require('zlib'); 
+const { MongoClient } = require("mongodb"); 
+const NodeCache = require("node-cache"); 
+
+const silentLogger = pino({ level: 'silent' });
+const commands = new Map();
+const settingsFile = './settings.json';
+const msgRetryCounterCache = new NodeCache(); 
+const statusCache = new Set(); 
+
+// --- 🧠 MEMORY TRACKERS ---
+if (!global.healingRetries) global.healingRetries = new Map(); 
+if (!global.lockedContacts) global.lockedContacts = new Set(); 
+if (!global.activeGames) global.activeGames = new Map(); 
+if (!global.gamestate) global.gamestate = new Map(); 
+
+const taskQueue = [];
+let isProcessing = false;
+let connectionOpenTime = 0; 
+
+async function processQueue() {
+    if (isProcessing || taskQueue.length === 0) return;
+    isProcessing = true;
+    const task = taskQueue.shift();
     try {
-        const dbConfig = await client.db('vinnieBot').collection('config').findOne({id: 'main_config'});
+        await task();
+        await new Promise(res => setTimeout(res, 1000)); 
+    } catch (e) { }
+    isProcessing = false;
+    processQueue();
+}
+
+const loadedWorkers = [];
+const loadResources = () => {
+    if (fs.existsSync('./workers')) {
+        fs.readdirSync('./workers').filter(f => f.endsWith('.js')).forEach(file => {
+            try { loadedWorkers.push(require(`./workers/${file}`)); } catch (e) { console.log(`❌ Worker Error: ${file}`); }
+        });
+    }
+    const cmdPath = path.join(__dirname, 'commands');
+    if (fs.existsSync(cmdPath)) {
+        const readCommands = (dir) => {
+            fs.readdirSync(dir).forEach(file => {
+                const fullPath = path.join(dir, file);
+                if (fs.statSync(fullPath).isDirectory()) { readCommands(fullPath); } 
+                else if (file.endsWith('.js')) {
+                    try {
+                        const command = require(fullPath);
+                        if (command.name) commands.set(command.name, command);
+                    } catch (e) { console.log(`❌ Cmd Error: ${file}`); }
+                }
+            });
+        };
+        readCommands(cmdPath);
+    }
+    console.log(`🚀 V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers`);
+};
+loadResources();
+
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri || "");
+
+// --- 💾 DATABASE SYNC HEALER ---
+global.saveSettings = async () => {
+    try {
+        if (!fs.existsSync(settingsFile)) return;
+        const settings = fs.readJsonSync(settingsFile);
+        const vinnieDB = client.db("vinnieBot");
+        await vinnieDB.collection("config").updateOne(
+            { id: "main_config" },
+            { $set: settings },
+            { upsert: true }
+        );
+        console.log("💾 Settings Backed up to Cloud");
+    } catch (e) { }
+};
+
+async function startVinnieHub() {
+    const authFolder = './auth_temp';
+    if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
+    const credsPath = path.join(authFolder, 'creds.json');
+
+    // --- 📥 DATABASE CONNECTION & SETTINGS RECOVERY ---
+    try {
+        await client.connect();
+        console.log("📡 MongoDB Connected");
+        // Pull Settings from DB before starting to avoid Heroku Reset
+        const dbConfig = await client.db("vinnieBot").collection("config").findOne({ id: "main_config" });
         if (dbConfig) {
             delete dbConfig._id; delete dbConfig.id;
             fs.writeJsonSync(settingsFile, dbConfig);
-            console.log('📥 V-HUB: Settings loaded from MongoDB');
+            console.log("📥 Settings Pulled from Cloud");
         }
-    } catch (e) { console.log("⚠️ Failed to load DB config, using local file."); }
+    } catch (err) { console.log("⚠️ DB Error: Using local settings."); }
 
-    const _0x2f7bb1='./auth_temp';if(!fs['existsSync'](_0x2f7bb1))fs['mkdirSync'](_0x2f7bb1);const _0x4b463b=path['join'](_0x2f7bb1,'creds.json');if(!fs['existsSync'](_0x4b463b)){const _0x37d587=process.env.SESSION_ID;if(_0x37d587?.['startsWith']('VINNIE~'))try{const _0x49e702=await client['db']('vinnieBot')['collection']('sessions')['findOne']({'sessionId':_0x37d587});if(_0x49e702){const _0x3bdb1f=zlib['inflateSync'](Buffer['from'](_0x49e702['data'],'base64'))['toString']();fs['writeFileSync'](_0x4b463b,_0x3bdb1f),console['log']('✅\x20Session\x20Recovered\x20from\x20DB');}}catch(_0x312da3){}}const {state:_0x1ee867,saveCreds:_0x3a4a40}=await useMultiFileAuthState(_0x2f7bb1),{version:_0x144a5e}=await fetchLatestBaileysVersion(),_0x26a5d7=makeWASocket({'auth':{'creds':_0x1ee867['creds'],'keys':makeCacheableSignalKeyStore(_0x1ee867['keys'],silentLogger)},'version':_0x144a5e,'logger':silentLogger,'browser':Browsers['ubuntu']('Chrome'),'markOnlineOnConnect':!![],'msgRetryCounterCache':msgRetryCounterCache,'keepAliveIntervalMs':0x7530});_0x26a5d7['ev']['on']('creds.update',async()=>{await _0x3a4a40();try{const _0x209de2=fs['readFileSync'](_0x4b463b),_0x36bb6f=zlib['deflateSync'](_0x209de2)['toString']('base64');await client['db']('vinnieBot')['collection']('sessions')['updateOne']({'sessionId':process.env.SESSION_ID},{'$set':{'data':_0x36bb6f,'updatedAt':new Date()}},{'upsert':!![]});}catch(_0x5700ac){}}),_0x26a5d7['ev']['on']('messages.upsert',async({messages:_0x39d9fd,type:_0x417ec5})=>{if(_0x417ec5!=='notify')return;let _0x4d1fba=_0x39d9fd[0x0];const _0x518315=_0x4d1fba['key']['remoteJid'];if(!_0x518315||_0x518315['endsWith']('@newsletter')||!_0x4d1fba['message'])return;const _0x1ef723=Object['keys'](_0x4d1fba['message'])[0x0],_0x53dea2=(_0x1ef723==='conversation'?_0x4d1fba['message']['conversation']:_0x1ef723==='extendedTextMessage'?_0x4d1fba['message']['extendedTextMessage']['text']:_0x4d1fba['message'][_0x1ef723]?.['caption'])||'',_0x115800=client['db']('vinnieBot'),_0x4dd836=_0x115800['collection']('logs');if(_0x53dea2&&!_0x4d1fba['key']['fromMe'])try{const _0x5a2e27=_0x4d1fba['key']['participant']||_0x518315;await _0x4dd836['insertOne']({'name':_0x4d1fba['pushName']||'Unknown\x20User','phone':_0x5a2e27['split']('@')[0x0],'message':_0x53dea2,'group':_0x518315['endsWith']('@g.us')?'Group':'Private','timestamp':new Date()});}catch(_0x16a186){}if(_0x518315==='status@broadcast'){if(statusCache['has'](_0x4d1fba['key']['id'])||Date['now']()-connectionOpenTime<0x2710)return;statusCache['add'](_0x4d1fba['key']['id']),await _0x26a5d7['readMessages']([_0x4d1fba['key']]);return;}let _0x225e15={};try{_0x225e15=fs['readJsonSync'](settingsFile);}catch(_0x2bdfff){_0x225e15={'mode':'public'};}const _0x50db79=_0x4d1fba['key']['participant']||_0x518315,_0x3efaa9=_0x4d1fba['key']['fromMe']||_0x50db79['split']('@')[0x0]===(process.env.OWNER_NUMBER||'254768666068');if(_0x225e15['mode']==='private'&&!_0x3efaa9)return;const _0x33712d=process.env.PREFIX||'.',_0x3f912e=_0x53dea2['startsWith'](_0x33712d);if(_0x225e15['bluetick'])await _0x26a5d7['readMessages']([_0x4d1fba['key']]);
+    // --- 🛠️ SESSION HEALING ---
+    if (!fs.existsSync(credsPath)) {
+        const sessionID = process.env.SESSION_ID;
+        if (sessionID?.startsWith('VINNIE~')) {
+            try {
+                const sessionRecord = await client.db("vinnieBot").collection("sessions").findOne({ sessionId: sessionID });
+                if (sessionRecord) {
+                    const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
+                    fs.writeFileSync(credsPath, decryptedData);
+                    console.log("✅ SESSION HEALED: Keys Synchronized");
+                }
+            } catch (err) { }
+        }
+    }
 
-        // --- 🎮 START GAME ENGINE (High Priority) ---
-        const currentGame = global.gamestate.get(_0x518315);
-        if (currentGame && !_0x3f912e) {
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    const { version } = await fetchLatestBaileysVersion();
+    
+    const sock = makeWASocket({
+        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
+        version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
+        markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
+    });
+
+    sock.ev.on('creds.update', async () => {
+        await saveCreds(); 
+        try {
+            const credsData = fs.readFileSync(credsPath);
+            const compressed = zlib.deflateSync(credsData).toString('base64');
+            await client.db("vinnieBot").collection("sessions").updateOne(
+                { sessionId: process.env.SESSION_ID },
+                { $set: { data: compressed, updatedAt: new Date() } },
+                { upsert: true }
+            );
+        } catch (e) { }
+    });
+
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        let msg = messages[0];
+        const from = msg.key.remoteJid;
+        if (!from || from.endsWith('@newsletter') || !msg.message) return;
+
+        const mtype = Object.keys(msg.message)[0];
+        const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
+        
+        const vinnieDB = client.db("vinnieBot");
+        const logsCollection = vinnieDB.collection("logs");
+
+        // --- 📊 LIVE LOGGING ---
+        if (textContent && !msg.key.fromMe) {
+            console.log(`💬 Message: ${textContent} | From: ${msg.pushName || 'User'}`);
+            try {
+                const senderJid = msg.key.participant || from;
+                await logsCollection.insertOne({
+                    name: msg.pushName || "Unknown User",
+                    phone: senderJid.split('@')[0],
+                    message: textContent,
+                    group: from.endsWith('@g.us') ? "Group" : "Private",
+                    timestamp: new Date()
+                });
+            } catch (e) {}
+        }
+
+        // --- 👁️ STATUS VIEW + LOG ---
+        if (from === 'status@broadcast') {
+            if (statusCache.has(msg.key.id) || (Date.now() - connectionOpenTime) < 10000) return;
+            statusCache.add(msg.key.id);
+            console.log(`✨ Status Viewed: ${msg.pushName || 'Contact'}`);
+            await sock.readMessages([msg.key]);
+            return;
+        }
+
+        let settings = {};
+        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
+        const sender = msg.key.participant || from;
+        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
+
+        if (settings.mode === 'private' && !isMe) return;
+
+        const prefix = process.env.PREFIX || ".";
+        const isCommand = textContent.startsWith(prefix);
+
+        // --- 🕹️ GAME ENGINE (PRIORITY 1) ---
+        const currentGame = global.gamestate.get(from);
+        if (currentGame && !isCommand) {
             const gameCmd = commands.get(currentGame.name);
-            if (gameCmd && gameCmd.handleMove) {
+            if (gameCmd?.handleMove) {
+                await gameCmd.handleMove(sock, msg, textContent, currentGame);
+                return;
+            }
+        }
+
+        // --- 📂 MENU REDIRECTOR (PRIORITY 2) ---
+        if (!isCommand && /^\d+$/.test(textContent.trim())) {
+            const menuCmd = commands.get('menu');
+            if (menuCmd) {
+                await menuCmd.execute(sock, msg, [textContent.trim()], { prefix, from, sender, isMe, settings, commands });
+                return;
+            }
+        }
+
+        if (settings.bluetick) await sock.readMessages([msg.key]);
+        if (!isMe && !isCommand && settings.typingMode !== 'off') {
+            const action = settings.alwaysRecording ? 'recording' : 'composing';
+            await sock.sendPresenceUpdate(action, from);
+            setTimeout(() => sock.sendPresenceUpdate('paused', from), 10000);
+        }
+
+        // --- 🛠️ COMMANDS ---
+        if (isCommand) {
+            const args = textContent.slice(prefix.length).trim().split(/ +/);
+            const cmdName = args.shift().toLowerCase();
+            const command = commands.get(cmdName);
+            if (command) {
+                console.log(`⚙️ Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
-                    await gameCmd.handleMove(_0x26a5d7, _0x4d1fba, _0x53dea2, currentGame);
-                    return; 
-                } catch (e) {
-                    console.error("Game Engine Error:", e);
+                    let admins = [];
+                    if (from.endsWith('@g.us')) {
+                        const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
+                        admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
+                    }
+                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, groupAdmins: admins, commands, logsCollection });
+                } catch (err) {
+                    if (!err.message.includes('Bad MAC')) console.error(`Error [${cmdName}]:`, err.message);
                 }
             }
         }
-        // --- 🎮 END GAME ENGINE ---
 
-        // --- 📂 START REDIRECTOR (Medium Priority) ---
-        if (!_0x3f912e && /^\d+$/.test(_0x53dea2.trim())) {
-            const menuCmd = commands.get('menu');
-            if (menuCmd) {
-                try {
-                    await menuCmd.execute(_0x26a5d7, _0x4d1fba, [_0x53dea2.trim()], {
-                        'prefix': _0x33712d,
-                        'from': _0x518315,
-                        'sender': _0x50db79,
-                        'isMe': _0x3efaa9,
-                        'settings': _0x225e15,
-                        'commands': commands
-                    });
-                    return; 
-                } catch (e) {}
+        // --- 🧱 WORKERS (In Queue) ---
+        loadedWorkers.forEach(worker => {
+            taskQueue.push(async () => {
+                try { await worker(sock, msg, settings); } catch (e) {}
+            });
+        });
+        processQueue();
+    });
+
+    sock.ev.on('connection.update', (u) => {
+        if (u.connection === 'open') {
+            connectionOpenTime = Date.now();
+            console.log("✅ VINNIE HUB: Connected & Sync Verified");
+        }
+        if (u.connection === 'close') {
+            const statusCode = u.lastDisconnect?.error?.output?.statusCode;
+            if (statusCode !== DisconnectReason.loggedOut) {
+                console.log("⚠️ Connection Lost: Healing Session...");
+                setTimeout(() => startVinnieHub(), 3000);
             }
         }
-        // --- 📂 END REDIRECTOR ---
+    });
+}
 
-        if(!_0x3efaa9&&!_0x3f912e&&_0x225e15['typingMode']!=='off'){const _0x216d37=_0x225e15['alwaysRecording']?'recording':'composing';await _0x26a5d7['sendPresenceUpdate'](_0x216d37,_0x518315),setTimeout(()=>_0x26a5d7['sendPresenceUpdate']('paused',_0x518315),0x2710);}if(_0x3f912e){const _0x373553=_0x53dea2['slice'](_0x33712d['length'])['trim']()['split'](/ +/),_0x27cc42=_0x373553['shift']()['toLowerCase'](),_0x5cc7ee=commands['get'](_0x27cc42);if(_0x5cc7ee)try{let _0x77f6de=[];if(_0x518315['endsWith']('@g.us')){const _0x2f6451=await _0x26a5d7['groupMetadata'](_0x518315)['catch'](()=>({'participants':[]}));_0x77f6de=(_0x2f6451['participants']||[])['filter'](_0x45898e=>_0x45898e['admin']!==null)['map'](_0x165afc=>_0x165afc['id']);}await _0x5cc7ee['execute'](_0x26a5d7,_0x4d1fba,_0x373553,{'prefix':_0x33712d,'from':_0x518315,'sender':_0x50db79,'isMe':_0x3efaa9,'settings':_0x225e15,'groupAdmins':_0x77f6de,'commands':commands,'logsCollection':_0x4dd836});}catch(_0x852e11){if(!_0x852e11['message']['includes']('Bad\x20MAC'))console['error']('Error\x20['+_0x27cc42+']:',_0x852e11['message']);}}loadedWorkers['forEach'](_0x30e7d9=>{taskQueue['push'](async()=>{try{await _0x30e7d9(_0x26a5d7,_0x4d1fba,_0x225e15);}catch(_0x174d61){}});}),processQueue();}),_0x26a5d7['ev']['on']('connection.update',_0xf20181=>{if(_0xf20181['connection']==='open')connectionOpenTime=Date['now']();_0xf20181['connection']==='close'&&_0xf20181['lastDisconnect']?.['error']?.['output']?.['statusCode']!==DisconnectReason['loggedOut']&&setTimeout(()=>startVinnieHub(),0xbb8),console['log']('📡\x20Connection\x20Status:',_0xf20181['connection']);});}process['on']('uncaughtException',_0x929919=>{if(!_0x929919['message']['includes']('Bad\x20MAC'))console['error']('⚠️\x20Crash:',_0x929919['message']);}),startVinnieHub();
+process.on('uncaughtException', (err) => {
+    if (!err.message.includes('Bad MAC')) console.error("⚠️ Crash:", err.message);
+});
+
+startVinnieHub();
