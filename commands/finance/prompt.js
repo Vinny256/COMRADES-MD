@@ -4,52 +4,65 @@ const axios = require('axios');
 module.exports = {
     name: 'prompt',
     category: 'finance',
-    async execute(conn, m, args) {
+    async execute(conn, m, args, { prefix }) {
         const sock = conn?.sendMessage ? conn : (m.conn || global.conn);
         const remoteJid = m.key.remoteJid;
-        
+        const waName = m.pushName || "Comrade";
+
+        // --- 1. THE GATEWAY MENU ---
+        // If no arguments are provided, show the Bank Selection Menu
+        if (args.length === 0) {
+            const gatewayMenu = `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓
+┃
+┃ ✨ *ᴡᴇʟᴄᴏᴍᴇ,* ${waName}
+┃ 🏦 *ᴠ-ʜᴜʙ ꜰɪɴᴀɴᴄᴇ ɢᴀᴛᴇᴡᴀʏ*
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃
+┃ 🆕 *[ .new ]* ┃ _Create a V-HUB Wallet & PIN_
+┃
+┃ 🔑 *[ .login ]* ┃ _Access your existing Wallet_
+┃
+┃ 👤 *[ .guest ]* ┃ _Quick deposit without an ID_
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃
+┃ 💡 *ᴛɪᴘ:* ᴛʏᴘᴇ ᴛʜᴇ ᴄᴏᴍᴍᴀɴᴅ ᴀʙᴏᴠᴇ 
+┃ ᴛᴏ ᴘʀᴏᴄᴇᴇᴅ ᴡɪᴛʜ ʏᴏᴜʀ ᴛʀᴀɴsᴀᴄᴛɪᴏɴ.
+┃
+┃ © 2026 | ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ
+┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+
+            return sock.sendMessage(remoteJid, { text: gatewayMenu }, { quoted: m });
+        }
+
+        // --- 2. GUEST LOGIC (RESTORED & PRESERVED) ---
+        // Allows: .prompt <amount> <phone>
         const amount = args[0];
         let phone = args[1];
-        const waName = m.pushName || "V_Hub_Member";
 
-        // 1. Validation Logic
         if (!amount || isNaN(amount) || !phone) {
             return sock.sendMessage(remoteJid, { 
-                text: "✿ *V_HUB FINANCE* ✿\n\nUsage: `.prompt <amount> <phone>`\nExample: `.prompt 10 0712345678`" 
+                text: `❌ *ɢᴜᴇsᴛ ᴇʀʀᴏʀ*\n\nUsage: ${prefix}prompt <amount> <phone>\n_Or type ${prefix}prompt for the Wallet Menu._` 
             }, { quoted: m });
         }
 
         if (phone.startsWith('0')) phone = '254' + phone.slice(1);
 
-        // 2. Initial Message
         const msg = await sock.sendMessage(remoteJid, { 
-            text: `⏳ *V_HUB:* Processing request for ${waName}...` 
+            text: `⏳ *ᴠ-ʜᴜʙ:* ᴘʀᴏᴄᴇssɪɴɢ ɢᴜᴇsᴛ ᴅᴇᴘᴏsɪᴛ ꜰᴏʀ ${waName}...` 
         }, { quoted: m });
 
         try {
-            // 3. Trigger STK Push
+            // Trigger STK Push via Proxy
             const result = await hubClient.deposit(phone, amount, remoteJid, waName);
 
             if (result && (result.ResponseCode === "0" || result.success)) {
-                const waitingText = `┏━━━━━ ✿ *V_HUB_PAY* ✿ ━━━━━┓
-┃
-┃ ✅ *STK PUSH SENT!*
-┃ 👤 *USER:* ${waName}
-┃ 💰 *AMOUNT:* KSH ${amount}
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ 📢 *ACTION REQUIRED:*
-┃ 1. Enter M-PESA PIN on your phone.
-┃ 2. *Wait 25 seconds* for the bot to 
-┃    auto-verify your transaction.
-┃
-┃ 🕒 _Status: Awaiting PIN..._
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                const waitingText = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ ᴘᴜsʜ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${amount}\n┃ 📱 *ᴛᴀʀɢᴇᴛ:* ${phone}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 📢 *ᴀᴄᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ:*\n┃ 1. ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ᴘɪɴ.\n┃ 2. ᴡᴀɪᴛ ꜰᴏʀ ᴀᴜᴛᴏ-ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ.\n┃\n┃ 🕒 _sᴛᴀᴛᴜs: ᴀᴡᴀɪᴛɪɴɢ ᴘɪɴ..._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
                 await sock.sendMessage(remoteJid, { text: waitingText, edit: msg.key });
 
-                // 4. SMART POLLING ENGINE (Checks 3 times)
+                // SMART POLLING ENGINE
                 let attempts = 0;
                 const checkInterval = setInterval(async () => {
                     attempts++;
@@ -58,49 +71,26 @@ module.exports = {
                         const check = await axios.get(`${PROXY_URL}/api/check-status?phone=${phone}`);
                         
                         if (check.data.status === "OK" && check.data.isRecent) {
-                            clearInterval(checkInterval); // STOP POLLING
+                            clearInterval(checkInterval);
                             const tx = check.data.lastTransaction;
-                            const successReceipt = `┏━━━━━ ✿ *V_HUB_RECEIPT* ✿ ━━━━━┓\n┃\n┃ ✅ *PAYMENT VERIFIED*\n┃ 💵 *AMOUNT:* KSH ${tx.amount}\n┃ 🧾 *REF:* ${tx.receipt}\n┃ 🏦 *NEW BAL:* KSH ${check.data.balance}\n┃\n┃ _Infinite Impact - Vinnie Hub_ \n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                            const successReceipt = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓\n┃\n┃ ✅ *ᴘᴀʏᴍᴇɴᴛ ᴠᴇʀɪꜰɪᴇᴅ*\n┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${tx.amount}\n┃ 🧾 *ʀᴇꜰ:* ${tx.receipt}\n┃ 🏦 *ɴᴇᴡ ʙᴀʟ:* ᴋsʜ ${check.data.balance}\n┃\n┃ _ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ - ᴠɪɴɴɪᴇ ʜᴜʙ_ \n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
                             
                             await sock.sendMessage(remoteJid, { text: successReceipt }, { quoted: m });
                         }
                     } catch (e) {
-                        // If we reach 3 attempts (approx 30-35 seconds) and still 404
-                        if (attempts >= 3) {
+                        if (attempts >= 4) { // Increased to 40 seconds for better success rate
                             clearInterval(checkInterval);
-                            const errorText = `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓
-┃
-┃ ❌ *VERIFICATION FAILED*
-┃ 
-┃ Vinnie Hub faced an error. It's either 
-┃ you didn't complete the transaction
-┃ or M-PESA is delayed.
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ 📢 *NEED HELP?*
-┃ If you think this is a mistake, 
-┃ please contact the admin.
-┃
-┃ 🛠️ _Status: Timeout_
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                            
+                            const errorText = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴇʀʀᴏʀ* ✿ ━━━━━┓\n┃\n┃ ❌ *ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ꜰᴀɪʟᴇᴅ*\n┃ \n┃ sʏsᴛᴇᴍ ᴛɪᴍᴇᴏᴜᴛ. ᴇɪᴛʜᴇʀ ᴛʜᴇ ᴘɪɴ \n┃ ᴡᴀsɴ'ᴛ ᴇɴᴛᴇʀᴇᴅ ᴏʀ ᴍ-ᴘᴇsᴀ ɪs sʟᴏᴡ.\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 🛠️ _sᴛᴀᴛᴜs: ᴛɪᴍᴇᴏᴜᴛ_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
                             await sock.sendMessage(remoteJid, { text: errorText, edit: msg.key });
                         }
                     }
-                }, 10000); // Checks every 10 seconds
+                }, 10000);
 
             } else {
-                await sock.sendMessage(remoteJid, { 
-                    text: `❌ *V_HUB: REQUEST FAILED*\n\nSTK could not be initiated.`,
-                    edit: msg.key
-                });
+                await sock.sendMessage(remoteJid, { text: `❌ *ᴠ-ʜᴜʙ: ʀᴇǫᴜᴇsᴛ ꜰᴀɪʟᴇᴅ*\n\nsᴛᴋ ᴄᴏᴜʟᴅ ɴᴏᴛ ʙᴇ ɪɴɪᴛɪᴀᴛᴇᴅ.`, edit: msg.key });
             }
         } catch (err) {
-            await sock.sendMessage(remoteJid, { 
-                text: "⚠️ *V_HUB: SERVER ERROR*\n\nProxy connection lost.",
-                edit: msg.key
-            });
+            await sock.sendMessage(remoteJid, { text: "⚠️ *ᴠ-ʜᴜʙ: sᴇʀᴠᴇʀ ᴇʀʀᴏʀ*\n\nᴘʀᴏxʏ ᴄᴏɴɴᴇᴄᴛɪᴏɴ ʟᴏsᴛ.", edit: msg.key });
         }
     }
 };
