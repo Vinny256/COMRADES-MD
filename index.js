@@ -1,8 +1,8 @@
-// --- 🛡️ THE GLOBAL BUSINESS SHIELD (RESTORED LOGS) ---
+// --- 🛡️ THE GLOBAL BUSINESS SHIELD ---
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
-    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀') && !data.includes('✅') && !data.includes('🎙️')) {
+    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀') && !data.includes('✅')) {
         return; 
     }
     return originalWrite.call(process.stdout, chunk, encoding, callback);
@@ -23,22 +23,10 @@ const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 const statusCache = new Set(); 
 
+// --- 🧠 MEMORY TRACKERS ---
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.activeGames) global.activeGames = new Map(); 
 if (!global.gamestate) global.gamestate = new Map(); 
-
-const taskQueue = [];
-let isProcessing = false;
-let connectionOpenTime = 0; 
-
-async function processQueue() {
-    if (isProcessing || taskQueue.length === 0) return;
-    isProcessing = true;
-    const task = taskQueue.shift();
-    try { await task(); await new Promise(res => setTimeout(res, 1000)); } catch (e) { }
-    isProcessing = false;
-    processQueue();
-}
 
 const loadedWorkers = [];
 const loadResources = () => {
@@ -78,7 +66,6 @@ global.saveSettings = async () => {
         if (!fs.existsSync(settingsFile)) return;
         const settings = fs.readJsonSync(settingsFile);
         await client.db("vinnieBot").collection("config").updateOne({ id: "main_config" }, { $set: settings }, { upsert: true });
-        console.log("💾 Settings Backed up to Cloud");
     } catch (e) { }
 };
 
@@ -145,18 +132,17 @@ async function startVinnieHub() {
         
         let settings = {};
         try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
-        
         const sender = msg.key.participant || from;
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
-        // --- 📊 GLOBAL LOGGING (Everyone) ---
-        console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
-        try {
-            await client.db("vinnieBot").collection("logs").insertOne({
+        // --- 📊 ASYNC LOGGING (Background - Won't slow down response) ---
+        if (!msg.key.fromMe) {
+            console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
+            client.db("vinnieBot").collection("logs").insertOne({
                 name: msg.pushName || "User", phone: sender.split('@')[0],
                 message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
-            });
-        } catch (e) {}
+            }).catch(() => {});
+        }
 
         // --- 👁️ STATUS VIEW ---
         if (from === 'status@broadcast') {
@@ -167,17 +153,16 @@ async function startVinnieHub() {
             return;
         }
 
-        // --- 🎙️ NUCLEAR PRESENCE (Every message triggers 1 min recording/typing) ---
+        // --- 🎙️ INSTANT PRESENCE (60s Nuclear Mode) ---
         if (!msg.key.fromMe && settings.typingMode !== 'off') {
             const action = settings.alwaysRecording ? 'recording' : 'composing';
-            console.log(`🎙️ Presence: ${action} triggered by ${msg.pushName}`);
-            await sock.sendPresenceUpdate(action, from);
+            sock.sendPresenceUpdate(action, from); 
             setTimeout(() => sock.sendPresenceUpdate('paused', from), 60000);
         }
 
-        // --- 🔵 NUCLEAR BLUE TICK ---
+        // --- 🔵 INSTANT BLUE TICK ---
         if (settings.bluetick) {
-            await sock.readMessages([msg.key]);
+            sock.readMessages([msg.key]);
         }
 
         if (settings.mode === 'private' && !isMe) return;
@@ -204,7 +189,7 @@ async function startVinnieHub() {
             }
         }
 
-        // --- 🛠️ UNIVERSAL COMMAND EXECUTION ---
+        // --- 🛠️ INSTANT COMMANDS ---
         if (isCommand) {
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
@@ -217,30 +202,26 @@ async function startVinnieHub() {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
                         admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
                     }
-                    // FIXED: Now passes to the execute function for everyone
                     await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, groupAdmins: admins, commands, logsCollection: client.db("vinnieBot").collection("logs") });
                 } catch (err) { console.error(`Error [${cmdName}]:`, err.message); }
             }
         }
 
-        // --- 🧱 WORKERS ---
+        // --- 🧱 PARALLEL WORKERS (No Queue Delay) ---
         loadedWorkers.forEach(worker => {
-            taskQueue.push(async () => {
-                try { await worker(sock, msg, settings); } catch (e) {}
-            });
+            worker(sock, msg, settings).catch(e => {});
         });
-        processQueue();
     });
 
     sock.ev.on('connection.update', (u) => {
         if (u.connection === 'open') {
             connectionOpenTime = Date.now();
-            console.log("✅ VINNIE HUB: Online & Encryption Synced");
+            console.log("✅ VINNIE HUB: Online & Key-Sync Confirmed");
         }
         if (u.connection === 'close') {
             const statusCode = u.lastDisconnect?.error?.output?.statusCode;
             if (statusCode !== DisconnectReason.loggedOut) {
-                console.log("⚠️ Connection Lost: Attempting Reconnect...");
+                console.log("⚠️ Bad MAC or Desync: Auto-Heal Triggered...");
                 setTimeout(() => startVinnieHub(), 3000);
             }
         }
