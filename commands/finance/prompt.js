@@ -14,21 +14,13 @@ module.exports = {
         const remoteJid = m.key.remoteJid;
         const sender = m.key.participant || remoteJid;
         const senderPhone = sender.split('@')[0].split(':')[0];
-        const answer = args.join(" ").trim().toLowerCase();
+        const answer = args.join(" ").trim();
 
-        // --- STEP 1: THE MAIN MENU (If no args OR if they just type .prompt) ---
-        if (args.length === 0 || !global.promptState.has(senderPhone)) {
-            // Check if they are trying to start a path immediately
-            if (answer === 'id') {
-                global.promptState.set(senderPhone, { step: 2 });
-                return sock.sendMessage(remoteJid, { text: `🔑 *ᴠ-ʜᴜʙ_ᴍᴇᴍʙᴇʀ*\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* What is your Wallet ID?\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 1001\`` }, { quoted: m });
-            } 
-            if (answer === 'guest') {
-                global.promptState.set(senderPhone, { step: 3, vHubId: "GUEST" });
-                return sock.sendMessage(remoteJid, { text: `👤 *ᴠ-ʜᴜʙ_ɢᴜᴇsᴛ*\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* Enter amount and phone.\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 10 07xxxxxxxx\`` }, { quoted: m });
-            }
+        // --- 1. SESSION CHECK ---
+        let state = global.promptState.get(senderPhone);
 
-            // Otherwise, show the Welcome Menu
+        // --- 2. THE MAIN MENU (Only if no args and no active session) ---
+        if (!state && args.length === 0) {
             const menu = `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓
 ┃
 ┃ 🏦 *ᴠ-ʜᴜʙ ꜰɪɴᴀɴᴄᴇ ɢᴀᴛᴇᴡᴀʏ*
@@ -47,9 +39,23 @@ module.exports = {
             return sock.sendMessage(remoteJid, { text: menu }, { quoted: m });
         }
 
-        const state = global.promptState.get(senderPhone);
+        // --- 3. STARTING A NEW PATH ---
+        if (!state && args.length > 0) {
+            if (answer.toLowerCase() === 'id') {
+                global.promptState.set(senderPhone, { step: 2 });
+                return sock.sendMessage(remoteJid, { text: `🔑 *ᴠ-ʜᴜʙ_ᴍᴇᴍʙᴇʀ*\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* What is your Wallet ID?\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 1001\`` }, { quoted: m });
+            } 
+            if (answer.toLowerCase() === 'guest') {
+                global.promptState.set(senderPhone, { step: 3, vHubId: "GUEST" });
+                return sock.sendMessage(remoteJid, { text: `👤 *ᴠ-ʜᴜʙ_ɢᴜᴇsᴛ*\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* Enter amount and phone.\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 10 07xxxxxxxx\`` }, { quoted: m });
+            }
+        }
 
-        // --- STEP 2: MEMBER PATH - HANDLE ID ---
+        // Refresh state after potential setting above
+        state = global.promptState.get(senderPhone);
+        if (!state) return;
+
+        // --- 4. STEP 2: HANDLE ID & FETCH NAME ---
         if (state.step === 2) {
             const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer.toUpperCase()}`;
             try {
@@ -67,9 +73,9 @@ module.exports = {
             } catch (e) { return sock.sendMessage(remoteJid, { text: "⚠️ DB Error." }); }
         }
 
-        // --- STEP 2.5: MEMBER PATH - HANDLE AMOUNT ---
+        // --- 5. STEP 2.5: HANDLE AMOUNT ---
         if (state.step === 2.5) {
-            if (isNaN(answer)) return sock.sendMessage(remoteJid, { text: "❌ *ᴇʀʀᴏʀ:* Enter numbers only." });
+            if (isNaN(answer)) return sock.sendMessage(remoteJid, { text: "❌ *ᴇʀʀᴏʀ:* Enter numbers only for amount." });
             state.amount = answer;
             state.step = 2.8;
             return sock.sendMessage(remoteJid, { 
@@ -77,7 +83,7 @@ module.exports = {
             }, { quoted: m });
         }
 
-        // --- STEP 3 & 4: FINAL EXECUTION (STK PUSH) ---
+        // --- 6. STEP 2.8 / 3: FINAL STK PUSH ---
         if (state.step === 2.8 || state.step === 3) {
             let fAmount, fPhone;
             if (state.step === 2.8) { 
@@ -94,13 +100,14 @@ module.exports = {
             const msg = await sock.sendMessage(remoteJid, { text: `🚀 *ᴠ-ʜᴜʙ:* Sending STK to ${fPhone}...` });
 
             try {
+                // ACCOUNT REFERENCE SET TO VH-ID (e.g., VH-1001)
                 const result = await hubClient.deposit(fPhone, fAmount, remoteJid, state.vHubId);
+                
                 if (result.success || result.ResponseCode === "0") {
                     await sock.sendMessage(remoteJid, { 
-                        text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${fAmount}\n┃ 🆔 *ᴛᴀʀɢᴇᴛ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃ 📢 Enter PIN on your phone.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                        text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${fAmount}\n┃ 🆔 *ʀᴇꜰᴇʀᴇɴᴄᴇ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃ 📢 Enter PIN on your phone.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
                         edit: msg.key 
                     });
-                    // Polling logic goes here...
                 }
             } catch (err) { await sock.sendMessage(remoteJid, { text: "⚠️ Gateway Offline." }); }
         }
