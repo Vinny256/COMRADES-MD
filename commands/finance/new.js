@@ -8,41 +8,46 @@ const registrationState = new Map();
 module.exports = {
     name: 'new',
     category: 'finance',
-    async execute(sock, msg, args) {
+    async execute(sock, msg, args, { prefix }) {
         const from = msg.key.remoteJid;
         const sender = msg.key.participant || from;
         const senderPhone = sender.split('@')[0].split(':')[0];
-        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
+        
+        // Get the full text and remove the prefix to get the "Answer"
+        const fullText = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
+        const answer = fullText.startsWith(prefix) ? fullText.slice(prefix.length).trim() : null;
 
-        // --- 1. START REGISTRATION ---
+        // --- 1. INITIAL TRIGGER (.new) ---
         if (!registrationState.has(senderPhone)) {
             registrationState.set(senderPhone, { step: 1 });
             return sock.sendMessage(from, { 
-                text: "┏━━━━━ ✿ *ᴠ-ʜᴜʙ ʙᴀɴᴋɪɴɢ* ✿ ━━━━━┓\n┃\n┃ ✨ *ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ ᴛʜᴇ ʜᴜʙ!*\n┃ _ʟᴇᴛ's ᴄʀᴇᴀᴛᴇ ʏᴏᴜʀ ᴅɪɢɪᴛᴀʟ ᴡᴀʟʟᴇᴛ._\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ \n┃ ᴜs ᴛᴏ ᴄᴀʟʟ ʏᴏᴜ? (ᴇ.ɢ. ᴠɪɴɴɪᴇ)\n┗━━━━━━━━━━━━━━━━━━━━━━┛" 
+                text: `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓\n┃\n┃ ✨ *ᴡᴀʟʟᴇᴛ ʀᴇɢɪsᴛʀᴀᴛɪᴏɴ*\n┃ _ʟᴇᴛ's sᴇᴛ ᴜᴘ ʏᴏᴜʀ ᴀᴄᴄᴏᴜɴᴛ._\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ɪs ʏᴏᴜʀ ɴᴀᴍᴇ?\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}YourName\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
             }, { quoted: msg });
         }
 
         const state = registrationState.get(senderPhone);
 
-        // --- 2. HANDLE NAME (Step 1 -> 2) ---
+        // --- 2. HANDLE NAME (.Name) ---
         if (state.step === 1) {
-            state.name = text;
+            if (!answer || answer.toLowerCase() === 'new') return; // Ignore if they just re-typed .new
+            
+            state.name = answer;
             state.step = 2;
             return sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ʙᴀɴᴋɪɴɢ* ✿ ━━━━━┓\n┃\n┃ ✨ *ɴɪᴄᴇ ᴛᴏ ᴍᴇᴇᴛ ʏᴏᴜ,* ${text}!\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ 4-ᴅɪɢɪᴛ ᴘɪɴ \n┃ ᴡᴏᴜʟᴅ ʏᴏᴜ ʟɪᴋᴇ ᴛᴏ ᴜsᴇ?\n┃\n┃ ⚠️ _ᴄᴀɴ'ᴛ sᴛᴀʀᴛ ᴡɪᴛʜ 0 ᴏʀ 1._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ʙᴀɴᴋɪɴɢ* ✿ ━━━━━┓\n┃\n┃ ✨ *ʜᴇʟʟᴏ,* ${state.name}!\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴄʜᴏᴏsᴇ ᴀ 4-ᴅɪɢɪᴛ ᴘɪɴ.\n┃\n┃ ⚠️ _ᴄᴀɴ'ᴛ sᴛᴀʀᴛ ᴡɪᴛʜ 0 ᴏʀ 1._\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}1234\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
             }, { quoted: msg });
         }
 
-        // --- 3. HANDLE PIN (Step 2 -> 3) ---
+        // --- 3. HANDLE PIN (.PIN) ---
         if (state.step === 2) {
-            const pin = text;
-            if (pin.length !== 4 || isNaN(pin) || pin.startsWith('0') || pin.startsWith('1') || /^(\d)\1{3}$/.test(pin)) {
-                return sock.sendMessage(from, { text: "❌ *ɪɴᴠᴀʟɪᴅ ᴘɪɴ!*\nᴍᴜsᴛ ʙᴇ 4 ᴅɪɢɪᴛs, ɴᴏᴛ sᴛᴀʀᴛɪɴɢ ᴡɪᴛʜ 0/1, ᴀɴᴅ ɴᴏ ɪᴅᴇɴᴛɪᴄᴀʟ ɴᴜᴍʙᴇʀs." });
+            const pin = answer;
+            if (!pin || pin.length !== 4 || isNaN(pin) || pin.startsWith('0') || pin.startsWith('1') || /^(\d)\1{3}$/.test(pin)) {
+                return sock.sendMessage(from, { text: `❌ *ɪɴᴠᴀʟɪᴅ ᴘɪɴ!*\n\nMust be 4 digits, not starting with 0/1.\nExample: \`${prefix}2580\`` });
             }
+            
             state.pin = pin;
             state.step = 3;
 
-            // Database Save
             try {
                 await client.connect();
                 const db = client.db("vinnieBot");
@@ -56,25 +61,23 @@ module.exports = {
                     pin: state.pin, balance: 0, createdAt: new Date()
                 });
 
-                state.vHubId = vHubId;
-
                 return sock.sendMessage(from, { 
-                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ sᴜᴄᴄᴇss* ✿ ━━━━━┓\n┃\n┃ ✅ *ᴀᴄᴄᴏᴜɴᴛ ᴄʀᴇᴀᴛᴇᴅ!*\n┃ 🆔 *ɪᴅ:* ${vHubId}\n┃ 🏦 *ʙᴀʟ:* ᴋsʜ 0\n┃\n┃ ❓ *ᴅᴇᴘᴏsɪᴛ:* ᴡᴏᴜʟᴅ ʏᴏᴜ ʟɪᴋᴇ ᴛᴏ \n┃ ᴅᴇᴘᴏsɪᴛ ꜰᴜɴᴅs ɴᴏᴡ? (ʏᴇs/ɴᴏ)\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ sᴜᴄᴄᴇss* ✿ ━━━━━┓\n┃\n┃ ✅ *ᴀᴄᴄᴏᴜɴᴛ ᴄʀᴇᴀᴛᴇᴅ!*\n┃ 🆔 *ɪᴅ:* ${vHubId}\n┃ 🏦 *ʙᴀʟ:* ᴋsʜ 0\n┃\n┃ ❓ *ᴅᴇᴘᴏsɪᴛ:* ᴅᴏ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ \n┃ ᴅᴇᴘᴏsɪᴛ ɴᴏᴡ? (ʏᴇs/ɴᴏ)\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}yes\` ᴏʀ \`${prefix}no\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
                 }, { quoted: msg });
 
             } catch (e) {
                 registrationState.delete(senderPhone);
-                return sock.sendMessage(from, { text: "❌ *ᴇʀʀᴏʀ:* ᴅʙ ᴄᴏɴɴᴇᴄᴛɪᴏɴ ꜰᴀɪʟᴇᴅ." });
+                return sock.sendMessage(from, { text: "❌ *ᴅʙ ᴇʀʀᴏʀ:* ᴄᴏᴜʟᴅ ɴᴏᴛ sᴀᴠᴇ ᴀᴄᴄᴏᴜɴᴛ." });
             }
         }
 
-        // --- 4. HANDLE DEPOSIT PROMPT (Step 3 -> End) ---
+        // --- 4. HANDLE DEPOSIT (.yes/.no) ---
         if (state.step === 3) {
-            registrationState.delete(senderPhone); // Clear state
-            if (text.toLowerCase() === 'yes') {
-                return sock.sendMessage(from, { text: "💰 *ᴠ-ʜᴜʙ:* ᴘʟᴇᴀsᴇ ᴛʏᴘᴇ `.prompt` ᴛᴏ sᴛᴀʀᴛ ʏᴏᴜʀ ꜰɪʀsᴛ ᴅᴇᴘᴏsɪᴛ!" });
+            registrationState.delete(senderPhone);
+            if (answer?.toLowerCase() === 'yes') {
+                return sock.sendMessage(from, { text: `💰 *ᴠ-ʜᴜʙ:* ᴛʏᴘᴇ \`${prefix}prompt\` ᴛᴏ ʙᴇɢɪɴ!` });
             } else {
-                return sock.sendMessage(from, { text: "👍 *ᴠ-ʜᴜʙ:* ɴᴏ ᴘʀᴏʙʟᴇᴍ! ʏᴏᴜʀ ᴡᴀʟʟᴇᴛ ɪs ʀᴇᴀᴅʏ ᴡʜᴇɴᴇᴠᴇʀ ʏᴏᴜ ɴᴇᴇᴅ ɪᴛ." });
+                return sock.sendMessage(from, { text: "🤝 *ᴠ-ʜᴜʙ:* ᴀᴄᴄᴏᴜɴᴛ sᴀᴠᴇᴅ. sᴇᴇ ʏᴏᴜ sᴏᴏɴ!" });
             }
         }
     }
