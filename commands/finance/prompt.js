@@ -1,321 +1,144 @@
-const express = require('express');
-const mongoose = require('mongoose');
+const { MongoClient } = require('mongodb');
+const hubClient = require('../../utils/hubClient');
 const axios = require('axios');
-require('dotenv').config();
 
-const app = express();
-app.use(express.json());
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri);
+global.promptState = global.promptState || new Map();
 
-// --- 0. BOT WEBHOOK CONFIG (HARDCODED AS REQUESTED) ---
-const BOT_URL = "https://gggg-b9d7fbe20737.herokuapp.com"; 
-const BOT_WEBHOOK = `${BOT_URL}/v_hub_notify`;
+module.exports = {
+    name: 'prompt',
+    category: 'finance',
+    async execute(sock, msg, args, { prefix }) {
+        const from = msg.key.remoteJid;
+        const sender = msg.key.participant || from;
+        const senderPhone = sender.split('@')[0];
+        const answer = args.join(" ").trim();
 
-// Helper to send styled responses back to WhatsApp
-const sendToBot = async (jid, text) => {
-    try {
-        await axios.post(BOT_WEBHOOK, { jid, text }, {
-            headers: { 
-                'x-vhub-secret': process.env.API_SECRET,
-                'Content-Type': 'application/json'
+        // --- HELPER: AIRTEL BLOCKER ---
+        const isAirtel = (num) => /^(254|0)(73|75|78|10|11)/.test(num.replace(/\D/g, ''));
+
+        // --- STEP 1: INITIAL GATEWAY ---
+        if (!global.promptState.has(senderPhone)) {
+            // Check for Guest Long Command: .prompt 10 07xxxxxxxx
+            if (args.length >= 2) {
+                const [amt, ph] = args;
+                if (isAirtel(ph)) return sock.sendMessage(from, { text: "❌ *ᴀɪʀᴛᴇʟ ɴᴏᴛ sᴜᴘᴘᴏʀᴛᴇᴅ*\n\nʀᴇǫᴜᴇsᴛ ᴄᴏᴜʟᴅɴ'ᴛ ᴘʀᴏᴄᴇᴇᴅ ꜰᴏʀ ᴀɴ ᴀɪʀᴛᴇʟ ᴍᴏɴᴇʏ ɴᴜᴍʙᴇʀ. ᴅᴇᴘᴏsɪᴛ ꜰᴏʀ ᴛʜᴇᴍ ᴄᴏᴍɪɴɢ sᴏᴏɴ!" });
+                
+                let finalPh = ph.startsWith('0') ? '254' + ph.slice(1) : ph;
+                global.promptState.set(senderPhone, { step: 'EXECUTING', vHubId: "GUEST", amount: amt, phone: finalPh });
+                return this.triggerPush(sock, from, senderPhone);
             }
-        });
-        console.log(`┃ ✅ NOTIFY_SENT: Message pushed to Bot for JID: ${jid}`);
-    } catch (e) {
-        console.error("┃ ❌ BOT_NOTIFY_FAILED:", e.response?.status || e.message);
-    }
-};
 
-// --- 1. DEEP LOGGING MIDDLEWARE ---
-app.use((req, res, next) => {
-    const start = Date.now();
-    console.log(`\n┏━━━━━ ✿ INCOMING_REQUEST ✿ ━━━━━┓`);
-    console.log(`┃  TIME: ${new Date().toLocaleTimeString()}`);
-    console.log(`┃  PATH: ${req.path}`);
-    console.log(`┃  BODY: ${JSON.stringify(req.body)}`);
-    
-    res.on('finish', () => {
-        const duration = Date.now() - start;
-        console.log(`┃  STAT: ${res.statusCode}`);
-        console.log(`┃  DUR:  ${duration}ms`);
-        console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛`);
-    });
-    next();
-});
-
-// --- 2. SHARED DATABASE SCHEMA (UPDATED WITH V_HUB_ID) ---
-const UserSchema = new mongoose.Schema({
-    mpesa_id: { type: String, required: true, unique: true },
-    v_hub_id: { type: String, unique: true }, // New Account Number Field
-    name: { type: String, default: "V_Hub Member" },
-    balance: { type: Number, default: 0 },
-    history: [{
-        type: { type: String }, // DEPOSIT, WITHDRAW, SENT, RECEIVED
-        amount: Number,
-        receipt: String,
-        v_hub_ref: String,
-        date: { type: Date, default: Date.now }
-    }]
-});
-const User = mongoose.model('User', UserSchema);
-
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("┃ ✿ DATABASE: ATTACHED & READY"))
-    .catch(err => console.error("┃ ❌ DB_ERROR:", err));
-
-// --- 3. SECURITY HANDSHAKE ---
-const secureHandshake = (req, res, next) => {
-    if (req.headers['x-vhub-secret'] !== process.env.API_SECRET) {
-        console.log("┃ ⚠️  SECURITY: INVALID HANDSHAKE DETECTED");
-        return res.sendStatus(403);
-    }
-    next();
-};
-
-// --- 4. ROUTES ---
-app.use('/api/deposit', secureHandshake, require('./routes/deposit'));
-
-// --- UPDATED: OWNER DISBURSEMENT ROUTE (WITH WITHDRAWAL) ---
-app.post('/api/withdraw', secureHandshake, async (req, res) => {
-    const { phone, amount, waName } = req.body;
-    const withdrawAmount = Number(amount);
-
-    // Truncate name to 12 characters for v_hub consistency
-    const shortName = waName ? (waName.length > 12 ? waName.substring(0, 12) + ".." : waName) : "Unknown";
-
-    try {
-        // --- SECURITY: PREVENT MISUSE (SMART SEARCH) ---
-        const user = await User.findOne({ 
-            $or: [
-                { mpesa_id: phone }, 
-                { v_hub_id: new RegExp(`^${phone}$`, 'i') }, 
-                { name: new RegExp(`^${phone}$`, 'i') }
-            ] 
-        });
-
-        if (!user) {
-            console.log(`┃ ⚠️  SECURITY: Access Denied for unknown user [${phone}]`);
-            return res.status(403).json({ error: "USER_NOT_IN_DATABASE" });
+            global.promptState.set(senderPhone, { step: 1 });
+            const menu = `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓
+┃
+┃ 🏦 *ᴠ-ʜᴜʙ ꜰɪɴᴀɴᴄᴇ ɢᴀᴛᴇᴡᴀʏ*
+┃ _sᴇᴄᴜʀᴇ ᴅɪɢɪᴛᴀʟ ʙᴀɴᴋɪɴɢ_
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃
+┃ 🆕 *[ ${prefix}new ]* ┃ _ᴄʀᴇᴀᴛᴇ ᴡᴀʟʟᴇᴛ_
+┃
+┃ 🔑 *[ ${prefix}prompt id ]* ┃ _ᴍᴇᴍʙᴇʀ ʟᴏɢɪɴ_
+┃
+┃ 👤 *[ ${prefix}prompt guest ]* ┃ _ǫᴜɪᴄᴋ ᴅᴇᴘᴏsɪᴛ_
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃ 💡 *ᴛɪᴘ:* ᴛʏᴘᴇ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴛᴏ ʙᴇɢɪɴ.
+┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            return await sock.sendMessage(from, { text: menu });
         }
 
-        // --- VALIDATION: B2C MINIMUM ---
-        if (withdrawAmount < 10) {
-            return res.status(400).json({ error: "MINIMUM_WITHDRAW_10" });
-        }
+        const state = global.promptState.get(senderPhone);
 
-        // Trigger Safaricom B2C Logic
-        const b2c = require('./routes/withdraw');
-        const result = await b2c.disburse(user.mpesa_id, withdrawAmount);
-
-        if (result.success) {
-            user.balance -= withdrawAmount;
-            const internalRef = `VHW-${Math.floor(100000 + Math.random() * 900000)}`;
-            
-            user.history.push({
-                type: "WITHDRAW",
-                amount: withdrawAmount,
-                receipt: result.ConversationID,
-                v_hub_ref: internalRef
-            });
-            await user.save();
-
-            res.json({ 
-                success: true, 
-                receipt: result.ConversationID, 
-                newBalance: user.balance,
-                shortName: user.name 
-            });
-        } else {
-            res.status(400).json({ error: result.message || "B2C_FAILED" });
-        }
-    } catch (e) {
-        console.error("┃ ❌ WITHDRAW_ROUTE_CRASH:", e.message);
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// --- INTERNAL PAY ROUTE (P2P WITH TARIFFS) ---
-app.post('/api/pay', secureHandshake, async (req, res) => {
-    const { sender_phone, receiver_id, amount } = req.body;
-    const transferAmount = Number(amount);
-
-    try {
-        const sender = await User.findOne({ mpesa_id: sender_phone });
-        const receiver = await User.findOne({ 
-            $or: [{ mpesa_id: receiver_id }, { v_hub_id: new RegExp(`^${receiver_id}$`, 'i') }] 
-        });
-
-        if (!sender || sender.balance < transferAmount) {
-            return res.status(400).json({ error: "INSUFFICIENT_BALANCE" });
-        }
-        if (!receiver) {
-            return res.status(404).json({ error: "RECEIVER_NOT_FOUND" });
-        }
-
-        let fee = 0;
-        if (transferAmount > 100 && transferAmount <= 500) fee = 7;
-        else if (transferAmount > 500 && transferAmount <= 1000) fee = 13;
-        else if (transferAmount > 1000) fee = 23;
-
-        const totalDeduction = transferAmount + fee;
-
-        if (sender.balance < totalDeduction) {
-            return res.status(400).json({ error: "INSUFFICIENT_FOR_FEE", fee });
-        }
-
-        const v_ref = `VHP-${Math.floor(100000 + Math.random() * 900000)}`;
-
-        sender.balance -= totalDeduction;
-        receiver.balance += transferAmount;
-
-        sender.history.push({ type: "SENT", amount: transferAmount, v_hub_ref: v_ref, receipt: `To: ${receiver.v_hub_id || receiver.mpesa_id}` });
-        receiver.history.push({ type: "RECEIVED", amount: transferAmount, v_hub_ref: v_ref, receipt: `From: ${sender.v_hub_id || sender.mpesa_id}` });
-
-        await sender.save();
-        await receiver.save();
-
-        res.json({ success: true, fee, newBalance: sender.balance, v_ref, receiverName: receiver.name });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// --- UPDATED: SMART SEARCH POLLING ROUTE ---
-app.get('/api/check-status', async (req, res) => {
-    const { phone } = req.query; // Query can be Phone, Name, or ID
-    if (!phone) return res.status(400).json({ error: "Parameter required" });
-
-    console.log(`┃ 🔍 SMART_SEARCH: Querying [${phone}]`);
-
-    try {
-        const user = await User.findOne({ 
-            $or: [
-                { mpesa_id: phone }, 
-                { v_hub_id: new RegExp(`^${phone}$`, 'i') }, 
-                { name: new RegExp(`^${phone}$`, 'i') }
-            ] 
-        });
-
-        if (!user) {
-            return res.status(404).json({ status: "NOT_FOUND" });
-        }
-
-        const lastTx = user.history.length > 0 ? user.history[user.history.length - 1] : { date: new Date(0) };
-        const isRecent = (new Date() - new Date(lastTx.date)) < 180000;
-
-        res.json({ 
-            status: "OK", 
-            isRecent,
-            balance: user.balance, 
-            lastTransaction: lastTx,
-            v_hub_id: user.v_hub_id,
-            mpesa_id: user.mpesa_id,
-            name: user.name
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// --- 5. THE ULTIMATE CALLBACK (M-PESA LISTENER) ---
-app.post('/api/callback', async (req, res) => {
-    try {
-        const body = req.body.Body;
-        let mpesaData = null;
-        let targetJid = req.query.jid; 
-        let waName = req.query.name || "V_Hub Member";
-        let vHubRefFromBot = req.query.ref; // WE CAPTURE THE ID FROM THE BOT HERE
-
-        if (body && body.stkCallback) {
-            const callback = body.stkCallback;
-            const resultCode = callback.ResultCode;
-
-            if (resultCode === 0) {
-                const meta = callback.CallbackMetadata.Item;
-                mpesaData = {
-                    phone: meta.find(i => i.Name === "PhoneNumber").Value.toString(),
-                    amount: meta.find(i => i.Name === "Amount").Value,
-                    receipt: meta.find(i => i.Name === "MpesaReceiptNumber").Value,
-                    type: "DEPOSIT"
-                };
+        // --- STEP 2: MEMBER ID VERIFICATION ---
+        if (state.step === 1) {
+            if (answer.toLowerCase() === 'guest') {
+                state.step = 3; state.vHubId = "GUEST";
+                return sock.sendMessage(from, { text: "👤 *ᴠ-ʜᴜʙ ɢᴜᴇsᴛ:*\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ <ᴀᴍᴏᴜɴᴛ> <ᴘʜᴏɴᴇ>\n💡 *ʀᴇᴘʟʏ:* \`.prompt 10 07xxxxxxxx\`" });
             }
-        } 
 
-        if (mpesaData) {
-            const internalRef = `VHB-${Math.floor(100000 + Math.random() * 900000)}`;
-            const vHubID_New = `VHB-${Math.floor(100000 + Math.random() * 900000)}`;
-            const dbName = waName.length > 12 ? waName.substring(0, 12) + ".." : waName;
+            const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer.toUpperCase()}`;
+            try {
+                await client.connect();
+                const user = await client.db("vinnieBot").collection("wallets").findOne({ vHubId });
+                if (!user) {
+                    global.promptState.delete(senderPhone);
+                    return sock.sendMessage(from, { text: "⚠️ *ɪɴᴠᴀʟɪᴅ ɪᴅ:* ᴀʀᴇ ʏᴏᴜ ᴛʀʏɪɴɢ ᴛᴏ ᴅᴇᴘᴏsɪᴛ ᴀs ᴀ ɢᴜᴇsᴛ? ᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴡᴀʟʟᴇᴛ ɴᴜᴍʙᴇʀ." });
+                }
+                state.vHubId = user.vHubId; state.name = user.name; state.step = 2;
+                return sock.sendMessage(from, { text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴀᴜᴛʜ* ✿ ━━━━━┓\n┃\n┃ ✨ *ᴡᴇʟᴄᴏᴍᴇ,* ${user.name}!\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ʜᴏᴡ ᴍᴜᴄʜ ᴅᴏ ʏᴏᴜ \n┃ ᴡᴀɴᴛ ᴛᴏ ᴅᴇᴘᴏsɪᴛ?\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 50\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` });
+            } catch (e) { return sock.sendMessage(from, { text: "⚠️ *ᴅʙ ᴏꜰꜰʟɪɴᴇ*" }); }
+        }
 
-            // --- 🚀 THE MASTER FIX: DOUBLE CREDIT LOGIC 🚀 ---
-            // 1. First, find the user by VH-ID (if it was passed) OR by Phone
-            let user = await User.findOne({ 
-                $or: [
-                    { v_hub_id: vHubRefFromBot }, 
-                    { mpesa_id: mpesaData.phone }
-                ] 
-            });
+        // --- STEP 3: AMOUNT -> ASK PHONE ---
+        if (state.step === 2) {
+            if (isNaN(answer)) return sock.sendMessage(from, { text: "❌ *ᴇʀʀᴏʀ:* ᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴀᴍᴏᴜɴᴛ." });
+            state.amount = answer; state.step = 4;
+            return sock.sendMessage(from, { text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴘᴀʏᴍᴇɴᴛ* ✿ ━━━━━┓\n┃\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${state.amount}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ɴᴜᴍʙᴇʀ \n┃ ᴛᴏ ʙᴇ ᴘʀᴏᴍᴘᴛᴇᴅ.\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 07xxxxxxxx\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` });
+        }
 
-            if (user) {
-                // Credit existing user
-                user.balance += mpesaData.amount;
-                user.history.push({ 
-                    type: mpesaData.type, 
-                    amount: mpesaData.amount, 
-                    receipt: mpesaData.receipt, 
-                    v_hub_ref: internalRef 
+        // --- STEP 4: FINAL VALIDATION & PUSH ---
+        if (state.step === 3 || state.step === 4) {
+            let amt, ph;
+            if (state.step === 3) { [amt, ph] = answer.split(" "); } else { amt = state.amount; ph = answer; }
+
+            if (isAirtel(ph)) return sock.sendMessage(from, { text: "❌ *ᴀɪʀᴛᴇʟ ɴᴏᴛ sᴜᴘᴘᴏʀᴛᴇᴅ*" });
+            state.amount = amt; state.phone = ph.startsWith('0') ? '254' + ph.slice(1) : ph;
+            state.step = 'EXECUTING';
+            return this.triggerPush(sock, from, senderPhone);
+        }
+    },
+
+    async triggerPush(sock, from, senderPhone) {
+        const state = global.promptState.get(senderPhone);
+        const waitMsg = await sock.sendMessage(from, { text: `🚀 *ᴠ-ʜᴜʙ:* ɪɴɪᴛɪᴀᴛɪɴɢ sᴇᴄᴜʀᴇ sᴛᴋ ᴘᴜsʜ ꜰᴏʀ ${state.vHubId}...` });
+
+        try {
+            const res = await hubClient.deposit(state.phone, state.amount, from, state.vHubId);
+            if (res.success || res.ResponseCode === "0") {
+                await sock.sendMessage(from, { 
+                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ ᴘᴜsʜ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${state.amount}\n┃ 🆔 *ʀᴇꜰᴇʀᴇɴᴄᴇ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 📢 *ᴀᴄᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ:*\n┃ ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ᴘɪɴ ᴏɴ ʏᴏᴜʀ ᴘʜᴏɴᴇ.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                    edit: waitMsg.key
                 });
-                await user.save();
-            } else {
-                // Create new user if neither ID nor Phone exists
-                user = await User.create({
-                    mpesa_id: mpesaData.phone,
-                    v_hub_id: vHubRefFromBot || vHubID_New,
-                    name: dbName,
-                    balance: mpesaData.amount,
-                    history: [{ 
-                        type: mpesaData.type, 
-                        amount: mpesaData.amount, 
-                        receipt: mpesaData.receipt, 
-                        v_hub_ref: internalRef 
-                    }]
-                });
-            }
 
-            console.log(`┃ ✅ DB_UPDATED: ${user.name} | New Bal: ${user.balance}`);
+                
 
-            // --- Styled Success Message back to Bot ---
-            const finalStatusMessage = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓
+                // --- SMART POLLING FOR THE SUCCESS RECEIPT ---
+                let attempts = 0;
+                const checkInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const PROXY_URL = "https://vhubg-27494ea43fc4.herokuapp.com";
+                        const check = await axios.get(`${PROXY_URL}/api/check-status?phone=${state.phone}`);
+                        
+                        if (check.data.status === "OK" && check.data.isRecent) {
+                            clearInterval(checkInterval);
+                            global.promptState.delete(senderPhone);
+                            const tx = check.data.lastTransaction;
+                            
+                            const receipt = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓
 ┃
 ┃ ✅ *ᴅᴇᴘᴏsɪᴛ sᴜᴄᴄᴇssꜰᴜʟ*
-┃ 👤 *ᴄᴜsᴛᴏᴍᴇʀ:* ${user.name}
-┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${mpesaData.amount}
+┃ 👤 *ᴄᴜsᴛᴏᴍᴇʀ:* ${state.name || 'Guest User'}
+┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${tx.amount}
 ┃ 📅 *ᴛɪᴍᴇ:* ${new Date().toLocaleTimeString()}
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━┫
 ┃
-┃ 🏦 *ᴠ-ʜᴜʙ ʙᴀʟ:* ᴋsʜ ${user.balance}
-┃ 🆔 *ᴡᴀʟʟᴇᴛ ɪᴅ:* ${user.v_hub_id}
-┃ 📱 *ᴍ-ᴘᴇsᴀ ʀᴇꜰ:* ${mpesaData.receipt}
+┃ 🏦 *ᴠ-ʜᴜʙ ʙᴀʟ:* ᴋsʜ ${check.data.balance}
+┃ 🧾 *ᴠ-ʜᴜʙ ʀᴇꜰ:* ${Math.random().toString(36).substring(2, 10).toUpperCase()}
+┃ 📱 *ᴍ-ᴘᴇsᴀ ʀᴇꜰ:* ${tx.receipt}
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━┫
 ┃ _ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ʙᴀɴᴋɪɴɢ ᴡɪᴛʜ ᴜs_
 ┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-
-            if (targetJid) await sendToBot(targetJid, finalStatusMessage);
-        }
-
-        res.json({ ResultCode: 0, ResultDesc: "Accepted" });
-    } catch (error) {
-        console.error("┃ ❌ CALLBACK_CRASH:", error.message);
-        res.status(500).json({ ResultCode: 1 });
+                            return await sock.sendMessage(from, { text: receipt });
+                        }
+                    } catch (e) { if (attempts >= 6) clearInterval(checkInterval); }
+                }, 10000);
+            }
+        } catch (e) { global.promptState.delete(senderPhone); }
     }
-});
-
-// --- 6. START SERVER ---
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`\n┏━━━━━ ✿ V_HUB_PROXY_LIVE ✿ ━━━━━┓`);
-    console.log(`┃  PORT: ${PORT}                      ┃`);
-    console.log(`┃  STAT: DEEP_LOGGING_ACTIVE      ┃`);
-    console.log(`┃  DB:   CONNECTED_TO_ATLAS       ┃`);
-    console.log(`┗━━━━━ ✿ INFINITE_IMPACT ✿ ━━━━━┛`);
-});
+};
