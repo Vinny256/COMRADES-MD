@@ -3,7 +3,7 @@ const hubClient = require('../../utils/hubClient');
 const axios = require('axios');
 
 const mongoUri = process.env.MONGO_URI;
-const client = new MongoClient(mongoUri);
+const client = new MongoClient(mongoUri || "");
 global.promptState = global.promptState || new Map();
 
 module.exports = {
@@ -17,6 +17,16 @@ module.exports = {
 
         // --- HELPER: AIRTEL BLOCKER ---
         const isAirtel = (num) => /^(254|0)(73|75|78|10|11)/.test(num.replace(/\D/g, ''));
+
+        // --- NEW: SESSION CLOSER ---
+        if (answer.toLowerCase() === 'close') {
+            if (global.promptState.has(senderPhone)) {
+                global.promptState.delete(senderPhone);
+                return sock.sendMessage(from, { text: "✅ *ᴠ-ʜᴜʙ:* ᴘᴇɴᴅɪɴɢ ᴘʀᴏᴍᴘᴛ sᴇssɪᴏɴ ʜᴀs ʙᴇᴇɴ ᴄʟᴏsᴇᴅ sᴜᴄᴄᴇssꜰᴜʟʟʏ." });
+            } else {
+                return sock.sendMessage(from, { text: "❌ *ᴠ-ʜᴜʙ:* ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴀɴ ᴀᴄᴛɪᴠᴇ sᴇssɪᴏɴ ᴛᴏ ᴄʟᴏsᴇ." });
+            }
+        }
 
         // --- STEP 1: INITIAL GATEWAY ---
         if (!global.promptState.has(senderPhone)) {
@@ -46,6 +56,7 @@ module.exports = {
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━┫
 ┃ 💡 *ᴛɪᴘ:* ᴛʏᴘᴇ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴛᴏ ʙᴇɢɪɴ.
+┃ 🗑️ *ᴄʟᴏsᴇ:* \`${prefix}prompt close\`
 ┗━━━━━━━━━━━━━━━━━━━━━━┛`;
             return await sock.sendMessage(from, { text: menu });
         }
@@ -103,42 +114,17 @@ module.exports = {
                     edit: waitMsg.key
                 });
 
-                
+                // Clear the state here because the Webhook (Bot Web Server) 
+                // will handle the Success/Error receipt automatically.
+                global.promptState.delete(senderPhone);
 
-                // --- SMART POLLING FOR THE SUCCESS RECEIPT ---
-                let attempts = 0;
-                const checkInterval = setInterval(async () => {
-                    attempts++;
-                    try {
-                        const PROXY_URL = "https://vhubg-27494ea43fc4.herokuapp.com";
-                        const check = await axios.get(`${PROXY_URL}/api/check-status?phone=${state.phone}`);
-                        
-                        if (check.data.status === "OK" && check.data.isRecent) {
-                            clearInterval(checkInterval);
-                            global.promptState.delete(senderPhone);
-                            const tx = check.data.lastTransaction;
-                            
-                            const receipt = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓
-┃
-┃ ✅ *ᴅᴇᴘᴏsɪᴛ sᴜᴄᴄᴇssꜰᴜʟ*
-┃ 👤 *ᴄᴜsᴛᴏᴍᴇʀ:* ${state.name || 'Guest User'}
-┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${tx.amount}
-┃ 📅 *ᴛɪᴍᴇ:* ${new Date().toLocaleTimeString()}
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ 🏦 *ᴠ-ʜᴜʙ ʙᴀʟ:* ᴋsʜ ${check.data.balance}
-┃ 🧾 *ᴠ-ʜᴜʙ ʀᴇꜰ:* ${Math.random().toString(36).substring(2, 10).toUpperCase()}
-┃ 📱 *ᴍ-ᴘᴇsᴀ ʀᴇꜰ:* ${tx.receipt}
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃ _ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ʙᴀɴᴋɪɴɢ ᴡɪᴛʜ ᴜs_
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                            return await sock.sendMessage(from, { text: receipt });
-                        }
-                    } catch (e) { if (attempts >= 6) clearInterval(checkInterval); }
-                }, 10000);
+            } else {
+                global.promptState.delete(senderPhone);
+                await sock.sendMessage(from, { text: "❌ *ᴠ-ʜᴜʙ:* ꜰᴀɪʟᴇᴅ ᴛᴏ ɪɴɪᴛɪᴀᴛᴇ sᴛᴋ. ᴄʜᴇᴄᴋ ʏᴏᴜʀ ɴᴜᴍʙᴇʀ/ʙᴀʟᴀɴᴄᴇ." });
             }
-        } catch (e) { global.promptState.delete(senderPhone); }
+        } catch (e) { 
+            global.promptState.delete(senderPhone); 
+            await sock.sendMessage(from, { text: "❌ *ᴠ-ʜᴜʙ:* sʏsᴛᴇᴍ ᴄᴏɴɴᴇᴄᴛɪᴏɴ ᴇʀʀᴏʀ." });
+        }
     }
 };
