@@ -26,24 +26,24 @@ module.exports = {
 
         // --- STEP 2: VERIFY ID & ASK PIN ---
         if (state.step === 1) {
-            if (!answer.startsWith('VH-')) {
-                return sock.sendMessage(from, { text: "❌ *ɪɴᴠᴀʟɪᴅ ɪᴅ:* ᴍᴜsᴛ sᴛᴀʀᴛ ᴡɪᴛʜ `VH-`" });
-            }
-
+            const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer.toUpperCase()}`;
+            
             try {
                 await client.connect();
                 const db = client.db("vinnieBot");
-                const user = await db.collection("wallets").findOne({ vHubId: answer.toUpperCase() });
+                // We search the 'users' collection (where Proxy saves) for the VH-ID
+                const user = await db.collection("users").findOne({ v_hub_id: vHubId });
 
                 if (!user) {
                     global.loginState.delete(senderPhone);
                     return sock.sendMessage(from, { text: "❌ *ᴀᴄᴄᴏᴜɴᴛ ɴᴏᴛ ꜰᴏᴜɴᴅ:* ᴘʟᴇᴀsᴇ ᴄʀᴇᴀᴛᴇ ᴏɴᴇ ᴡɪᴛʜ `.new`" });
                 }
 
-                state.vHubId = user.vHubId;
+                state.vHubId = user.v_hub_id;
+                state.name = user.name;
                 state.step = 2;
                 return sock.sendMessage(from, { 
-                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ sᴇᴄᴜʀɪᴛʏ* ✿ ━━━━━┓\n┃\n┃ 👤 *ᴜsᴇʀ:* ${user.name}\n┃ 🆔 *ɪᴅ:* ${user.vHubId}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ʏᴏᴜʀ 4-ᴅɪɢɪᴛ ᴘɪɴ.\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}login 2580\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ sᴇᴄᴜʀɪᴛʏ* ✿ ━━━━━┓\n┃\n┃ 👤 *ᴜsᴇʀ:* ${user.name}\n┃ 🆔 *ɪᴅ:* ${user.v_hub_id}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ʏᴏᴜʀ 4-ᴅɪɢɪᴛ ᴘɪɴ.\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}login 2580\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
                 }, { quoted: msg });
             } catch (e) {
                 global.loginState.delete(senderPhone);
@@ -51,43 +51,62 @@ module.exports = {
             }
         }
 
-        // --- STEP 3: VERIFY PIN & SHOW DASHBOARD ---
+        // --- STEP 3: VERIFY PIN & SHOW DASHBOARD (WITH SELF-DESTRUCT) ---
         if (state.step === 2) {
             try {
                 const db = client.db("vinnieBot");
-                const user = await db.collection("wallets").findOne({ vHubId: state.vHubId });
+                const user = await db.collection("users").findOne({ v_hub_id: state.vHubId });
 
-                if (user.pin !== answer) {
+                // Use the PIN from the wallet registration
+                const wallet = await db.collection("wallets").findOne({ vHubId: state.vHubId });
+
+                if (wallet.pin !== answer) {
                     return sock.sendMessage(from, { text: "⚠️ *ᴡʀᴏɴɢ ᴘɪɴ:* ᴛʀʏ ᴀɢᴀɪɴ ᴡɪᴛʜ `.login <PIN>`" });
                 }
 
-                // LOGIN SUCCESS - CLEAR STATE & SHOW MENU
                 global.loginState.delete(senderPhone);
 
                 const bankingMenu = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴅᴀsʜʙᴏᴀʀᴅ* ✿ ━━━━━┓
 ┃
 ┃ ✨ *ᴡᴇʟᴄᴏᴍᴇ ʙᴀᴄᴋ,* ${user.name}!
-┃ 🆔 *ᴀᴄᴄᴏᴜɴᴛ:* ${user.vHubId}
+┃ 🆔 *ᴀᴄᴄᴏᴜɴᴛ:* ${user.v_hub_id}
 ┃ 🏦 *ʙᴀʟᴀɴᴄᴇ:* ᴋsʜ ${user.balance}
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━┫
 ┃
-┃ 💸 *[ .pay ]* ┃ _ᴡɪᴛʜᴅʀᴀᴡ ᴛᴏ ᴍ-ᴘᴇsᴀ_
+┃ 📥 *[ ${prefix}prompt ]* ┃ _ᴅᴇᴘᴏsɪᴛ ꜰᴜɴᴅs_
 ┃
-┃ 🔄 *[ .transfer ]* ┃ _sᴇɴᴅ ᴛᴏ ᴠ-ʜᴜʙ ɪᴅ_
+┃ 💸 *[ ${prefix}withdraw ]* ┃ _ᴡɪᴛʜᴅʀᴀᴡ ᴄᴀsʜ_
 ┃
-┃ 📥 *[ .prompt ]* ┃ _ᴅᴇᴘᴏsɪᴛ ᴍᴏɴᴇʏ_
+┃ 🔄 *[ ${prefix}transfer ]* ┃ _sᴇɴᴅ ᴛᴏ ᴠ-ʜᴜʙ_
 ┃
-┃ 📜 *[ .history ]* ┃ _ᴠɪᴇᴡ ᴛʀᴀɴsᴀᴄᴛɪᴏɴs_
+┃ 📜 *[ ${prefix}statement ]* ┃ _ʟᴀsᴛ 𝟓 ᴛx_
 ┃
-┃ 🗑️ *[ .delete ]* ┃ _ᴄʟᴏsᴇ ᴀᴄᴄᴏᴜɴᴛ_
+┃ 🔐 *[ ${prefix}changepin ]* ┃ _ᴜᴘᴅᴀᴛᴇ sᴇᴄᴜʀɪᴛʏ_
+┃
+┃ 🗑️ *[ ${prefix}close ]* ┃ _ᴄʟᴏsᴇ sᴇssɪᴏɴ_
 ┃
 ┣━━━━━━━━━━━━━━━━━━━━━━┫
 ┃
-┃ © 2026 | ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ
+┃ ⚠️ *sᴇᴄᴜʀɪᴛʏ:* ᴛʜɪs ᴍᴇɴᴜ ᴡɪʟʟ sᴇʟꜰ-ᴅᴇsᴛʀᴜᴄᴛ
+┃ ɪɴ 𝟑 ᴍɪɴᴜᴛᴇs ꜰᴏʀ ʏᴏᴜʀ ᴘʀɪᴠᴀᴄʏ.
+┃
+┃ © 2026 | ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ
 ┗━━━━━━━━━━━━━━━━━━━━━━┛`;
 
-                return sock.sendMessage(from, { text: bankingMenu }, { quoted: msg });
+                const sentMsg = await sock.sendMessage(from, { text: bankingMenu }, { quoted: msg });
+
+                // --- 💣 SELF-DESTRUCT ENGINE 💣 ---
+                setTimeout(async () => {
+                    try {
+                        await sock.sendMessage(from, { delete: sentMsg.key });
+                        console.log(`┃ 🗑️ SESSION_CLEANUP: Dashboard for ${user.v_hub_id} deleted.`);
+                    } catch (err) {
+                        console.error("┃ ❌ DELETE_FAILED:", err.message);
+                    }
+                }, 180000); // 180,000ms = 3 Minutes
+
+                return;
 
             } catch (e) {
                 global.loginState.delete(senderPhone);
