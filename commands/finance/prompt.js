@@ -1,6 +1,9 @@
+const { MongoClient } = require('mongodb');
 const hubClient = require('../../utils/hubClient');
+const axios = require('axios');
 
-// Global memory for steps
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri);
 global.promptState = global.promptState || new Map();
 
 module.exports = {
@@ -12,74 +15,130 @@ module.exports = {
         const senderPhone = sender.split('@')[0];
         const answer = args.join(" ").trim();
 
-        // --- HELPER: CHECK FOR AIRTEL NUMBERS ---
-        const isAirtel = (num) => {
-            const clean = num.replace(/\D/g, '');
-            // Airtel Kenya prefixes: 073, 075, 078, 010, 011
-            return /^(254|0)(73|75|78|10|11)/.test(clean);
-        };
+        // --- HELPER: AIRTEL BLOCKER ---
+        const isAirtel = (num) => /^(254|0)(73|75|78|10|11)/.test(num.replace(/\D/g, ''));
 
-        // --- STEP 1: INITIAL GATEWAY MENU ---
+        // --- STEP 1: INITIAL GATEWAY ---
         if (!global.promptState.has(senderPhone)) {
-            // Check if they tried a Guest Long Command immediately
+            // Check for Guest Long Command: .prompt 10 07xxxxxxxx
             if (args.length >= 2) {
                 const [amt, ph] = args;
                 if (isAirtel(ph)) return sock.sendMessage(from, { text: "❌ *ᴀɪʀᴛᴇʟ ɴᴏᴛ sᴜᴘᴘᴏʀᴛᴇᴅ*\n\nʀᴇǫᴜᴇsᴛ ᴄᴏᴜʟᴅɴ'ᴛ ᴘʀᴏᴄᴇᴇᴅ ꜰᴏʀ ᴀɴ ᴀɪʀᴛᴇʟ ᴍᴏɴᴇʏ ɴᴜᴍʙᴇʀ. ᴅᴇᴘᴏsɪᴛ ꜰᴏʀ ᴛʜᴇᴍ ᴄᴏᴍɪɴɢ sᴏᴏɴ!" });
                 
                 let finalPh = ph.startsWith('0') ? '254' + ph.slice(1) : ph;
-                await sock.sendMessage(from, { text: `👤 *ᴠ-ʜᴜʙ ɢᴜᴇsᴛ:* sᴇɴᴅɪɴɢ sᴛᴋ ᴏꜰ ᴋsʜ ${amt} ᴛᴏ ${finalPh}...` });
-                try {
-                    await hubClient.deposit(finalPh, amt, from, "GUEST");
-                    return;
-                } catch (e) { return sock.sendMessage(from, { text: "⚠️ ɢᴀᴛᴇᴡᴀʏ ᴇʀʀᴏʀ." }); }
+                global.promptState.set(senderPhone, { step: 'EXECUTING', vHubId: "GUEST", amount: amt, phone: finalPh });
+                return this.triggerPush(sock, from, senderPhone);
             }
 
-            // Normal Menu
             global.promptState.set(senderPhone, { step: 1 });
-            const menu = `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓\n┃\n┃ 🏦 *ᴠ-ʜᴜʙ ᴅᴇᴘᴏsɪᴛ*\n┃ _ʟᴇᴛ's ʟᴏᴀᴅ ʏᴏᴜʀ ᴡᴀʟʟᴇᴛ._\n┃\n┃ 🆕 *.new* - ʀᴇɢɪsᴛᴇʀ\n┃ 👤 *.prompt <ᴀᴍᴛ> <ᴘʜ>* - ɢᴜᴇsᴛ\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ɪs ʏᴏᴜʀ ᴠʜ-ɪᴅ?\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 1001\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            const menu = `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓
+┃
+┃ 🏦 *ᴠ-ʜᴜʙ ꜰɪɴᴀɴᴄᴇ ɢᴀᴛᴇᴡᴀʏ*
+┃ _sᴇᴄᴜʀᴇ ᴅɪɢɪᴛᴀʟ ʙᴀɴᴋɪɴɢ_
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃
+┃ 🆕 *[ ${prefix}new ]* ┃ _ᴄʀᴇᴀᴛᴇ ᴡᴀʟʟᴇᴛ_
+┃
+┃ 🔑 *[ ${prefix}prompt id ]* ┃ _ᴍᴇᴍʙᴇʀ ʟᴏɢɪɴ_
+┃
+┃ 👤 *[ ${prefix}prompt guest ]* ┃ _ǫᴜɪᴄᴋ ᴅᴇᴘᴏsɪᴛ_
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃ 💡 *ᴛɪᴘ:* ᴛʏᴘᴇ ᴀ ᴄᴏᴍᴍᴀɴᴅ ᴛᴏ ʙᴇɢɪɴ.
+┗━━━━━━━━━━━━━━━━━━━━━━┛`;
             return await sock.sendMessage(from, { text: menu });
         }
 
         const state = global.promptState.get(senderPhone);
 
-        // --- STEP 2: HANDLE ID -> ASK AMOUNT ---
+        // --- STEP 2: MEMBER ID VERIFICATION ---
         if (state.step === 1) {
-            // SMART DETECTION: Did they type a phone number instead of an ID?
-            if (answer.includes(" ") || (answer.length > 8 && !isNaN(answer))) {
-                return sock.sendMessage(from, { text: "⚠️ *ɪɴᴠᴀʟɪᴅ ɪᴅ*\n\nᴀʀᴇ ʏᴏᴜ ᴛʀʏɪɴɢ ᴛᴏ ᴅᴇᴘᴏsɪᴛ ᴀs ᴀ ɢᴜᴇsᴛ?\nᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴡᴀʟʟᴇᴛ ɴᴜᴍʙᴇʀ (ᴇ.ɢ. 1001) ᴏʀ ʀᴇsᴛᴀʀᴛ." });
+            if (answer.toLowerCase() === 'guest') {
+                state.step = 3; state.vHubId = "GUEST";
+                return sock.sendMessage(from, { text: "👤 *ᴠ-ʜᴜʙ ɢᴜᴇsᴛ:*\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ <ᴀᴍᴏᴜɴᴛ> <ᴘʜᴏɴᴇ>\n💡 *ʀᴇᴘʟʏ:* \`.prompt 10 07xxxxxxxx\`" });
             }
 
-            state.vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer.toUpperCase()}`;
-            state.step = 2;
-            return await sock.sendMessage(from, { text: `✅ *ɪᴅ sᴇᴛ:* ${state.vHubId}\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* ʜᴏᴡ ᴍᴜᴄʜ ᴛᴏ ᴅᴇᴘᴏsɪᴛ?\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 10\`` });
-        }
-
-        // --- STEP 3: HANDLE AMOUNT -> ASK PHONE ---
-        if (state.step === 2) {
-            if (isNaN(answer)) return sock.sendMessage(from, { text: "❌ *ᴇʀʀᴏʀ:* ᴜsᴇ ɴᴜᴍʙᴇʀs ᴏɴʟʏ." });
-            state.amount = answer;
-            state.step = 3;
-            return await sock.sendMessage(from, { text: `💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${state.amount}\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜɪᴄʜ ɴᴜᴍʙᴇʀ ᴛᴏ ᴘʀᴏᴍᴘᴛ?\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 07xxxxxxxx\`` });
-        }
-
-        // --- STEP 4: FINAL EXECUTION (STK PUSH) ---
-        if (state.step === 3) {
-            if (isAirtel(answer)) {
-                return sock.sendMessage(from, { text: "❌ *ᴀɪʀᴛᴇʟ ɴᴏᴛ sᴜᴘᴘᴏʀᴛᴇᴅ*\n\nʀᴇǫᴜᴇsᴛ ᴄᴏᴜʟᴅɴ'ᴛ ᴘʀᴏᴄᴇᴇᴅ ꜰᴏʀ ᴀɴ ᴀɪʀᴛᴇʟ ᴍᴏɴᴇʏ ɴᴜᴍʙᴇʀ. ᴅᴇᴘᴏsɪᴛ ꜰᴏʀ ᴛʜᴇᴍ ᴄᴏᴍɪɴɢ sᴏᴏɴ!" });
-            }
-
-            let finalPhone = answer;
-            if (finalPhone.startsWith('0')) finalPhone = '254' + finalPhone.slice(1);
-
-            global.promptState.delete(senderPhone);
-            await sock.sendMessage(from, { text: `🚀 *ᴠ-ʜᴜʙ:* sᴇɴᴅɪɴɢ sᴛᴋ ᴘᴜsʜ ᴛᴏ ${finalPhone}...` });
-
+            const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer.toUpperCase()}`;
             try {
-                const res = await hubClient.deposit(finalPhone, state.amount, from, state.vHubId);
-                if (res.success || res.ResponseCode === "0") {
-                    return await sock.sendMessage(from, { text: `✅ *sᴛᴋ sᴇɴᴛ!*\n💰 *ᴀᴍᴏᴜɴᴛ:* ${state.amount}\n🆔 *ʀᴇꜰ:* ${state.vHubId}\n\n📢 ᴇɴᴛᴇʀ ᴘɪɴ ᴏɴ ʏᴏᴜʀ ᴘʜᴏɴᴇ.` });
+                await client.connect();
+                const user = await client.db("vinnieBot").collection("wallets").findOne({ vHubId });
+                if (!user) {
+                    global.promptState.delete(senderPhone);
+                    return sock.sendMessage(from, { text: "⚠️ *ɪɴᴠᴀʟɪᴅ ɪᴅ:* ᴀʀᴇ ʏᴏᴜ ᴛʀʏɪɴɢ ᴛᴏ ᴅᴇᴘᴏsɪᴛ ᴀs ᴀ ɢᴜᴇsᴛ? ᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴡᴀʟʟᴇᴛ ɴᴜᴍʙᴇʀ." });
                 }
-            } catch (e) { return sock.sendMessage(from, { text: "❌ *sᴛᴋ ꜰᴀɪʟᴇᴅ*" }); }
+                state.vHubId = user.vHubId; state.name = user.name; state.step = 2;
+                return sock.sendMessage(from, { text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴀᴜᴛʜ* ✿ ━━━━━┓\n┃\n┃ ✨ *ᴡᴇʟᴄᴏᴍᴇ,* ${user.name}!\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ʜᴏᴡ ᴍᴜᴄʜ ᴅᴏ ʏᴏᴜ \n┃ ᴡᴀɴᴛ ᴛᴏ ᴅᴇᴘᴏsɪᴛ?\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 50\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` });
+            } catch (e) { return sock.sendMessage(from, { text: "⚠️ *ᴅʙ ᴏꜰꜰʟɪɴᴇ*" }); }
         }
+
+        // --- STEP 3: AMOUNT -> ASK PHONE ---
+        if (state.step === 2) {
+            if (isNaN(answer)) return sock.sendMessage(from, { text: "❌ *ᴇʀʀᴏʀ:* ᴇɴᴛᴇʀ ᴀ ᴠᴀʟɪᴅ ᴀᴍᴏᴜɴᴛ." });
+            state.amount = answer; state.step = 4;
+            return sock.sendMessage(from, { text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴘᴀʏᴍᴇɴᴛ* ✿ ━━━━━┓\n┃\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${state.amount}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ɴᴜᴍʙᴇʀ \n┃ ᴛᴏ ʙᴇ ᴘʀᴏᴍᴘᴛᴇᴅ.\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 07xxxxxxxx\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` });
+        }
+
+        // --- STEP 4: FINAL VALIDATION & PUSH ---
+        if (state.step === 3 || state.step === 4) {
+            let amt, ph;
+            if (state.step === 3) { [amt, ph] = answer.split(" "); } else { amt = state.amount; ph = answer; }
+
+            if (isAirtel(ph)) return sock.sendMessage(from, { text: "❌ *ᴀɪʀᴛᴇʟ ɴᴏᴛ sᴜᴘᴘᴏʀᴛᴇᴅ*" });
+            state.amount = amt; state.phone = ph.startsWith('0') ? '254' + ph.slice(1) : ph;
+            state.step = 'EXECUTING';
+            return this.triggerPush(sock, from, senderPhone);
+        }
+    },
+
+    async triggerPush(sock, from, senderPhone) {
+        const state = global.promptState.get(senderPhone);
+        const waitMsg = await sock.sendMessage(from, { text: `🚀 *ᴠ-ʜᴜʙ:* ɪɴɪᴛɪᴀᴛɪɴɢ sᴇᴄᴜʀᴇ sᴛᴋ ᴘᴜsʜ ꜰᴏʀ ${state.vHubId}...` });
+
+        try {
+            const res = await hubClient.deposit(state.phone, state.amount, from, state.vHubId);
+            if (res.success || res.ResponseCode === "0") {
+                await sock.sendMessage(from, { 
+                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ ᴘᴜsʜ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${state.amount}\n┃ 🆔 *ʀᴇꜰᴇʀᴇɴᴄᴇ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 📢 *ᴀᴄᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ:*\n┃ ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ᴘɪɴ ᴏɴ ʏᴏᴜʀ ᴘʜᴏɴᴇ.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                    edit: waitMsg.key
+                });
+
+                
+
+                // --- SMART POLLING FOR THE SUCCESS RECEIPT ---
+                let attempts = 0;
+                const checkInterval = setInterval(async () => {
+                    attempts++;
+                    try {
+                        const PROXY_URL = "https://vhubg-27494ea43fc4.herokuapp.com";
+                        const check = await axios.get(`${PROXY_URL}/api/check-status?phone=${state.phone}`);
+                        
+                        if (check.data.status === "OK" && check.data.isRecent) {
+                            clearInterval(checkInterval);
+                            global.promptState.delete(senderPhone);
+                            const tx = check.data.lastTransaction;
+                            
+                            const receipt = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓
+┃
+┃ ✅ *ᴅᴇᴘᴏsɪᴛ sᴜᴄᴄᴇssꜰᴜʟ*
+┃ 👤 *ᴄᴜsᴛᴏᴍᴇʀ:* ${state.name || 'Guest User'}
+┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${tx.amount}
+┃ 📅 *ᴛɪᴍᴇ:* ${new Date().toLocaleTimeString()}
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃
+┃ 🏦 *ᴠ-ʜᴜʙ ʙᴀʟ:* ᴋsʜ ${check.data.balance}
+┃ 🧾 *ᴠ-ʜᴜʙ ʀᴇꜰ:* ${Math.random().toString(36).substring(2, 10).toUpperCase()}
+┃ 📱 *ᴍ-ᴘᴇsᴀ ʀᴇꜰ:* ${tx.receipt}
+┃
+┣━━━━━━━━━━━━━━━━━━━━━━┫
+┃ _ᴛʜᴀɴᴋ ʏᴏᴜ ꜰᴏʀ ʙᴀɴᴋɪɴɢ ᴡɪᴛʜ ᴜs_
+┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                            return await sock.sendMessage(from, { text: receipt });
+                        }
+                    } catch (e) { if (attempts >= 6) clearInterval(checkInterval); }
+                }, 10000);
+            }
+        } catch (e) { global.promptState.delete(senderPhone); }
     }
 };
