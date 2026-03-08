@@ -10,10 +10,16 @@ const hubClient = {
      * @param {string} phone - The M-PESA number to charge
      * @param {number} amount - Amount in KSH
      * @param {string} jid - WhatsApp Chat ID
-     * @param {string} waName - The WhatsApp Name (e.g., Pius Mpenda Amani)
+     * @param {string} waName - The WhatsApp Name
+     * @param {string} vHubId - The Wallet ID (Optional)
      */
-    async deposit(phone, amount, jid, waName) {
+    async deposit(phone, amount, jid, waName, vHubId = "GUEST") {
         try {
+            // --- 🚀 THE DYNAMIC FIX ---
+            // This grabs the bot's own URL from Heroku settings
+            // If APP_URL isn't set, it tries to build it using the App Name
+            const myUrl = process.env.APP_URL || `https://${process.env.HEROKU_APP_NAME}.herokuapp.com`;
+
             console.log(`┃ 🚀 V_HUB: Initiating deposit for ${waName} (${phone})...`);
             
             const res = await axios.post(`${PROXY_URL}/deposit/prompt`, 
@@ -21,7 +27,9 @@ const hubClient = {
                     phone: phone, 
                     amount: amount, 
                     jid: jid,
-                    waName: waName // <--- Crucial: Sending the name to the proxy
+                    waName: waName,
+                    ref: vHubId, // Sending the Wallet ID/Ref
+                    callbackUrl: myUrl // <--- CRITICAL: Telling the Proxy where this bot lives
                 },
                 { 
                     headers: { 
@@ -31,11 +39,9 @@ const hubClient = {
                 }
             );
 
-            // We return the full data. The bot will check if (res.data.ResponseCode === "0")
             return res.data;
             
         } catch (e) {
-            // Logging for the Director to see in Heroku logs
             console.error("┃ ❌ V_HUB_HTTP_ERROR:", e.response?.data || e.message);
             return null;
         }
@@ -43,17 +49,16 @@ const hubClient = {
 
     /**
      * Triggers M-PESA B2C Disbursement via V_Hub Proxy
-     * @param {string} phone - Recipient phone number
-     * @param {number} amount - Amount to send
      */
-    async withdraw(phone, amount) {
+    async withdraw(phone, amount, waName) {
         try {
             console.log(`┃ 💸 V_HUB: Disbursing KSH ${amount} to ${phone}...`);
             
             const res = await axios.post(`${PROXY_URL}/withdraw`, 
                 { 
                     phone: phone, 
-                    amount: amount 
+                    amount: amount,
+                    waName: waName
                 },
                 { 
                     headers: { 
@@ -63,7 +68,6 @@ const hubClient = {
                 }
             );
 
-            // Returns { success: true, receipt: "...", newBalance: ... }
             return {
                 success: true,
                 receipt: res.data.receipt || "B2C_OK",
@@ -81,7 +85,6 @@ const hubClient = {
 
     /**
      * Checks the transaction status/history for a user
-     * @param {string} phone - The phone number to check
      */
     async checkStatus(phone) {
         try {
