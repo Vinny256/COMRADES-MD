@@ -26,7 +26,7 @@ module.exports = {
 
         // --- STEP 2: VERIFY ID/NAME & ASK PIN ---
         if (state.step === 1) {
-            // Cleverly format ID if it's just a number
+            // Cleverly format ID if it's just a number, otherwise handle string/name
             const formattedId = (!isNaN(answer) && answer.length > 0) ? `VH-${answer.toUpperCase()}` : answer.toUpperCase();
             const searchId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : formattedId;
             
@@ -34,7 +34,7 @@ module.exports = {
                 await client.connect();
                 const db = client.db("vinnieBot");
                 
-                // --- 🔍 SMART SEARCH: Find by VH-ID OR by Name ---
+                // --- 🔍 SMART SEARCH: Find by VH-ID (formatted) OR by Name ---
                 const user = await db.collection("users").findOne({ 
                     $or: [
                         { v_hub_id: searchId },
@@ -72,6 +72,7 @@ module.exports = {
                     return sock.sendMessage(from, { text: "⚠️ *ᴡʀᴏɴɢ ᴘɪɴ:* ᴛʀʏ ᴀɢᴀɪɴ ᴡɪᴛʜ `.login <PIN>`" });
                 }
 
+                // LOGIN SUCCESS - CLEAR STATE & SHOW MENU
                 global.loginState.delete(senderPhone);
 
                 const bankingMenu = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴅᴀsʜʙᴏᴀʀᴅ* ✿ ━━━━━┓
