@@ -9,6 +9,10 @@ process.stdout.write = function (chunk, encoding, callback) {
 };
 
 require('dotenv').config();
+const express = require('express'); // Added for Web Mode
+const app = express(); // Added for Web Mode
+app.use(express.json()); // Added for Web Mode
+
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
 const path = require('path');
@@ -69,6 +73,8 @@ global.saveSettings = async () => {
     } catch (e) { }
 };
 
+let sock; // Export sock globally for the listener
+
 async function startVinnieHub() {
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
@@ -102,7 +108,7 @@ async function startVinnieHub() {
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const { version } = await fetchLatestBaileysVersion();
     
-    const sock = makeWASocket({
+    sock = makeWASocket({
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
         markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
@@ -207,7 +213,7 @@ async function startVinnieHub() {
             }
         }
 
-        // --- 🧱 SMART PARALLEL WORKERS (Fix for TypeError) ---
+        // --- 🧱 SMART PARALLEL WORKERS ---
         loadedWorkers.forEach(worker => {
             if (typeof worker === 'function') {
                 worker(sock, msg, settings).catch(e => {});
@@ -231,4 +237,26 @@ async function startVinnieHub() {
         }
     });
 }
-startVinnieHub();
+
+// --- 📡 THE WEB LISTENER (FOR MPESA NOTIFY) ---
+app.post('/v_hub_notify', async (req, res) => {
+    const { jid, text } = req.body;
+    if (req.headers['x-vhub-secret'] !== process.env.API_SECRET) return res.sendStatus(403);
+    
+    try {
+        if (sock) {
+            await sock.sendMessage(jid, { text: text });
+            res.status(200).send("OK");
+        } else {
+            res.status(503).send("Sock Offline");
+        }
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
+});
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => {
+    console.log(`┃ 📡 BOT_WEB_SERVER: Listening on ${PORT}`);
+    startVinnieHub();
+});
