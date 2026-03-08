@@ -24,15 +24,23 @@ module.exports = {
 
         const state = global.loginState.get(senderPhone);
 
-        // --- STEP 2: VERIFY ID & ASK PIN ---
+        // --- STEP 2: VERIFY ID/NAME & ASK PIN ---
         if (state.step === 1) {
-            const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer.toUpperCase()}`;
+            // Cleverly format ID if it's just a number
+            const formattedId = (!isNaN(answer) && answer.length > 0) ? `VH-${answer.toUpperCase()}` : answer.toUpperCase();
+            const searchId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : formattedId;
             
             try {
                 await client.connect();
                 const db = client.db("vinnieBot");
-                // We search the 'users' collection (where Proxy saves) for the VH-ID
-                const user = await db.collection("users").findOne({ v_hub_id: vHubId });
+                
+                // --- 🔍 SMART SEARCH: Find by VH-ID OR by Name ---
+                const user = await db.collection("users").findOne({ 
+                    $or: [
+                        { v_hub_id: searchId },
+                        { name: new RegExp(`^${answer}$`, 'i') } 
+                    ]
+                });
 
                 if (!user) {
                     global.loginState.delete(senderPhone);
