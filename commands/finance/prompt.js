@@ -15,7 +15,7 @@ module.exports = {
         const waName = m.pushName || "Comrade";
         const answer = args.join(" ").trim();
 
-        // --- STEP 1: THE GATEWAY SELECTION ---
+        // --- 1. THE GATEWAY MENU (Triggered by just '.prompt') ---
         if (!global.promptState.has(senderPhone) && args.length === 0) {
             const gatewayMenu = `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓
 ┃
@@ -38,63 +38,61 @@ module.exports = {
             return sock.sendMessage(remoteJid, { text: gatewayMenu }, { quoted: m });
         }
 
-        // --- STEP 2: INITIALIZING THE FLOW ---
+        // --- 2. INITIALIZING OR BYPASSING ---
         if (!global.promptState.has(senderPhone)) {
             if (answer.toLowerCase() === 'guest') {
-                global.promptState.set(senderPhone, { step: 3, isGuest: true, vHubId: "GUEST" });
-                return sock.sendMessage(remoteJid, { 
-                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ɢᴜᴇsᴛ* ✿ ━━━━━┓\n┃\n┃ 👤 *ᴍᴏᴅᴇ:* ǫᴜɪᴄᴋ ᴅᴇᴘᴏsɪᴛ\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ᴀᴍᴏᴜɴᴛ ᴀɴᴅ ᴘʜᴏɴᴇ.\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 10 07xxxxxxxx\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-                }, { quoted: m });
+                global.promptState.set(senderPhone, { step: 3, vHubId: "GUEST" });
+                return sock.sendMessage(remoteJid, { text: "👤 *ᴠ-ʜᴜʙ:* Guest Mode. Reply with `.prompt <amount> <phone>`" });
             } else if (answer.toLowerCase() === 'id') {
                 global.promptState.set(senderPhone, { step: 2 });
-                return sock.sendMessage(remoteJid, { 
-                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴍᴇᴍʙᴇʀ* ✿ ━━━━━┓\n┃\n┃ 🔑 *ᴍᴏᴅᴇ:* ᴡᴀʟʟᴇᴛ ᴅᴇᴘᴏsɪᴛ\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ɪs ʏᴏᴜʀ ᴡᴀʟʟᴇᴛ ɪᴅ?\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 1001\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-                }, { quoted: m });
+                return sock.sendMessage(remoteJid, { text: "🔑 *ᴠ-ʜᴜʙ:* Member Mode. Reply with `.prompt <WalletID>` (e.g. 1001)" });
+            } else if (args.length >= 2) {
+                // AUTO-GUEST BYPASS: If they type '.prompt 10 07xxx' directly
+                global.promptState.set(senderPhone, { step: 3, vHubId: "GUEST" });
+            } else if (args.length === 1 && !isNaN(args[0])) {
+                // If they just type '.prompt 10', assume Guest for sender's phone
+                 global.promptState.set(senderPhone, { step: 3, vHubId: "GUEST" });
             }
         }
 
-        const state = global.promptState.get(senderPhone);
+        let state = global.promptState.get(senderPhone);
 
-        // --- 🛡️ CRASH PREVENTION: RECOVERY GATE ---
+        // --- 🛡️ EMERGENCY RECOVERY ---
         if (!state) {
-            return sock.sendMessage(remoteJid, { text: `⚠️ *ᴠ-ʜᴜʙ:* sᴇssɪᴏɴ ᴇxᴘɪʀᴇᴅ. ᴘʟᴇᴀsᴇ ᴛʏᴘᴇ \`${prefix}prompt\` ᴛᴏ ʀᴇsᴛᴀʀᴛ.` });
+            return sock.sendMessage(remoteJid, { text: `⚠️ *ᴠ-ʜᴜʙ:* Session lost. Type \`${prefix}prompt\` to restart.` });
         }
 
-        // --- STEP 3: HANDLE WALLET ID (Supports 1001 or VH-1001) ---
+        // --- STEP 3: HANDLE WALLET ID ---
         if (state.step === 2) {
-            if (!answer) return sock.sendMessage(remoteJid, { text: "❌ *ᴇʀʀᴏʀ:* ᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ʏᴏᴜʀ ɪᴅ." });
-            
             const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer}`;
             state.vHubId = vHubId;
             state.step = 3;
-            
-            return sock.sendMessage(remoteJid, { 
-                text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʙᴀɴᴋ* ✿ ━━━━━┓\n┃\n┃ ✅ *ɪᴅ ᴛᴀʀɢᴇᴛ:* ${vHubId}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ᴀᴍᴏᴜɴᴛ ᴀɴᴅ ᴘʜᴏɴᴇ.\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 50 07xxxxxxxx\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-            }, { quoted: m });
+            return sock.sendMessage(remoteJid, { text: `✅ *ᴛᴀʀɢᴇᴛ:* ${vHubId}\n\n❓ *ǫᴜᴇsᴛɪᴏɴ:* Amount and Phone?\n💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 10 07xxxxxxxx\`` });
         }
 
-        // --- STEP 4: EXECUTE THE STK PUSH ---
+        // --- STEP 4: EXECUTE STK ---
         if (state.step === 3) {
             const [amount, phoneInput] = answer.split(" ");
             let phone = phoneInput || senderPhone;
 
-            if (!amount || isNaN(amount) || !phone) {
-                return sock.sendMessage(remoteJid, { text: `❌ *ɪɴᴠᴀʟɪᴅ ɪɴᴘᴜᴛ*\nUsage: \`${prefix}prompt <amount> <phone>\`` });
+            if (!amount || isNaN(amount)) {
+                return sock.sendMessage(remoteJid, { text: "❌ *ᴇʀʀᴏʀ:* Please provide an amount." });
             }
 
             if (phone.startsWith('0')) phone = '254' + phone.slice(1);
-            global.promptState.delete(senderPhone); // Session complete, clear memory
+            global.promptState.delete(senderPhone); // Clear memory
 
-            const msg = await sock.sendMessage(remoteJid, { text: `⏳ *ᴠ-ʜᴜʙ:* sᴇɴᴅɪɴɢ sᴛᴋ ᴘᴜsʜ ᴛᴏ ${phone}...` }, { quoted: m });
+            const msg = await sock.sendMessage(remoteJid, { text: `⏳ *ᴠ-ʜᴜʙ:* Sending STK to ${phone}...` });
 
             try {
                 const result = await hubClient.deposit(phone, amount, remoteJid, state.vHubId);
-
                 if (result && (result.ResponseCode === "0" || result.success)) {
-                    const waitingText = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ ᴘᴜsʜ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${amount}\n┃ 🆔 *ᴅᴇsᴛɪɴᴀᴛɪᴏɴ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 📢 *ᴀᴄᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ:*\n┃ 1. ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ᴘɪɴ.\n┃ 2. ᴡᴀɪᴛ ꜰᴏʀ ᴀᴜᴛᴏ-ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                    await sock.sendMessage(remoteJid, { text: waitingText, edit: msg.key });
+                    await sock.sendMessage(remoteJid, { 
+                        text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ ᴘᴜsʜ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${amount}\n┃ 🆔 *ᴅᴇsᴛɪɴᴀᴛɪᴏɴ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 📢 *ᴀᴄᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ:*\n┃ ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ᴘɪɴ ᴏɴ ʏᴏᴜʀ ᴘʜᴏɴᴇ.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
+                        edit: msg.key 
+                    });
 
-                    
+                    // 
 
                     let attempts = 0;
                     const checkInterval = setInterval(async () => {
@@ -102,26 +100,25 @@ module.exports = {
                         try {
                             const PROXY_URL = "https://vhubg-27494ea43fc4.herokuapp.com";
                             const check = await axios.get(`${PROXY_URL}/api/check-status?phone=${phone}`);
-                            
                             if (check.data.status === "OK" && check.data.isRecent) {
                                 clearInterval(checkInterval);
                                 const tx = check.data.lastTransaction;
-                                const successReceipt = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓\n┃\n┃ ✅ *ᴘᴀʏᴍᴇɴᴛ ᴠᴇʀɪꜰɪᴇᴅ*\n┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${tx.amount}\n┃ 🆔 *ᴅᴇᴘᴏsɪᴛᴇᴅ ᴛᴏ:* ${state.vHubId}\n┃ 🧾 *ʀᴇꜰ:* ${tx.receipt}\n┃ 🏦 *ɴᴇᴡ ʙᴀʟ:* ᴋsʜ ${check.data.balance}\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                                await sock.sendMessage(remoteJid, { text: successReceipt }, { quoted: m });
+                                await sock.sendMessage(remoteJid, { 
+                                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʀᴇᴄᴇɪᴘᴛ* ✿ ━━━━━┓\n┃\n┃ ✅ *ᴘᴀʏᴍᴇɴᴛ ᴠᴇʀɪꜰɪᴇᴅ*\n┃ 💵 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${tx.amount}\n┃ 🆔 *ᴅᴇᴘᴏsɪᴛᴇᴅ ᴛᴏ:* ${state.vHubId}\n┃ 🏦 *ɴᴇᴡ ʙᴀʟ:* ᴋsʜ ${check.data.balance}\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                                });
                             }
                         } catch (e) {
                             if (attempts >= 4) {
                                 clearInterval(checkInterval);
-                                const errorText = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴛɪᴍᴇᴏᴜᴛ* ✿ ━━━━━┓\n┃\n┃ ❌ *ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ ꜰᴀɪʟᴇᴅ*\n┃ \n┃ ᴍ-ᴘᴇsᴀ ɪs ᴅᴇʟᴀʏᴇᴅ ᴏʀ ᴘɪɴ ɴᴏᴛ \n┃ ᴇɴᴛᴇʀᴇᴅ. ᴄʜᴇᴄᴋ ʙᴀʟᴀɴᴄᴇ ʟᴀᴛᴇʀ.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                                await sock.sendMessage(remoteJid, { text: errorText, edit: msg.key });
+                                await sock.sendMessage(remoteJid, { text: "❌ *ᴠ-ʜᴜʙ:* Verification timeout." });
                             }
                         }
                     }, 10000);
                 } else {
-                    await sock.sendMessage(remoteJid, { text: `❌ *ᴠ-ʜᴜʙ:* sᴛᴋ ᴄᴏᴜʟᴅ ɴᴏᴛ ʙᴇ ɪɴɪᴛɪᴀᴛᴇᴅ.`, edit: msg.key });
+                    throw new Error("STK Failed");
                 }
             } catch (err) {
-                await sock.sendMessage(remoteJid, { text: "⚠️ *ᴠ-ʜᴜʙ:* sᴇʀᴠᴇʀ ᴏꜰꜰʟɪɴᴇ.", edit: msg.key });
+                await sock.sendMessage(remoteJid, { text: "⚠️ *ᴠ-ʜᴜʙ:* Gateway Error." });
             }
         }
     }
