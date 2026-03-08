@@ -49,17 +49,25 @@ module.exports = {
                 global.promptState.set(senderPhone, { step: 2 });
                 return sock.sendMessage(remoteJid, { 
                     text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴍᴇᴍʙᴇʀ* ✿ ━━━━━┓\n┃\n┃ 🔑 *ᴍᴏᴅᴇ:* ᴡᴀʟʟᴇᴛ ᴅᴇᴘᴏsɪᴛ\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ɪs ʏᴏᴜʀ ᴡᴀʟʟᴇᴛ ɪᴅ?\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 1001\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-                }, { quoted: msg });
+                }, { quoted: m });
             }
         }
 
         const state = global.promptState.get(senderPhone);
 
-        // --- STEP 3: HANDLE WALLET ID & ASK FOR AMOUNT ---
+        // --- 🛡️ CRASH PREVENTION: RECOVERY GATE ---
+        if (!state) {
+            return sock.sendMessage(remoteJid, { text: `⚠️ *ᴠ-ʜᴜʙ:* sᴇssɪᴏɴ ᴇxᴘɪʀᴇᴅ. ᴘʟᴇᴀsᴇ ᴛʏᴘᴇ \`${prefix}prompt\` ᴛᴏ ʀᴇsᴛᴀʀᴛ.` });
+        }
+
+        // --- STEP 3: HANDLE WALLET ID (Supports 1001 or VH-1001) ---
         if (state.step === 2) {
-            const vHubId = answer.includes('VH-') ? answer.toUpperCase() : `VH-${answer}`;
+            if (!answer) return sock.sendMessage(remoteJid, { text: "❌ *ᴇʀʀᴏʀ:* ᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ʏᴏᴜʀ ɪᴅ." });
+            
+            const vHubId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : `VH-${answer}`;
             state.vHubId = vHubId;
             state.step = 3;
+            
             return sock.sendMessage(remoteJid, { 
                 text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ʙᴀɴᴋ* ✿ ━━━━━┓\n┃\n┃ ✅ *ɪᴅ ᴛᴀʀɢᴇᴛ:* ${vHubId}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ᴀᴍᴏᴜɴᴛ ᴀɴᴅ ᴘʜᴏɴᴇ.\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}prompt 50 07xxxxxxxx\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
             }, { quoted: m });
@@ -75,19 +83,19 @@ module.exports = {
             }
 
             if (phone.startsWith('0')) phone = '254' + phone.slice(1);
-            global.promptState.delete(senderPhone); // Clear memory
+            global.promptState.delete(senderPhone); // Session complete, clear memory
 
             const msg = await sock.sendMessage(remoteJid, { text: `⏳ *ᴠ-ʜᴜʙ:* sᴇɴᴅɪɴɢ sᴛᴋ ᴘᴜsʜ ᴛᴏ ${phone}...` }, { quoted: m });
 
             try {
-                // Trigger STK Push via Proxy
                 const result = await hubClient.deposit(phone, amount, remoteJid, state.vHubId);
 
                 if (result && (result.ResponseCode === "0" || result.success)) {
                     const waitingText = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ_ᴘᴀʏ* ✿ ━━━━━┓\n┃\n┃ ✅ *sᴛᴋ ᴘᴜsʜ sᴇɴᴛ!*\n┃ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${amount}\n┃ 🆔 *ᴅᴇsᴛɪɴᴀᴛɪᴏɴ:* ${state.vHubId}\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃\n┃ 📢 *ᴀᴄᴛɪᴏɴ ʀᴇǫᴜɪʀᴇᴅ:*\n┃ 1. ᴇɴᴛᴇʀ ᴍ-ᴘᴇsᴀ ᴘɪɴ.\n┃ 2. ᴡᴀɪᴛ ꜰᴏʀ ᴀᴜᴛᴏ-ᴠᴇʀɪꜰɪᴄᴀᴛɪᴏɴ.\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
                     await sock.sendMessage(remoteJid, { text: waitingText, edit: msg.key });
 
-                    // POLLING ENGINE
+                    
+
                     let attempts = 0;
                     const checkInterval = setInterval(async () => {
                         attempts++;
