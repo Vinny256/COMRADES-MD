@@ -46,7 +46,7 @@ module.exports = {
 
         try {
             // 4. Requesting Code from your Backend
-            const backendUrl = 'https://comrades-session-65daf07fdaad.herokuapp.com/start-pairing';
+            const backendUrl = 'https://vinnie-unit-3203-24d1ba2bf4f1.herokuapp.com/start-pairing';
             
             // Initial status message
             const { key } = await sock.sendMessage(from, { text: "📡 *Connecting to Vinnie Pairing Server...*" }, { quoted: msg });
