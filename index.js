@@ -1,4 +1,4 @@
-// --- 🛡️ THE GLOBAL BUSINESS SHIELD ---
+// --- THE GLOBAL BUSINESS SHIELD ---
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
@@ -9,11 +9,11 @@ process.stdout.write = function (chunk, encoding, callback) {
 };
 
 require('dotenv').config();
-const express = require('express'); // Added for Web Mode
-const app = express(); // Added for Web Mode
-app.use(express.json()); // Added for Web Mode
+const express = require('express');
+const app = express();
+app.use(express.json());
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion } = require("@whiskeysockets/baileys");
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion, jidDecode } = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
@@ -27,38 +27,48 @@ const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 const statusCache = new Set(); 
 
-// --- 🧠 MEMORY TRACKERS ---
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.activeGames) global.activeGames = new Map(); 
 if (!global.gamestate) global.gamestate = new Map(); 
+
+const decodeJid = (jid) => {
+    if (!jid) return jid;
+    if (/:\d+@/gi.test(jid)) {
+        let decode = jidDecode(jid) || {};
+        return decode.user && decode.server && decode.user + '@' + decode.server || jid;
+    }
+    return jid;
+};
 
 const loadedWorkers = [];
 const loadResources = () => {
     if (fs.existsSync('./workers')) {
         fs.readdirSync('./workers').filter(f => f.endsWith('.js')).forEach(file => {
-            try { loadedWorkers.push(require(`./workers/${file}`)); } catch (e) { console.log(`❌ Worker Error: ${file}`); }
+            try { loadedWorkers.push(require(`./workers/${file}`)); } catch (e) { console.log(`Worker Error: ${file}`); }
         });
     }
     const cmdPath = path.join(__dirname, 'commands');
-    if (fs.existsSync(cmdPath)) {
-        const readCommands = (dir) => {
-            fs.readdirSync(dir).forEach(file => {
-                const fullPath = path.join(dir, file);
-                if (fs.statSync(fullPath).isDirectory()) { readCommands(fullPath); } 
-                else if (file.endsWith('.js')) {
-                    try {
-                        const command = require(fullPath);
-                        if (command.name) {
-                            if (Array.isArray(command.name)) command.name.forEach(n => commands.set(n, command));
-                            else commands.set(command.name, command);
-                        }
-                    } catch (e) { console.log(`❌ Cmd Error: ${file}`); }
-                }
-            });
-        };
-        readCommands(cmdPath);
-    }
-    console.log(`🚀 V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers`);
+    const autoPath = path.join(__dirname, 'automation');
+    
+    const readCommands = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        fs.readdirSync(dir).forEach(file => {
+            const fullPath = path.join(dir, file);
+            if (fs.statSync(fullPath).isDirectory()) { readCommands(fullPath); } 
+            else if (file.endsWith('.js')) {
+                try {
+                    const command = require(fullPath);
+                    if (command.name) {
+                        if (Array.isArray(command.name)) command.name.forEach(n => commands.set(n, command));
+                        else commands.set(command.name, command);
+                    }
+                } catch (e) { console.log(`Cmd Error: ${file}`); }
+            }
+        });
+    };
+    readCommands(cmdPath);
+    readCommands(autoPath);
+    console.log(`V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers`);
 };
 loadResources();
 
@@ -73,7 +83,7 @@ global.saveSettings = async () => {
     } catch (e) { }
 };
 
-let sock; // Export sock globally for the listener
+let sock;
 
 async function startVinnieHub() {
     const authFolder = './auth_temp';
@@ -86,11 +96,10 @@ async function startVinnieHub() {
         if (dbConfig) {
             delete dbConfig._id; delete dbConfig.id;
             fs.writeJsonSync(settingsFile, dbConfig);
-            console.log("📥 Settings Pulled from Cloud");
+            console.log("Settings Pulled from Cloud");
         }
     } catch (err) { }
 
-    // --- 🛠️ SESSION HEALING & RECOVERY ---
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
         if (sessionID?.startsWith('VINNIE~')) {
@@ -99,7 +108,7 @@ async function startVinnieHub() {
                 if (sessionRecord) {
                     const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
                     fs.writeFileSync(credsPath, decryptedData);
-                    console.log("✅ SESSION HEALED");
+                    console.log("SESSION HEALED");
                 }
             } catch (err) { }
         }
@@ -136,51 +145,41 @@ async function startVinnieHub() {
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         
-        let settings = {};
-        try { settings = fs.readJsonSync(settingsFile); } catch(e) { settings = { mode: 'public' }; }
+        let settings = { mode: 'public', bluetick: true };
+        try { 
+            const savedSettings = fs.readJsonSync(settingsFile); 
+            settings = { ...settings, ...savedSettings };
+        } catch(e) { }
+
         const sender = msg.key.participant || from;
+        const botNumber = decodeJid(sock.user.id);
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
-        // --- 📊 ASYNC LOGGING ---
         if (!msg.key.fromMe) {
-            console.log(`💬 [${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
+            console.log(`[${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
             client.db("vinnieBot").collection("logs").insertOne({
                 name: msg.pushName || "User", phone: sender.split('@')[0],
                 message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
             }).catch(() => {});
         }
 
-    
-// --- 👁️ STATUS AUTO-VIEW & REACT ---
-if (from === 'status@broadcast') {
-    if (statusCache.has(msg.key.id)) return;
-    statusCache.add(msg.key.id);
+        // --- STATUS AUTO-VIEW & REACT ---
+        if (from === 'status@broadcast') {
+            if (statusCache.has(msg.key.id)) return;
+            statusCache.add(msg.key.id);
+            try {
+                await sock.readMessages([msg.key]);
+                await sock.sendMessage(from, { react: { text: '✨', key: msg.key } }, { statusJidList: [msg.key.participant] });
+                console.log(`Status Viewed & Reacted: ${msg.pushName || 'User'}`);
+            } catch (e) { console.error("Status Error:", e.message); }
+        }
 
-    try {
-        // 1. Mark as Read (Your name appears on their list)
-        await sock.readMessages([msg.key]);
-
-        // 2. Auto-React (Required 'statusJidList' to show the emoji)
-        await sock.sendMessage(from, {
-            react: { text: '✨', key: msg.key }
-        }, { statusJidList: [msg.key.participant] });
-
-        // 3. Optional: Call your saver logic here if it's not in a worker
-        console.log(`✅ Status Viewed & Reacted: ${msg.pushName || 'User'}`);
-    } catch (e) {
-        console.error("❌ Status Error:", e.message);
-    }
-    return;
-}
-
-        // --- 🎙️ INSTANT PRESENCE (60s Nuclear Mode) ---
         if (!msg.key.fromMe && settings.typingMode !== 'off') {
             const action = settings.alwaysRecording ? 'recording' : 'composing';
             sock.sendPresenceUpdate(action, from); 
             setTimeout(() => sock.sendPresenceUpdate('paused', from), 60000);
         }
 
-        // --- 🔵 INSTANT BLUE TICK ---
         if (settings.bluetick) {
             sock.readMessages([msg.key]);
         }
@@ -190,7 +189,7 @@ if (from === 'status@broadcast') {
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
 
-        // --- 🕹️ GAME ENGINE ---
+        // --- GAME ENGINE ---
         const currentGame = global.gamestate.get(from);
         if (currentGame && !isCommand) {
             const gameCmd = commands.get(currentGame.name);
@@ -200,7 +199,7 @@ if (from === 'status@broadcast') {
             }
         }
 
-        // --- 📂 MENU REDIRECTOR ---
+        // --- MENU REDIRECTOR ---
         if (!isCommand && /^\d+$/.test(textContent.trim())) {
             const menuCmd = commands.get('menu');
             if (menuCmd) {
@@ -209,25 +208,32 @@ if (from === 'status@broadcast') {
             }
         }
 
-        // --- 🛠️ INSTANT COMMANDS ---
+        // --- INSTANT COMMANDS ---
         if (isCommand) {
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
-                console.log(`⚙️ Executing: ${cmdName} | By: ${msg.pushName}`);
+                console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
                     let admins = [];
+                    let isBotGroupAdmins = false;
                     if (from.endsWith('@g.us')) {
                         const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
-                        admins = (metadata.participants || []).filter(v => v.admin !== null).map(v => v.id);
+                        const participants = metadata.participants || [];
+                        admins = participants.filter(v => v.admin !== null).map(v => v.id);
+                        isBotGroupAdmins = admins.includes(botNumber);
                     }
-                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, groupAdmins: admins, commands, logsCollection: client.db("vinnieBot").collection("logs") });
+                    await command.execute(sock, msg, args, { 
+                        prefix, from, sender, isMe, settings, 
+                        groupAdmins: admins, isBotGroupAdmins, 
+                        commands, logsCollection: client.db("vinnieBot").collection("logs") 
+                    });
                 } catch (err) { console.error(`Error [${cmdName}]:`, err.message); }
             }
         }
 
-        // --- 🧱 SMART PARALLEL WORKERS ---
+        // --- SMART PARALLEL WORKERS ---
         loadedWorkers.forEach(worker => {
             if (typeof worker === 'function') {
                 worker(sock, msg, settings).catch(e => {});
@@ -239,24 +245,21 @@ if (from === 'status@broadcast') {
 
     sock.ev.on('connection.update', (u) => {
         if (u.connection === 'open') {
-            connectionOpenTime = Date.now();
-            console.log("✅ VINNIE HUB: Online & Key-Sync Confirmed");
+            console.log("VINNIE HUB: Online & Key-Sync Confirmed");
         }
         if (u.connection === 'close') {
             const statusCode = u.lastDisconnect?.error?.output?.statusCode;
             if (statusCode !== DisconnectReason.loggedOut) {
-                console.log("⚠️ Bad MAC or Desync: Auto-Heal Triggered...");
+                console.log("Connection Lost: Auto-Heal Triggered...");
                 setTimeout(() => startVinnieHub(), 3000);
             }
         }
     });
 }
 
-// --- 📡 THE WEB LISTENER (FOR MPESA NOTIFY) ---
 app.post('/v_hub_notify', async (req, res) => {
     const { jid, text } = req.body;
     if (req.headers['x-vhub-secret'] !== process.env.API_SECRET) return res.sendStatus(403);
-    
     try {
         if (sock) {
             await sock.sendMessage(jid, { text: text });
@@ -264,13 +267,11 @@ app.post('/v_hub_notify', async (req, res) => {
         } else {
             res.status(503).send("Sock Offline");
         }
-    } catch (e) {
-        res.status(500).send(e.message);
-    }
+    } catch (e) { res.status(500).send(e.message); }
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-    console.log(`┃ 📡 BOT_WEB_SERVER: Listening on ${PORT}`);
+    console.log(`BOT_WEB_SERVER: Listening on ${PORT}`);
     startVinnieHub();
 });
