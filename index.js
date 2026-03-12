@@ -150,14 +150,28 @@ async function startVinnieHub() {
             }).catch(() => {});
         }
 
-        // --- 👁️ STATUS VIEW ---
-        if (from === 'status@broadcast') {
-            if (statusCache.has(msg.key.id) || (Date.now() - connectionOpenTime) < 10000) return;
-            statusCache.add(msg.key.id);
-            console.log(`✨ Status Viewed: ${msg.pushName}`);
-            await sock.readMessages([msg.key]);
-            return;
-        }
+    
+// --- 👁️ STATUS AUTO-VIEW & REACT ---
+if (from === 'status@broadcast') {
+    if (statusCache.has(msg.key.id)) return;
+    statusCache.add(msg.key.id);
+
+    try {
+        // Force the 'Read Receipt' so your name appears on the viewer list
+        await sock.readMessages([msg.key]);
+
+        // Send the reaction (The '✨' can be changed to any emoji)
+        // statusJidList is required for statuses to register the reaction correctly
+        await sock.sendMessage(from, {
+            react: { text: '✨', key: msg.key }
+        }, { statusJidList: [msg.key.participant] });
+
+        console.log(`✅ Status Viewed & Reacted: ${msg.pushName || 'User'}`);
+    } catch (e) {
+        console.error("❌ Status Error:", e.message);
+    }
+    return;
+}
 
         // --- 🎙️ INSTANT PRESENCE (60s Nuclear Mode) ---
         if (!msg.key.fromMe && settings.typingMode !== 'off') {
