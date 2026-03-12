@@ -157,15 +157,15 @@ if (from === 'status@broadcast') {
     statusCache.add(msg.key.id);
 
     try {
-        // Force the 'Read Receipt' so your name appears on the viewer list
+        // 1. Mark as Read (Your name appears on their list)
         await sock.readMessages([msg.key]);
 
-        // Send the reaction (The '✨' can be changed to any emoji)
-        // statusJidList is required for statuses to register the reaction correctly
+        // 2. Auto-React (Required 'statusJidList' to show the emoji)
         await sock.sendMessage(from, {
             react: { text: '✨', key: msg.key }
         }, { statusJidList: [msg.key.participant] });
 
+        // 3. Optional: Call your saver logic here if it's not in a worker
         console.log(`✅ Status Viewed & Reacted: ${msg.pushName || 'User'}`);
     } catch (e) {
         console.error("❌ Status Error:", e.message);
