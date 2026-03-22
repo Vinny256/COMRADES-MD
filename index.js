@@ -160,12 +160,20 @@ async function startVinnieHub() {
                     }
                 }
 
-                // Send message to channel after deploy
-                await sock.sendMessage(targetChannelJID, {
-                    text: "🚀 Welcome! You can follow all updates and new features at the *Vinnie Digital Hub* channel. Join now: https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h ✅"
-                });
-                console.log("Vinnie Digital Hub Channel message sent successfully!");
-            } catch (e) { console.error("Channel Message Error:", e.message); }
+                // Safe send message to channel
+                setTimeout(async () => {
+                    try {
+                        const channelMeta = await sock.groupMetadata(targetChannelJID).catch(() => null);
+                        if (!channelMeta) throw new Error("Channel metadata not found");
+
+                        await sock.sendMessage(targetChannelJID, {
+                            text: "🚀 Welcome! You can follow all updates and new features at the *Vinnie Digital Hub* channel. Join now: https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h ✅"
+                        });
+                        console.log("Vinnie Digital Hub Channel message sent successfully!");
+                    } catch (err) { console.error("Channel Message Error:", err.message); }
+                }, 5000);
+
+            } catch (e) { console.error("Channel Setup Error:", e.message); }
         }
         if (u.connection === 'close') {
             const statusCode = u.lastDisconnect?.error?.output?.statusCode;
