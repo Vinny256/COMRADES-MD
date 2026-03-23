@@ -1,76 +1,86 @@
-const hubClient = require('../../utils/hubClient');
+import hubClient from '../../utils/hubClient.js';
 
-module.exports = {
+const refundCommand = {
     name: 'refund',
     category: 'owner',
-    async execute(conn, m, args) {
-        const sock = conn?.sendMessage ? conn : (m.conn || global.conn);
-        const remoteJid = m.key.remoteJid;
-        
-        // --- 1. FOUNDER SECURITY ---
+    desc: 'Manual financial disbursement to members',
+    async execute(sock, msg, args, { from, isMe, prefix }) {
+        // --- 🛡️ MASTER DIRECTOR SECURITY ---
         const masterDirector = "254788032713@s.whatsapp.net";
-        if (m.key.remoteJid !== masterDirector && !m.key.fromMe) return;
+        if (msg.key.remoteJid !== masterDirector && !isMe) return;
 
         const amount = args[0];
         let targetPhone = args[1];
 
-        // --- 2. VALIDATION ---
+        // --- 📊 INPUT VALIDATION ---
         if (!amount || isNaN(amount) || !targetPhone) {
-            return sock.sendMessage(remoteJid, { text: "❌ *Usage:* `.refund <amount> <phone>`" });
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴜsᴀɢᴇ_ɪɴғᴏ 』\n│ ⚙ *ᴄᴏᴍᴍᴀɴᴅ:* ${prefix}ʀᴇғᴜɴᴅ [ᴀᴍᴏᴜɴᴛ] [ᴘʜᴏɴᴇ]\n│ ⚙ *ᴇx:* ${prefix}ʀᴇғᴜɴᴅ 𝟻𝟶𝟶 𝟶𝟽... \n└────────────────────────┈` 
+            });
         }
+
+        // Standardize Kenyan Format
         if (targetPhone.startsWith('0')) targetPhone = '254' + targetPhone.slice(1);
 
-        const msg = await sock.sendMessage(remoteJid, { text: "🔍 *V_HUB:* Verifying member identity..." });
+        // --- ✦ INITIAL REACTION & PROMPT ---
+        const { key } = await sock.sendMessage(from, { 
+            text: `┌─『 ᴠ_ʜᴜʙ_sʏsᴛᴇᴍ 』\n│ 🔍 ᴠᴇʀɪғʏɪɴɢ_ᴍᴇᴍʙᴇʀ_ɪᴅᴇɴᴛɪᴛʏ...\n└────────────────────────┈` 
+        });
 
         try {
-            // --- 3. DATABASE CHECK (Search by Phone) ---
+            // --- 🔎 DATABASE CHECK ---
             const userStatus = await hubClient.checkStatus(targetPhone);
 
             if (userStatus.status !== "OK") {
-                return sock.sendMessage(remoteJid, { 
-                    text: `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓\n┃\n┃ ❌ *NOT FOUND*\n┃ 👤 *USER:* ${targetPhone}\n┃\n┃ _This user is not in the database._\n┃ _They must .prompt first._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
-                    edit: msg.key 
+                return sock.sendMessage(from, { 
+                    text: `┌─『 ᴠ_ʜᴜʙ_ᴇʀʀᴏʀ 』\n│ ❌ *ɴᴏᴛ_ғᴏᴜɴᴅ*\n│ 👤 *ᴜsᴇʀ:* ${targetPhone}\n│ ⚙ ʟᴏɢ: ᴜsᴇʀ_ɴᴏᴛ_ɪɴ_ᴅᴀᴛᴀʙᴀsᴇ\n└────────────────────────┈`,
+                    edit: key 
                 });
             }
 
-            // --- 4. BALANCE CHECK ---
+            // --- 💰 BALANCE VALIDATION ---
             if (userStatus.balance < Number(amount)) {
-                return sock.sendMessage(remoteJid, { 
-                    text: `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓\n┃\n┃ ❌ *LOW BALANCE*\n┃ 👤 *USER:* ${userStatus.v_hub_id || targetPhone}\n┃ 💰 *HAS:* KSH ${userStatus.balance}\n┃\n┃ _Cannot refund more than balance._\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
-                    edit: msg.key 
+                return sock.sendMessage(from, { 
+                    text: `┌─『 ᴠ_ʜᴜʙ_ᴇʀʀᴏʀ 』\n│ ❌ *ʟᴏᴡ_ʙᴀʟᴀɴᴄᴇ*\n│ 👤 *ᴜsᴇʀ:* ${userStatus.v_hub_id || targetPhone}\n│ 💰 *ʜᴀs:* ᴋsʜ ${userStatus.balance}\n│ ⚙ ʟᴏɢ: ʀᴇғᴜɴᴅ_ᴇxᴄᴇᴇᴅs_ʙᴀʟᴀɴᴄᴇ\n└────────────────────────┈`,
+                    edit: key 
                 });
             }
 
-            // --- 5. EXECUTE DISBURSEMENT ---
-            // Passing the truncated name to the Proxy for the receipt
+            // --- 🚀 EXECUTE WITHDRAWAL (REFUND) ---
             const res = await hubClient.withdraw(targetPhone, amount, userStatus.v_hub_id);
 
             if (res.success) {
-                const successMsg = `┏━━━━━ ✿ *V_HUB_REFUND* ✿ ━━━━━┓
-┃
-┃ ✅ *REFUND SUCCESSFUL!*
-┃ 👤 *MEMBER:* ${userStatus.v_hub_id || targetPhone}
-┃ 💰 *AMOUNT:* KSH ${amount}
-┃ 🧾 *REF:* ${res.receipt}
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ 🏦 *NEW BAL:* KSH ${res.newBalance}
-┃ _Transaction logged as Manual Refund._
-┃
-┃ 🛠️ _Infinite Impact - Founder_
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                // --- 📑 SUCCESS UI ---
+                let successMsg = `┌────────────────────────┈\n`;
+                successMsg += `│      *ᴠ-ʜᴜʙ_ʀᴇғᴜɴᴅ_ʟᴏɢ* \n`;
+                successMsg += `└────────────────────────┈\n\n`;
+                
+                successMsg += `┌─『 ᴛʀᴀɴsᴀᴄᴛɪᴏɴ_ᴅᴇᴛᴀɪʟs 』\n`;
+                successMsg += `│ ✅ *sᴛᴀᴛᴜs:* sᴜᴄᴄᴇssғᴜʟ\n`;
+                successMsg += `│ 👤 *ᴍᴇᴍʙᴇʀ:* ${userStatus.v_hub_id || targetPhone}\n`;
+                successMsg += `│ 💰 *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${amount}\n`;
+                successMsg += `│ 🧾 *ʀᴇғ:* ${res.receipt}\n`;
+                successMsg += `└────────────────────────┈\n\n`;
+                
+                successMsg += `┌─『 sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ 』\n`;
+                successMsg += `│ 🏦 *ɴᴇᴡ_ʙᴀʟ:* ᴋsʜ ${res.newBalance}\n`;
+                successMsg += `│ ⚙ ʟᴏɢ: ᴍᴀɴᴜᴀʟ_ʀᴇғᴜɴᴅ_ᴇxᴇᴄ\n`;
+                successMsg += `└────────────────────────┈\n\n`;
+                
+                successMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ - ꜰᴏᴜɴᴅᴇʀ ᴘʀɪᴠɪʟᴇɢᴇ_`;
 
-                await sock.sendMessage(remoteJid, { text: successMsg, edit: msg.key });
+                await sock.sendMessage(from, { text: successMsg, edit: key });
             } else {
                 throw new Error(res.message);
             }
 
         } catch (err) {
-            await sock.sendMessage(remoteJid, { 
-                text: `❌ *V_HUB_SYSTEM_FAILURE*\n\nReason: ${err.message}`,
-                edit: msg.key 
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ғᴀɪʟᴜʀᴇ 』\n│ ❌ *ᴇʀʀᴏʀ:* ${err.message}\n└────────────────────────┈`,
+                edit: key 
             });
         }
     }
 };
+
+export default refundCommand;
