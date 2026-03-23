@@ -1,22 +1,52 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+
 const settingsFile = './settings.json';
 
-module.exports = {
+const autoviewCommand = {
     name: "autoview",
     category: "automation",
     desc: "Toggle status/message auto-view",
     async execute(sock, msg, args, { from }) {
+        // Restricted to Owner/Bot Number only
         if (!msg.key.fromMe) return;
-        const settings = fs.readJsonSync(settingsFile);
+
+        let settings = {};
+        if (fs.existsSync(settingsFile)) {
+            settings = fs.readJsonSync(settingsFile);
+        }
+
         const action = args[0]?.toLowerCase();
 
+        // --- ⚡ UNICODE SLEEK STYLING ---
         if (action === 'on' || action === 'off') {
             settings.autoview = (action === 'on');
             fs.writeJsonSync(settingsFile, settings);
-            return sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ HUB_CONFIG ✿ ━━━━━┓\n┃\n┃  FEATURE: AUTO_VIEW\n┃  STATUS: ${action.toUpperCase()}\n┃  SYNC: SUCCESSFUL\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛` 
-            });
+
+            let confirmation = `┌────────────────────────┈\n`;
+            confirmation += `│      *ʜᴜʙ_ᴄᴏɴғɪɢ* \n`;
+            confirmation += `└────────────────────────┈\n\n`;
+            
+            confirmation += `┌─『 sʏsᴛᴇᴍ sʏɴᴄ 』\n`;
+            confirmation += `│ ⚙ *ғᴇᴀᴛᴜʀᴇ:* ᴀᴜᴛᴏ_ᴠɪᴇᴡ\n`;
+            confirmation += `│ ⚙ *sᴛᴀᴛᴜs:* ${action.toUpperCase()} ✦\n`;
+            confirmation += `│ ⚙ *sʏɴᴄ:* sᴜᴄᴄᴇssғᴜʟ\n`;
+            confirmation += `└────────────────────────┈\n\n`;
+            
+            confirmation += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            return sock.sendMessage(from, { text: confirmation });
         }
-        await sock.sendMessage(from, { text: `┏━━━━━ ✿ CONFIG_ERR ✿ ━━━━━┓\n┃\n┃  USAGE: .autoview on/off\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛` });
+
+        // Error / Usage Message
+        let errorMsg = `┌────────────────────────┈\n`;
+        errorMsg += `│      *ᴄᴏɴғɪɢ_ᴇʀʀ* \n`;
+        errorMsg += `└────────────────────────┈\n\n`;
+        errorMsg += `┌─『 ʜᴇʟᴘ_ʟᴏɢ 』\n`;
+        errorMsg += `│ ⚙ *ᴜsᴀɢᴇ:* .ᴀᴜᴛᴏᴠɪᴇᴡ ᴏɴ/ᴏғғ\n`;
+        errorMsg += `└────────────────────────┈`;
+
+        await sock.sendMessage(from, { text: errorMsg });
     }
 };
+
+export default autoviewCommand;
