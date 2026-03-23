@@ -1,34 +1,81 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+
 const settingsFile = './settings.json';
 
-const vStyle = (text) => {
-    return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-};
-
-module.exports = {
+const antimentionCommand = {
     name: 'antimention',
     category: 'group',
     desc: 'Kick users who mention the group in status',
-    async execute(sock, msg, args, { from, isGroup, isAdmins, settings }) {
-        if (!isGroup) return sock.sendMessage(from, { text: vStyle("This protection is for Groups only.") });
-        if (!isAdmins) return sock.sendMessage(from, { text: vStyle("Access Denied. Only Group Admins can toggle Anti-Mention.") });
+    async execute(sock, msg, args, { from, isGroup, isAdmins, settings, prefix }) {
+        // --- 🛡️ GROUP-ONLY SHIELD ---
+        if (!isGroup) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ɢʀᴏᴜᴘ_ᴏɴʟʏ ᴘʀᴏᴛᴇᴄᴛɪᴏɴ.\n└────────────────────────┈` 
+            });
+        }
+
+        // --- 📊 PERMISSION CHECKS ---
+        const metadata = await sock.groupMetadata(from);
+        const admins = metadata.participants.filter(p => p.admin).map(p => p.id);
+        const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        const isBotAdmin = admins.includes(botId);
+
+        if (!isAdmins) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴅᴍɪɴ ᴘʀɪᴠɪʟᴇɢᴇ ʀᴇǫᴜɪʀᴇᴅ.\n└────────────────────────┈` 
+            });
+        }
 
         const action = args[0]?.toLowerCase();
 
+        // --- 🚀 ACTION: ON ---
         if (action === 'on') {
+            if (!isBotAdmin) {
+                return sock.sendMessage(from, { 
+                    text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ᴇʀʀᴏʀ:* ʙᴏᴛ ɴᴇᴇᴅs ᴀᴅᴍɪɴ sᴛᴀᴛᴜs.\n└────────────────────────┈` 
+                });
+            }
+
             settings.antimention = true;
             fs.writeJsonSync(settingsFile, settings);
-            await sock.sendMessage(from, { 
-                text: vStyle("🛡️ *Anti-Mention Activated*\n┃ Status mentions of this group\n┃ will result in an automatic kick.\n┃ _Lesson Teaching Mode: ON_") 
-            });
+
+            let onMsg = `┌────────────────────────┈\n`;
+            onMsg += `│      *ᴀɴᴛɪ_ᴍᴇɴᴛɪᴏɴ_ᴀᴄᴛɪᴠᴇ* \n`;
+            onMsg += `└────────────────────────┈\n\n`;
+            onMsg += `┌─『 ᴘʀᴏᴛᴇᴄᴛɪᴏɴ_ʟᴏɢ 』\n`;
+            onMsg += `│ 🛡️ *sᴛᴀᴛᴜs:* ᴇɴᴀʙʟᴇᴅ\n`;
+            onMsg += `│ ⚙ *ᴍᴏᴅᴇ:* ʟᴇssᴏɴ_ᴛᴇᴀᴄʜɪɴɢ\n`;
+            onMsg += `│ ⚠️ sᴛᴀᴛᴜs ᴍᴇɴᴛɪᴏɴs = ᴋɪᴄᴋ\n`;
+            onMsg += `└────────────────────────┈\n\n`;
+            onMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            await sock.sendMessage(from, { text: onMsg });
+
+        // --- 🚀 ACTION: OFF ---
         } else if (action === 'off') {
             settings.antimention = false;
             fs.writeJsonSync(settingsFile, settings);
-            await sock.sendMessage(from, { 
-                text: vStyle("🔓 *Anti-Mention Deactivated*\n┃ Status mentions will no longer\n┃ trigger automatic removal.") 
-            });
+
+            let offMsg = `┌────────────────────────┈\n`;
+            offMsg += `│      *ᴀɴᴛɪ_ᴍᴇɴᴛɪᴏɴ_ɪɴᴀᴄᴛɪᴠᴇ* \n`;
+            offMsg += `└────────────────────────┈\n\n`;
+            offMsg += `┌─『 sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ 』\n`;
+            offMsg += `│ 🔓 *sᴛᴀᴛᴜs:* ᴅɪsᴀʙʟᴇᴅ\n`;
+            offMsg += `│ ⚙ *ʟᴏɢ:* ᴀᴜᴛᴏ-ᴋɪᴄᴋ ᴄᴇᴀsᴇᴅ.\n`;
+            offMsg += `└────────────────────────┈\n\n`;
+            offMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            await sock.sendMessage(from, { text: offMsg });
+
         } else {
-            await sock.sendMessage(from, { text: vStyle(`Usage:\n┃ .antimention on\n┃ .antimention off`) });
+            // --- 📑 USAGE UI ---
+            let usageMsg = `┌─『 ᴜsᴀɢᴇ_ɪɴғᴏ 』\n`;
+            usageMsg += `│ ⚙ ${prefix}ᴀɴᴛɪᴍᴇɴᴛɪᴏɴ ᴏɴ\n`;
+            usageMsg += `│ ⚙ ${prefix}ᴀɴᴛɪᴍᴇɴᴛɪᴏɴ ᴏғғ\n`;
+            usageMsg += `└────────────────────────┈`;
+            await sock.sendMessage(from, { text: usageMsg });
         }
     }
 };
+
+export default antimentionCommand;
