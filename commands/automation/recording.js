@@ -1,7 +1,8 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+
 const settingsFile = './settings.json';
 
-module.exports = {
+const recordingCommand = {
     name: "recording",
     category: "automation",
     desc: "V_HUB: Toggle Recording Worker",
@@ -9,42 +10,53 @@ module.exports = {
         // --- 🛡️ FOUNDER SHIELD ---
         if (!isMe) {
             return await sock.sendMessage(from, { 
-                text: "⚠️ *ACCESS DENIED*\n\nThis command is reserved for the *Vinnie Digital Hub* Founder only. 🛡️" 
+                text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ\n│ ⚙ *sᴛᴀᴛᴜs:* ғᴏᴜɴᴅᴇʀ ᴏɴʟʏ\n└────────────────────────┈` 
             });
         }
 
-        const settings = fs.readJsonSync(settingsFile);
+        let settings = {};
+        if (fs.existsSync(settingsFile)) {
+            settings = fs.readJsonSync(settingsFile);
+        }
+        
         const choice = args[0]?.toLowerCase();
 
         // --- 🚥 MENU IF NO ARGS ---
         if (!choice) {
             await sock.sendMessage(from, { react: { text: "🎙️", key: msg.key } });
 
-            const menu = `┏━━━━━ ✿ *V_HUB RECORDING* ✿ ━━━━━┓
-┃
-┃ 🎙️ *Status:* ${settings.alwaysRecording ? "ENABLED ✅" : "DISABLED ❌"}
-┃ 📍 *Mode:* ${settings.recordMode || "all"}
-┃
-┃ *Usage:*
-┃ 1️⃣ \`${prefix}recording all\`
-┃ 2️⃣ \`${prefix}recording groups\`
-┃ 3️⃣ \`${prefix}recording inbox\`
-┃ 4️⃣ \`${prefix}recording off\`
-┃
-┃ _V_HUB Automation Engine_
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            let menu = `┌────────────────────────┈\n`;
+            menu += `│      *ʀᴇᴄᴏʀᴅɪɴɢ_ʜᴜʙ* \n`;
+            menu += `└────────────────────────┈\n\n`;
+            
+            menu += `┌─『 sʏsᴛᴇᴍ sᴛᴀᴛᴇ 』\n`;
+            menu += `│ ⚙ *sᴛᴀᴛᴜs:* ${settings.alwaysRecording ? "ᴀᴄᴛɪᴠᴇ ✦" : "ᴏғғʟɪɴᴇ ✧"}\n`;
+            menu += `│ ⚙ *ᴍᴏᴅᴇ:* ${settings.recordMode || "ᴀʟʟ"}\n`;
+            menu += `└────────────────────────┈\n\n`;
+            
+            menu += `┌─『 ᴄᴏɴғɪɢᴜʀᴀᴛɪᴏɴ 』\n`;
+            menu += `│ ├─◈ ${prefix}ʀᴇᴄᴏʀᴅɪɴɢ ᴀʟʟ\n`;
+            menu += `│ ├─◈ ${prefix}ʀᴇᴄᴏʀᴅɪɴɢ ɢʀᴏᴜᴘs\n`;
+            menu += `│ ├─◈ ${prefix}ʀᴇᴄᴏʀᴅɪɴɢ ɪɴʙᴏx\n`;
+            menu += `│ ╰─◈ ${prefix}ʀᴇᴄᴏʀᴅɪɴɢ ᴏғғ\n`;
+            menu += `└────────────────────────┈\n\n`;
+            
+            menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+            
             return await sock.sendMessage(from, { text: menu });
         }
 
-        // --- ⚙️ LOGIC (NO DELETIONS) ---
+        // --- ⚙️ LOGIC ---
         if (choice === 'off') {
             settings.alwaysRecording = false;
         } else if (['all', 'groups', 'inbox'].includes(choice)) {
             settings.alwaysRecording = true;
             settings.recordMode = choice;
-            settings.alwaysTyping = false; 
+            settings.alwaysTyping = false; // Auto-disable typing to prioritize recording
         } else {
-            return await sock.sendMessage(from, { text: "❌ Error: Use all, groups, inbox, or off." });
+            return await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ᴜsᴇ: ᴀʟʟ, ɢʀᴏᴜᴘs, ɪɴʙᴏx, ᴏғғ\n└────────────────────────┈` 
+            });
         }
 
         // Save and Sync
@@ -54,13 +66,18 @@ module.exports = {
         // Success Feedback
         await sock.sendMessage(from, { react: { text: "✅", key: msg.key } });
         
-        const successMsg = `┏━━━━━ ✿ *HUB UPDATED* ✿ ━━━━━┓
-┃
-┃ 🎙️ *Recording:* ${settings.alwaysRecording ? "ACTIVE" : "OFF"}
-┃ 📡 *Target:* ${settings.recordMode?.toUpperCase() || "NONE"}
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        let successMsg = `┌────────────────────────┈\n`;
+        successMsg += `│      *ʜᴜʙ_ᴜᴘᴅᴀᴛᴇᴅ* \n`;
+        successMsg += `└────────────────────────┈\n\n`;
+        
+        successMsg += `┌─『 sʏɴᴄ ᴅᴇᴛᴀɪʟs 』\n`;
+        successMsg += `│ ⚙ *ʀᴇᴄᴏʀᴅɪɴɢ:* ${settings.alwaysRecording ? "ᴀᴄᴛɪᴠᴇ ✦" : "ᴅɪsᴀʙʟᴇᴅ"}\n`;
+        successMsg += `│ ⚙ *ᴛᴀʀɢᴇᴛ:* ${settings.recordMode?.toUpperCase() || "ɴᴏɴᴇ"}\n`;
+        successMsg += `│ ⚙ *sʏsᴛᴇᴍ:* ᴄʟᴏᴜᴅ sʏɴᴄ ᴏᴋ\n`;
+        successMsg += `└────────────────────────┈`;
 
         await sock.sendMessage(from, { text: successMsg });
     }
 };
+
+export default recordingCommand;
