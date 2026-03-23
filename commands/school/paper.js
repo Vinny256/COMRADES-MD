@@ -1,22 +1,30 @@
-const axios = require('axios');
+import axios from 'axios';
 
-module.exports = {
+const paperCommand = {
     name: 'paper',
     category: 'school',
-    async execute(sock, msg, args) {
-        const from = msg.key.remoteJid;
+    desc: 'Fetch past exam papers from UoEm MyLoft Vault',
+    async execute(sock, msg, args, { from, prefix }) {
         let query = args.join(" ").toUpperCase();
 
-        if (!query) return sock.sendMessage(from, { text: "🎓 *ᴜᴏᴇᴍ ᴇxᴀᴍ ʜᴜʙ*\n\nᴘʟᴇᴀsᴇ ᴇɴᴛᴇʀ ᴀ ᴜɴɪᴛ ᴄᴏᴅᴇ.\nExample: `.paper SCH 303`" });
+        // --- 🛡️ INPUT VALIDATION ---
+        if (!query) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴜᴏᴇᴍ_ᴇxᴀᴍ_ʜᴜʙ 』\n│ ⚙ *ᴄᴏᴍᴍᴀɴᴅ:* ${prefix}ᴘᴀᴘᴇʀ [ᴜɴɪᴛ_ᴄᴏᴅᴇ]\n│ 📖 *ᴇx:* ${prefix}ᴘᴀᴘᴇʀ sᴄʜ 𝟹𝟶𝟹\n└────────────────────────┈` 
+            });
+        }
 
-        // Auto-formatter: "sch303" -> "SCH 303"
+        // --- 🛠️ AUTO-FORMATTER (sch303 -> SCH 303) ---
         if (/^[A-Z]{3}\d{3}$/.test(query)) {
             query = query.replace(/^([A-Z]{3})(\d{3})$/, '$1 $2');
         }
 
-        await sock.sendMessage(from, { text: `🔍 *sᴇᴀʀᴄʜɪɴɢ:* ${query}...` });
+        // --- ✦ INITIAL REACTION & SEARCH PROMPT ---
+        const { key } = await sock.sendMessage(from, { 
+            text: `┌─『 ᴠ_ʜᴜʙ_sᴇᴀʀᴄʜ 』\n│ 🔍 *ɪɴᴅᴇxɪɴɢ:* ${query}...\n│ 🏛️ *sᴏᴜʀᴄᴇ:* ᴍʏʟᴏғᴛ_ᴠᴀᴜʟᴛ\n└────────────────────────┈` 
+        });
 
-        // Try variations to ensure match
+        // Try variations to ensure a match in the MyLoft database
         const variations = [query, query.replace(" ", ""), query.toLowerCase()];
         let results = [];
         let lastRawError = null;
@@ -31,7 +39,7 @@ module.exports = {
                             'User-Agent': 'MyLoft/3.0.1 (Android 12; Pixel 6)',
                             'x-platform': 'android'
                         },
-                        timeout: 10000 // 10 second timeout
+                        timeout: 10000 
                     });
                     
                     if (res.data?.results?.length > 0) {
@@ -44,44 +52,57 @@ module.exports = {
                 }
             }
 
+            // --- 🛡️ ERROR HANDLING (NO RESULTS) ---
             if (results.length === 0) {
-                // If no results, but we have a raw error from the last attempt, send it
-                if (lastRawError && lastRawError.response) {
+                if (lastRawError?.response) {
                     const rawData = JSON.stringify(lastRawError.response.data, null, 2);
                     return sock.sendMessage(from, { 
-                        text: `❌ *ᴍʏʟᴏꜰᴛ_sᴇʀᴠᴇʀ_ʀᴇsᴘᴏɴsᴇ:*\n\n\`\`\`${rawData}\`\`\`` 
+                        text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ❌ *ᴍʏʟᴏғᴛ_ʀᴇsᴘᴏɴsᴇ:*\n\`\`\`${rawData}\`\`\`\n└────────────────────────┈`,
+                        edit: key
                     });
                 }
-                return sock.sendMessage(from, { text: `❌ *ɴᴏ ᴘᴀᴘᴇʀs ꜰᴏᴜɴᴅ:* No matches for "${query}" in the archive.` });
+                return sock.sendMessage(from, { 
+                    text: `┌─『 sʏsᴛᴇᴍ_ᴀʟᴇʀᴛ 』\n│ ❌ *ɴᴏ_ᴘᴀᴘᴇʀs_ғᴏᴜɴᴅ*\n│ ⚙ ʟᴏɢ: ɴᴏ_ᴍᴀᴛᴄʜᴇs_ғᴏʀ_${query}\n└────────────────────────┈`,
+                    edit: key
+                });
             }
 
-            // Successfully found papers
+            // --- 🚀 SUCCESS: EXTRACT PDF ---
             const bestMatch = results[0];
             const downloadUrl = bestMatch.file_url || bestMatch.link;
 
             if (!downloadUrl) {
-                return sock.sendMessage(from, { text: "⚠️ *ʟɪɴᴋ ᴇʀʀᴏʀ:* Found the paper metadata, but no PDF link was provided by MyLoft." });
+                return sock.sendMessage(from, { 
+                    text: `┌─『 ᴅᴀᴛᴀ_ᴇʀʀ 』\n│ ⚠️ *ʟɪɴᴋ_ᴍɪssɪɴɢ*\n│ ⚙ ʟᴏɢ: ᴘᴅғ_ɴᴏᴛ_ᴘʀᴏᴠɪᴅᴇᴅ_ʙʏ_ᴠᴀᴜʟᴛ\n└────────────────────────┈`,
+                    edit: key
+                });
             }
 
+            // --- 📑 DOCUMENT DELIVERY ---
             await sock.sendMessage(from, { 
                 document: { url: downloadUrl }, 
                 fileName: `${bestMatch.title || query}.pdf`,
                 mimetype: 'application/pdf',
-                caption: `┏━━━━━ ✿ *ᴜᴏᴇᴍ_ᴘᴀᴘᴇʀs* ✿ ━━━━━┓\n┃\n┃ ✅ *ꜰᴏᴜɴᴅ:* ${bestMatch.title || query}\n┃ 🏛️ *sᴏᴜʀᴄᴇ:* ᴍʏʟᴏꜰᴛ ᴠᴀᴜʟᴛ\n┃\n┣━━━━━━━━━━━━━━━━━━━━━━┫\n┃ _ᴘʀᴏᴠɪᴅᴇᴅ ʙʏ ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`
+                caption: `┌────────────────────────┈\n│      *ᴜᴏᴇᴍ_ᴇxᴀᴍ_ᴠᴀᴜʟᴛ* \n└────────────────────────┈\n\n┌─『 ᴘᴀᴘᴇʀ_ᴅᴇᴛᴀɪʟs 』\n│ ✅ *ғᴏᴜɴᴅ:* ${bestMatch.title || query}\n│ 🏛️ *sᴏᴜʀᴄᴇ:* ᴍʏʟᴏғᴛ_ᴀᴘɪ\n│ 📜 *ғᴏʀᴍᴀᴛ:* ᴘᴅғ_ᴅᴏᴄᴜᴍᴇɴᴛ\n└────────────────────────┈\n\n_ᴘʀᴏᴠɪᴅᴇᴅ ʙʏ ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ_`
             });
 
+            // Cleanup the search message
+            await sock.sendMessage(from, { delete: key });
+
         } catch (globalError) {
-            // SEND REAL SERVER ERROR TO WHATSAPP
+            // --- 🛡️ ELITE DEBUG LOG ---
             const errorLog = {
                 message: globalError.message,
                 status: globalError.response?.status,
-                statusText: globalError.response?.statusText,
-                data: globalError.response?.data || "No response data"
+                data: globalError.response?.data || "ɴᴏ_ʀᴇsᴘᴏɴsᴇ_ᴅᴀᴛᴀ"
             };
 
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *ᴠ_ʜᴜʙ_ᴅᴇʙᴜɢ* ✿ ━━━━━┓\n┃\n┃ ❌ *sᴇʀᴠᴇʀ ᴄʀᴀsʜ ʟᴏɢ*\n┃\n\`\`\`${JSON.stringify(errorLog, null, 2)}\`\`\`\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
+                text: `┌─『 ᴅᴇʙᴜɢ_ʟᴏɢ 』\n│ ❌ *sʏsᴛᴇᴍ_ᴄʀᴀsʜ*\n\`\`\`${JSON.stringify(errorLog, null, 2)}\`\`\`\n└────────────────────────┈`,
+                edit: key 
             });
         }
     }
 };
+
+export default paperCommand;
