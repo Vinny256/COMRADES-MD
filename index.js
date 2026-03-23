@@ -8,17 +8,32 @@ process.stdout.write = function (chunk, encoding, callback) {
     return originalWrite.call(process.stdout, chunk, encoding, callback);
 };
 
-require('dotenv').config();
-const express = require('express');
+import 'dotenv/config';
+import express from 'express';
 const app = express();
 app.use(express.json());
 
-const fs = require('fs-extra');
-const path = require('path');
-const pino = require('pino');
-const zlib = require('zlib'); 
-const { MongoClient } = require("mongodb"); 
-const NodeCache = require("node-cache"); 
+import baileys from "@whiskeysockets/baileys";
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    makeCacheableSignalKeyStore, 
+    Browsers, 
+    fetchLatestBaileysVersion, 
+    jidDecode 
+} = baileys;
+
+import fs from 'fs-extra';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import pino from 'pino';
+import zlib from 'zlib'; 
+import { MongoClient } from "mongodb"; 
+import NodeCache from "node-cache"; 
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const silentLogger = pino({ level: 'silent' });
 const commands = new Map();
@@ -30,20 +45,6 @@ if (!global.healingRetries) global.healingRetries = new Map();
 if (!global.activeGames) global.activeGames = new Map(); 
 if (!global.gamestate) global.gamestate = new Map(); 
 
-// --- v7 MIGRATION: DYNAMIC IMPORT HANDLER ---
-let makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion, jidDecode, isPnUser, isLidUser;
-
-async function loadBaileys() {
-    const baileys = await import('@whiskeysockets/baileys');
-    makeWASocket = baileys.default;
-    useMultiFileAuthState = baileys.useMultiFileAuthState;
-    DisconnectReason = baileys.DisconnectReason;
-    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
-    Browsers = baileys.Browsers;
-    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
-    jidDecode = baileys.jidDecode;
-}
-
 const decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -54,36 +55,41 @@ const decodeJid = (jid) => {
 };
 
 const loadedWorkers = [];
-const loadResources = () => {
+const loadResources = async () => {
     if (fs.existsSync('./workers')) {
-        fs.readdirSync('./workers').filter(f => f.endsWith('.js')).forEach(file => {
-            try { loadedWorkers.push(require(`./workers/${file}`)); } catch (e) { console.log(`Worker Error: ${file}`); }
-        });
+        const workerFiles = fs.readdirSync('./workers').filter(f => f.endsWith('.js'));
+        for (const file of workerFiles) {
+            try { 
+                const worker = await import(`./workers/${file}?update=${Date.now()}`);
+                loadedWorkers.push(worker.default || worker); 
+            } catch (e) { console.log(`Worker Error: ${file}`); }
+        }
     }
     const cmdPath = path.join(__dirname, 'commands');
     const autoPath = path.join(__dirname, 'automation');
     
-    const readCommands = (dir) => {
+    const readCommands = async (dir) => {
         if (!fs.existsSync(dir)) return;
-        fs.readdirSync(dir).forEach(file => {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
             const fullPath = path.join(dir, file);
-            if (fs.statSync(fullPath).isDirectory()) { readCommands(fullPath); } 
+            if (fs.statSync(fullPath).isDirectory()) { await readCommands(fullPath); } 
             else if (file.endsWith('.js')) {
                 try {
-                    const command = require(fullPath);
-                    if (command.name) {
-                        if (Array.isArray(command.name)) command.name.forEach(n => commands.set(n, command));
-                        else commands.set(command.name, command);
+                    const command = await import(`file://${fullPath}?update=${Date.now()}`);
+                    const cmd = command.default || command;
+                    if (cmd.name) {
+                        if (Array.isArray(cmd.name)) cmd.name.forEach(n => commands.set(n, cmd));
+                        else commands.set(cmd.name, cmd);
                     }
                 } catch (e) { console.log(`Cmd Error: ${file}`); }
             }
-        });
+        }
     };
-    readCommands(cmdPath);
-    readCommands(autoPath);
+    await readCommands(cmdPath);
+    await readCommands(autoPath);
     console.log(`V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers`);
 };
-loadResources();
 
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
@@ -99,7 +105,7 @@ global.saveSettings = async () => {
 let sock;
 
 async function startVinnieHub() {
-    await loadBaileys(); // Ensure ESM Baileys is loaded
+    await loadResources(); 
 
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
@@ -133,11 +139,9 @@ async function startVinnieHub() {
     const { version } = await fetchLatestBaileysVersion();
     
     sock = makeWASocket({
-        // v7 Keys REQUIREMENT: Cacheable Signal Key Store is now standard to prevent Bad MAC
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
         markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
-        // Syncing LIDs on connection
         shouldSyncLidPnMappings: true 
     });
 
@@ -205,8 +209,6 @@ async function startVinnieHub() {
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
 
-        // --- v7 LID RESOLVER ---
-        // If the ID is an LID, try to get the Phone Number (PN) for consistent logging
         if (from.includes('lid')) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
             if (pn) from = pn;
@@ -222,7 +224,6 @@ async function startVinnieHub() {
         } catch(e) { }
 
         let sender = msg.key.participant || from;
-        // Resolve sender LID to PN as well
         if (sender.includes('lid')) {
             const senderPn = await sock.signalRepository.lidMapping.getPNForLID(sender);
             if (senderPn) sender = senderPn;
