@@ -1,34 +1,42 @@
-const { Sticker, StickerTypes } = require('wa-sticker-formatter');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+import { Sticker, StickerTypes } from 'wa-sticker-formatter';
+import { downloadContentFromMessage } from '@whiskeysockets/baileys';
 
-module.exports = {
+const stickerCommand = {
     name: "sticker",
+    alias: ['s', 'stiker'],
     category: "utility",
-    desc: "Create premium rounded stickers",
-    async execute(sock, msg, args, { from }) {
+    desc: "Create premium rounded stickers from images/videos",
+    async execute(sock, msg, args, { from, prefix }) {
         try {
-            // 1. EXTRACT MEDIA OBJECT (Improved detection)
-            const quoted = msg.message.extendedTextMessage?.contextInfo?.quotedMessage || msg.message;
+            // --- 🎯 1. TARGET DETECTION (IMAGE/VIDEO/VIEW-ONCE) ---
+            const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage || msg.message;
+            if (!quoted) return;
+
             const mime = Object.keys(quoted)[0];
-            
-            // Check if it's actually an image or video
-            const isMedia = mime === 'imageMessage' || mime === 'videoMessage' || 
-                            (mime === 'viewOnceMessageV2' && (quoted.viewOnceMessageV2.message.imageMessage || quoted.viewOnceMessageV2.message.videoMessage));
+            const isViewOnce = mime === 'viewOnceMessageV2';
+            const actualQuoted = isViewOnce ? quoted.viewOnceMessageV2.message : quoted;
+            const actualMime = Object.keys(actualQuoted)[0];
 
-            if (!isMedia) return sock.sendMessage(from, { text: "┃ ❌ Error: Reply to an Image or Video" });
+            // Media Validation
+            const isMedia = actualMime === 'imageMessage' || actualMime === 'videoMessage';
 
-            // Normalize the message object for downloading
-            const mediaObj = quoted.viewOnceMessageV2 ? (quoted.viewOnceMessageV2.message.imageMessage || quoted.viewOnceMessageV2.message.videoMessage) : quoted[mime];
+            if (!isMedia) {
+                return sock.sendMessage(from, { 
+                    text: `┌─『 sʏsᴛᴇᴍ_ᴀʟᴇʀᴛ 』\n│ ❌ *ɪɴᴠᴀʟɪᴅ_ᴍᴇᴅɪᴀ*\n│ ⚙ ʟᴏɢ: ʀᴇᴘʟʏ_ᴛᴏ_ɪᴍᴀɢᴇ_ᴏʀ_ᴠɪᴅᴇᴏ\n└────────────────────────┈` 
+                });
+            }
 
-            // Phase 1: Requesting
+            const mediaObj = actualQuoted[actualMime];
+
+            // --- ✦ INITIAL REACTION & SCANNING ---
             const { key } = await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ V_HUB_LAB ✿ ━━━━━┓\n┃\n┃  TYPE: STICKER_GEN\n┃  STAT: [ RENDERING... ]\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛` 
+                text: `┌─『 ᴠ_ʜᴜʙ_ʟᴀʙ 』\n│ 🧪 *ᴛʏᴘᴇ:* sᴛɪᴄᴋᴇʀ_ɢᴇɴ\n│ ⚙ *sᴛᴀᴛ:* [ ʀᴇɴᴅᴇʀɪɴɢ... ]\n└────────────────────────┈` 
             });
 
-            // 2. DOWNLOAD MEDIA
+            // --- 🚀 2. DOWNLOAD TO RAM ---
             const stream = await downloadContentFromMessage(
                 mediaObj, 
-                mime.includes('image') ? 'image' : 'video'
+                actualMime.includes('image') ? 'image' : 'video'
             );
             
             let buffer = Buffer.from([]);
@@ -36,7 +44,7 @@ module.exports = {
                 buffer = Buffer.concat([buffer, chunk]);
             }
 
-            // 3. GENERATE STICKER
+            // --- 🎨 3. GENERATE PREMIUM STICKER ---
             const sticker = new Sticker(buffer, {
                 pack: 'Vinnie Digital Hub', 
                 author: 'Infinite Impact',   
@@ -47,17 +55,21 @@ module.exports = {
 
             const stickerBuffer = await sticker.toBuffer();
 
-            // 4. DELIVERY
+            // --- 📦 4. DELIVERY ---
             await sock.sendMessage(from, { sticker: stickerBuffer }, { quoted: msg });
             
-            // Cleanup the status message
+            // Cleanup the scanning message
             await sock.sendMessage(from, { delete: key });
 
         } catch (e) {
             console.error("Sticker Error:", e);
+            const errType = e.message.includes('ffmpeg') ? 'ᴍɪssɪɴɢ_ғғᴍᴘᴇɢ' : 'ʀᴇɴᴅᴇʀ_ᴇʀʀ';
+            
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ ERROR_LOG ✿ ━━━━━┓\n┃\n┃  STAT: FAILED\n┃  ERR: ${e.message.includes('ffmpeg') ? 'MISSING_FFMPEG' : 'RENDER_ERR'}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━━━━┛`
+                text: `┌─『 sʏsᴛᴇᴍ_ғᴀɪʟᴜʀᴇ 』\n│ ❌ *sᴛᴀᴛ:* ғᴀɪʟᴇᴅ\n│ ⚙ *ᴇʀʀ:* ${errType}\n│ 💡 *ᴍsɢ:* ᴄʜᴇᴄᴋ_ᴍᴇᴅɪᴀ_ʟᴇɴɢᴛʜ\n└────────────────────────┈` 
             });
         }
     }
 };
+
+export default stickerCommand;
