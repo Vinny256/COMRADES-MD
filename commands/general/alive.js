@@ -1,8 +1,14 @@
-const { delay } = require("@whiskeysockets/baileys");
-const path = require('path');
-const fs = require('fs');
+import baileys from "@whiskeysockets/baileys";
+const { delay } = baileys;
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-module.exports = {
+// ESM fix for __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const aliveCommand = {
     name: "alive",
     description: "Check bot status with Alan Walker - Play.",
     category: "general",
@@ -12,22 +18,24 @@ module.exports = {
         // --- 📂 LOCAL FILE PATH ---
         const audioPath = path.join(__dirname, '../../assets/play.mp3');
 
-        const aliveText = `┏━━━━━ ✿ *COMRADE-MD* ✿ ━━━━━┓
-┃
-┃ ✅ *STATUS:* ONLINE
-┃ 🎵 *NOW PLAYING:* Play - Alan Walker
-┃ 👤 *HOST:* Vinnie Hub
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━┛
-_“We used to hide under the covers...”_`;
+        // --- ⚡ UNICODE SLEEK STYLING ---
+        const aliveText = `┌────────────────────────┈\n` +
+                          `│      *ᴄᴏᴍʀᴀᴅᴇ-ᴍᴅ* \n` +
+                          `└────────────────────────┈\n\n` +
+                          `┌─『 sʏsᴛᴇᴍ ᴀʟɪᴠᴇ 』\n` +
+                          `│ ⚙ *sᴛᴀᴛᴜs:* ᴏɴʟɪɴᴇ ✦\n` +
+                          `│ ⚙ *ᴍᴜsɪᴄ:* ᴘʟᴀʏ - ᴀʟᴀɴ ᴡᴀʟᴋᴇʀ\n` +
+                          `│ ⚙ *ʜᴏsᴛ:* ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ\n` +
+                          `└────────────────────────┈\n\n` +
+                          `_“ᴡᴇ ᴜsᴇᴅ ᴛᴏ ʜɪᴅᴇ ᴜɴᴅᴇʀ ᴛʜᴇ ᴄᴏᴠᴇʀs...”_`;
 
-        // 1. Send the Status Text (Kept your logic exactly as is)
+        // 1. Send the Status Text
         await sock.sendMessage(from, { 
             text: aliveText,
             contextInfo: {
                 externalAdReply: {
-                    title: "SYSTEM OPERATIONAL",
-                    body: "Alan Walker - Play (Comrade Edition)",
+                    title: "sʏsᴛᴇᴍ ᴏᴘᴇʀᴀᴛɪᴏɴᴀʟ",
+                    body: "ᴀʟᴀɴ ᴡᴀʟᴋᴇʀ - ᴘʟᴀʏ (ᴄᴏᴍʀᴀᴅᴇ ᴇᴅɪᴛɪᴏɴ)",
                     thumbnailUrl: "https://vinnie-digital-hub.vercel.app/logo.png",
                     mediaType: 1,
                     renderLargerThumbnail: true
@@ -40,8 +48,8 @@ _“We used to hide under the covers...”_`;
             await delay(1500);
             await sock.sendMessage(from, { 
                 audio: { url: audioPath }, 
-                mimetype: 'audio/mpeg',    // Correct for .mp3
-                ptt: false,                // CHANGED: Sending as music instead of voice note for better compatibility
+                mimetype: 'audio/mpeg',    
+                ptt: false,                
                 fileName: 'Alan Walker - Play.mp3'
             }, { quoted: msg });
         } else {
@@ -50,3 +58,5 @@ _“We used to hide under the covers...”_`;
         }
     }
 };
+
+export default aliveCommand;
