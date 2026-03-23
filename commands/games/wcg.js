@@ -1,14 +1,14 @@
-const axios = require('axios');
+import axios from 'axios';
 
-module.exports = {
+const wcgCommand = {
     name: "wcg",
     category: "games",
     desc: "PvP Word Chain Survival (15s Turn)",
-    async execute(sock, msg, args, { from }) {
+    async execute(sock, msg, args, { from, prefix }) {
         if (global.gamestate.has(from)) return;
 
         const player1 = msg.key.participant || msg.key.remoteJid;
-        const player1Name = msg.pushName || "Player 1";
+        const player1Name = msg.pushName || "ᴘʟᴀʏᴇʀ_𝟷";
 
         const gameData = {
             name: "wcg",
@@ -26,15 +26,15 @@ module.exports = {
 
         global.gamestate.set(from, gameData);
 
-        const joinMsg = `╭─── ~✾~ *WCG SURVIVAL* ~✾~ ───\n` +
-                        `│\n` +
-                        `│ 🎮 *Host:* ${player1Name}\n` +
-                        `│ 🏆 *Mode:* PvP Survival\n` +
-                        `│\n` +
-                        `│ 👉 *Type "join" to enter!*\n` +
-                        `│ ⏳ *Joining ends in:* 60s\n` +
-                        `│\n` +
-                        `╰─── ~✾~ *V_HUB GAMES* ~✾~ ───`;
+        let joinMsg = `┌────────────────────────┈\n`;
+        joinMsg += `│      *ᴡᴄɢ_sᴜʀᴠɪᴠᴀʟ* \n`;
+        joinMsg += `└────────────────────────┈\n\n`;
+        joinMsg += `┌─『 ɢᴀᴍᴇ_ʟᴏʙʙʏ 』\n`;
+        joinMsg += `│ 👑 *ʜᴏsᴛ:* ${player1Name}\n`;
+        joinMsg += `│ 🏆 *ᴍᴏᴅᴇ:* ᴘᴠᴘ_sᴜʀᴠɪᴠᴀʟ\n`;
+        joinMsg += `│ ⏳ *ᴊᴏɪɴɪɴɢ:* 𝟼𝟶s ʀᴇᴍᴀɪɴɪɴɢ\n`;
+        joinMsg += `└────────────────────────┈\n\n`;
+        joinMsg += `◈ *ᴀᴄᴛɪᴏɴ:* ᴛʏᴘᴇ "ᴊᴏɪɴ" ᴛᴏ ᴇɴᴛᴇʀ!`;
         
         await sock.sendMessage(from, { text: joinMsg });
 
@@ -44,7 +44,7 @@ module.exports = {
             if (currentGame && currentGame.status === "WAITING") {
                 if (currentGame.players.length < 2) {
                     global.gamestate.delete(from);
-                    await sock.sendMessage(from, { text: "❌ *V_HUB:* Game cancelled: Not enough players joined." });
+                    await sock.sendMessage(from, { text: "┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ɴᴏᴛ ᴇɴᴏᴜɢʜ ᴘʟᴀʏᴇʀs.\n└────────────────────────┈" });
                 } else {
                     startGame(sock, from, currentGame);
                 }
@@ -57,20 +57,19 @@ module.exports = {
         const sender = msg.key.participant || from;
         const input = text.trim().toUpperCase();
 
-        // --- JOIN LOGIC (Triggered by anyone typing "join") ---
+        // --- JOIN LOGIC ---
         if (game.status === "WAITING" && input === "JOIN") {
             if (game.players.includes(sender)) return;
             
             game.players.push(sender);
-            const pName = msg.pushName || `Player ${game.players.length}`;
+            const pName = msg.pushName || `ᴘʟᴀʏᴇʀ_${game.players.length}`;
             game.playerNames.push(pName);
             game.scores[sender] = 0;
             
-            await sock.sendMessage(from, { text: `✅ *${pName}* has entered the arena!` });
+            await sock.sendMessage(from, { text: `│ ✅ *${pName}* ʜᴀs ᴇɴᴛᴇʀᴇᴅ ᴛʜᴇ ᴀʀᴇɴᴀ!` });
 
-            // 🚀 AUTO-START: Start immediately if 2 players are present
             if (game.players.length >= 2) {
-                clearTimeout(game.timer); // Stop the 60s join countdown
+                clearTimeout(game.timer);
                 startGame(sock, from, game);
             }
             return;
@@ -81,24 +80,20 @@ module.exports = {
             const currentPlayer = game.players[game.currentTurn];
             if (sender !== currentPlayer) return;
 
-            // 1. Check First Letter
             if (game.lastLetter && input[0] !== game.lastLetter) {
-                return sock.sendMessage(from, { text: `❌ Must start with letter *"${game.lastLetter}"*!` });
+                return sock.sendMessage(from, { text: `│ ❌ ᴍᴜsᴛ sᴛᴀʀᴛ ᴡɪᴛʜ: *"${game.lastLetter}"*` });
             }
 
-            // 2. Check if already used
             if (game.usedWords.includes(input)) {
-                return sock.sendMessage(from, { text: `❌ *"${input}"* has already been used!` });
+                return sock.sendMessage(from, { text: `│ ❌ *"${input}"* ᴀʟʀᴇᴀᴅʏ ᴜsᴇᴅ!` });
             }
 
-            // 3. Dictionary Check
             try {
                 const isReal = await checkWord(input);
                 if (!isReal) {
-                    return sock.sendMessage(from, { text: `❌ *"${input}"* is not a valid English word!` });
+                    return sock.sendMessage(from, { text: `│ ❌ *"${input}"* ɪs ɴᴏᴛ ᴠᴀʟɪᴅ.` });
                 }
 
-                // --- VALID WORD LOGIC ---
                 clearTimeout(game.timer);
                 game.usedWords.push(input);
                 game.lastLetter = input.slice(-1);
@@ -107,30 +102,36 @@ module.exports = {
 
                 if (game.currentWordCount < game.requiredWords) {
                     const remaining = game.requiredWords - game.currentWordCount;
-                    const prompt = `✅ *${input}* accepted!\n👉 Next starts with: *${game.lastLetter}*\n🔢 Words needed: *${remaining}*\n⏳ 15s left!`;
-                    await sock.sendMessage(from, { text: prompt });
-                    
+                    await sock.sendMessage(from, { 
+                        text: `┌─『 ᴡᴏʀᴅ_ᴀᴄᴄᴇᴘᴛᴇᴅ 』\n│ ✅ *${input}*\n│ 👉 ɴᴇxᴛ sᴛᴀʀᴛs ᴡɪᴛʜ: *${game.lastLetter}*\n│ 🔢 ɴᴇᴇᴅᴇᴅ: *${remaining}*\n└────────────────────────┈` 
+                    });
                     startTurnTimer(sock, from, game);
                 } else {
-                    // Turn Complete - Pass to next player
                     game.currentWordCount = 0;
-                    game.requiredWords++; // Level Up!
+                    game.requiredWords++; 
                     game.currentTurn = (game.currentTurn + 1) % game.players.length;
                     
                     const nextUser = game.playerNames[game.currentTurn];
-                    const nextMsg = `🌟 *TURN COMPLETE!*\n\n👤 *Next:* ${nextUser}\n🎯 *Goal:* Name ${game.requiredWords} words\n👉 *Starting Letter:* ${game.lastLetter}\n⏳ 15s starts NOW!`;
-                    await sock.sendMessage(from, { text: nextMsg });
+                    let nextMsg = `┌────────────────────────┈\n`;
+                    nextMsg += `│      *ᴛᴜʀɴ_ᴄᴏᴍᴘʟᴇᴛᴇ* \n`;
+                    nextMsg += `└────────────────────────┈\n\n`;
+                    nextMsg += `┌─『 ɴᴇxᴛ_ᴘʟᴀʏᴇʀ 』\n`;
+                    nextMsg += `│ 👤 *ᴜsᴇʀ:* ${nextUser}\n`;
+                    nextMsg += `│ 🎯 *ɢᴏᴀʟ:* ${game.requiredWords} ᴡᴏʀᴅs\n`;
+                    nextMsg += `│ 👉 *sᴛᴀʀᴛ ᴡɪᴛʜ:* ${game.lastLetter}\n`;
+                    nextMsg += `└────────────────────────┈`;
                     
+                    await sock.sendMessage(from, { text: nextMsg });
                     startTurnTimer(sock, from, game);
                 }
             } catch (e) {
-                console.log("Dictionary Error:", e);
+                console.error("WCG Error:", e.message);
             }
         }
     }
 };
 
-// --- HELPERS (Keep these outside exports) ---
+// --- ELITE HELPERS ---
 
 async function checkWord(word) {
     try {
@@ -144,8 +145,17 @@ async function checkWord(word) {
 function startGame(sock, from, game) {
     game.status = "PLAYING";
     const user = game.playerNames[0];
-    const msg = `🚩 *V_HUB: GAME STARTING!*\n\n👤 *First Player:* ${user}\n🎯 *Goal:* Name ${game.requiredWords} words\n⏳ You have 15s per word!\n\n👉 *Type any English word to begin:*`;
-    sock.sendMessage(from, { text: msg });
+    let startMsg = `┌────────────────────────┈\n`;
+    startMsg += `│      *ɢᴀᴍᴇ_sᴛᴀʀᴛᴇᴅ* \n`;
+    startMsg += `└────────────────────────┈\n\n`;
+    startMsg += `┌─『 sᴜʀᴠɪᴠᴀʟ_ɪɴɪᴛ 』\n`;
+    startMsg += `│ 👤 *ғɪʀsᴛ:* ${user}\n`;
+    startMsg += `│ 🎯 *ɢᴏᴀʟ:* ${game.requiredWords} ᴡᴏʀᴅs\n`;
+    startMsg += `│ ⏱️ *ᴛɪᴍᴇ:* 𝟷𝟻s ᴘᴇʀ ᴡᴏʀᴅ\n`;
+    startMsg += `└────────────────────────┈\n\n`;
+    startMsg += `◈ *ᴀᴄᴛɪᴏɴ:* ᴛʏᴘᴇ ᴀɴʏ ᴡᴏʀᴅ ᴛᴏ ʙᴇɢɪɴ!`;
+    
+    sock.sendMessage(from, { text: startMsg });
     startTurnTimer(sock, from, game);
 }
 
@@ -160,9 +170,15 @@ function startTurnTimer(sock, from, game) {
         const winner = currentGame.playerNames[winnerIndex];
         const winScore = currentGame.scores[currentGame.players[winnerIndex]] || 0;
 
-        const endMsg = `⏰ *TIME OUT!*\n\n💀 ${loser} failed to respond!\n🏆 *WINNER:* ${winner}\n💰 *Final Points:* ${winScore}\n\n_Game Over._`;
+        let endMsg = `┌─『 ᴛɪᴍᴇ_ᴏᴜᴛ 』\n`;
+        endMsg += `│ 💀 ${loser} ᴇʟɪᴍɪɴᴀᴛᴇᴅ!\n`;
+        endMsg += `│ 🏆 *ᴡɪɴɴᴇʀ:* ${winner}\n`;
+        endMsg += `│ 💰 *ᴘᴏɪɴᴛs:* ${winScore}\n`;
+        endMsg += `└────────────────────────┈`;
         
         await sock.sendMessage(from, { text: endMsg });
         global.gamestate.delete(from);
     }, 15000); 
 }
+
+export default wcgCommand;
