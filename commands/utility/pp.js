@@ -1,45 +1,54 @@
-module.exports = {
+const profilePictureCommand = {
     name: "pp",
     category: "utility",
-    desc: "Extract HD Profile Picture",
-    async execute(sock, msg, args, { from }) {
-        // Identify target: tagged user, number in args, or the sender
-        let target = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] || 
-                     (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : msg.key.participant || from);
+    desc: "Extract HD Profile Picture of a user",
+    async execute(sock, msg, args, { from, prefix }) {
+        // --- 🎯 TARGET IDENTIFICATION ---
+        // Priorities: 1. Tagged User, 2. Quoted Message, 3. Manual Number, 4. Sender
+        const quoted = msg.message?.extendedTextMessage?.contextInfo?.participant;
+        const tagged = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+        let target = tagged || quoted || (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : msg.key.participant || from);
 
-        // Phase 1: Requesting State
+        // --- ✦ INITIAL REACTION & SCANNING ---
         const { key } = await sock.sendMessage(from, { 
-            text: `┏━━━━━ ✿ V_HUB_SYS ✿ ━━━━━┓\n┃\n┃  TYPE: PP_EXTRACTOR\n┃  STAT: [ SCANNING... ]\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛` 
+            text: `┌─『 ᴠ_ʜᴜʙ_sʏsᴛᴇᴍ 』\n│ 🔍 *ɪɴᴅᴇxɪɴɢ:* ᴘᴘ_ᴇxᴛʀᴀᴄᴛᴏʀ\n│ ⚙ *sᴛᴀᴛ:* [ sᴄᴀɴɴɪɴɢ... ]\n└────────────────────────┈` 
         });
 
         try {
-            // Fetch the high-resolution URL
+            // --- 🚀 FETCH HD URL ---
             const ppUrl = await sock.profilePictureUrl(target, 'image');
 
-            // Phase 2: Success Caption
-            let caption = `┏━━━━━ ✿ PP_RESULT ✿ ━━━━━┓\n`;
-            caption += `┃\n`;
-            caption += `┃  USER: @${target.split('@')[0]}\n`;
-            caption += `┃  QUAL: HD_ORIGINAL\n`;
-            caption += `┃  HUB: V_DIGITAL_HUB\n`;
-            caption += `┃\n`;
-            caption += `┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛`;
+            // --- 📑 RESULT UI CONSTRUCTION ---
+            let ppLog = `┌────────────────────────┈\n`;
+            ppLog += `│      *ᴠ-ʜᴜʙ_ᴘᴘ_ʀᴇsᴜʟᴛ* \n`;
+            ppLog += `└────────────────────────┈\n\n`;
+            
+            ppLog += `┌─『 ᴇxᴛʀᴀᴄᴛɪᴏɴ_ᴅᴀᴛᴀ 』\n`;
+            ppLog += `│ 👤 *ᴜsᴇʀ:* @${target.split('@')[0]}\n`;
+            ppLog += `│ ✅ *ǫᴜᴀʟ:* ʜᴅ_ᴏʀɪɢɪɴᴀʟ\n`;
+            ppLog += `│ ⚙ *ʟᴏɢ:* sᴜᴄᴄᴇssғᴜʟ_ᴅᴇʟɪᴠᴇʀʏ\n`;
+            ppLog += `└────────────────────────┈\n\n`;
+            
+            ppLog += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
-            // Phase 3: Delivery
+            // --- 📦 DELIVERY ---
             await sock.sendMessage(from, { 
                 image: { url: ppUrl }, 
-                caption: caption,
+                caption: ppLog,
                 mentions: [target]
             }, { quoted: msg });
 
+            // Clean up the scanning message
             await sock.sendMessage(from, { delete: key });
 
         } catch (e) {
-            // Error handling for private/no profile pic
+            // --- 🛡️ PRIVACY / ERROR HANDLING ---
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ ERROR_LOG ✿ ━━━━━┓\n┃\n┃  STAT: FAILED\n┃  ERR: PRIVACY_RESTRICT\n┃  MSG: NO_IMAGE_FOUND\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━━━━┛`, 
+                text: `┌─『 sʏsᴛᴇᴍ_ғᴀɪʟᴜʀᴇ 』\n│ ❌ *sᴛᴀᴛ:* ғᴀɪʟᴇᴅ\n│ ⚙ *ᴇʀʀ:* ᴘʀɪᴠᴀᴄʏ_ʀᴇsᴛʀɪᴄᴛ\n│ 💡 *ᴍsɢ:* ɴᴏ_ᴘᴜʙʟɪᴄ_ɪᴍᴀɢᴇ_ғᴏᴜɴᴅ\n└────────────────────────┈`, 
                 edit: key 
             });
         }
     }
 };
+
+export default profilePictureCommand;
