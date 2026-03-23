@@ -32,6 +32,9 @@ module.exports = {
         if (!text || msg.key.fromMe || from === 'status@broadcast' || text.startsWith(process.env.PREFIX || ".")) return;
 
         try {
+            // Ensure MongoDB is connected
+            if (!client.topology || !client.topology.isConnected()) await client.connect();
+            
             const db = client.db("vinnieBot");
             const userConfig = await db.collection("ai_config").findOne({ id: senderId }) || { status: 'off', scope: 'inbox' };
 
@@ -57,7 +60,10 @@ module.exports = {
                 temperature: 0.9,
                 max_tokens: 100
             }, {
-                headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+                headers: { 
+                    'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
                 timeout: 10000
             });
 
