@@ -1,29 +1,40 @@
-const { exec } = require('child_process');
+import { exec } from 'child_process';
 
-module.exports = {
+const logsCommand = {
     name: "logs",
     category: "founder",
     desc: "V_HUB: View server logs",
     async execute(sock, msg, args, { from, isMe }) {
+        // --- 🛡️ FOUNDER SHIELD ---
         if (!isMe) {
-            // Your new vocal security fallback
             return sock.sendMessage(from, { 
-                text: "┏━━━━━ ✿ *V_HUB SECURITY* ✿ ━━━━━┓\n┃\n┃ 🛡️ *ACCESS DENIED*\n┃ ⚠️ *Note:* Log access is founder-only.\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛" 
+                text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ\n│ ⚙ *sᴛᴀᴛᴜs:* ғᴏᴜɴᴅᴇʀ ᴏɴʟʏ\n└────────────────────────┈` 
             });
         }
 
+        // --- ✦ INITIAL REACTION ---
         await sock.sendMessage(from, { react: { text: "📜", key: msg.key } });
+
+        // --- 🛠️ LOG EXTRACTION ---
+        // Attempts to read the last 20 lines of common log files
+        const logQuery = 'tail -n 20 /app/.logs 2>/dev/null || tail -n 20 logs.txt 2>/dev/null || echo "ɴᴏ_ʟᴏɢ_ғɪʟᴇ_ᴅᴇᴛᴇᴄᴛᴇᴅ"';
         
-        // We attempt to read from standard linux log locations or the app's output
-        // On Heroku, 'heroku logs' isn't available inside the dyno, 
-        // but sometimes logs are piped to a temporary file.
-        exec('tail -n 20 /app/.logs 2>/dev/null || tail -n 20 logs.txt 2>/dev/null || echo "No log file found. Check Heroku Dashboard."', (err, stdout, stderr) => {
+        exec(logQuery, async (err, stdout, stderr) => {
+            const output = stdout || stderr || "sʏsᴛᴇᴍ_ʟᴏɢs_ᴇᴍᴘᴛʏ";
             
-            const output = stdout || stderr || "No logs captured in file.";
+            let logMsg = `┌────────────────────────┈\n`;
+            logMsg += `│      *sʏsᴛᴇᴍ_ʀᴜɴᴛɪᴍᴇ_ʟᴏɢs* \n`;
+            logMsg += `└────────────────────────┈\n\n`;
             
-            sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *LOGS* ✿ ━━━━━┓\n\n${output.trim()}\n\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-            });
+            logMsg += `┌─『 ᴅᴇʙᴜɢ_ᴏᴜᴛᴘᴜᴛ 』\n`;
+            logMsg += `│ \`\`\`${output.trim()}\`\`\`\n`;
+            logMsg += `└────────────────────────┈\n\n`;
+            
+            logMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            await sock.sendMessage(from, { text: logMsg });
         });
     }
 };
+
+export default logsCommand;
