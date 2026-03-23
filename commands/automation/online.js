@@ -1,4 +1,4 @@
-module.exports = {
+const onlineCommand = {
     name: "online",
     category: "automation",
     async execute(sock, msg, args, { prefix, from, isMe }) {
@@ -7,7 +7,7 @@ module.exports = {
         if (!isMe) {
             await sock.sendMessage(from, { react: { text: "🚫", key: msg.key } });
             return await sock.sendMessage(from, { 
-                text: `╭─── ~✾~ *V_HUB SECURITY* ~✾~ ───\n│\n│ ⚠️ *Alert:* Unauthorized Access\n│ 🛡️ *Status:* Founder Only\n│\n╰─── ~✾~ *Infinite Impact* ~✾~ ───` 
+                text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴜɴᴀᴜᴛʜᴏʀɪᴢᴇᴅ ᴀᴄᴄᴇss\n│ ⚙ *sᴛᴀᴛᴜs:* ғᴏᴜɴᴅᴇʀ ᴏɴʟʏ\n└────────────────────────┈` 
             }, { quoted: msg });
         }
 
@@ -22,43 +22,64 @@ module.exports = {
                 
                 await sock.sendMessage(from, { react: { text: "🟢", key: msg.key } });
                 await sock.sendMessage(from, { 
-                    text: `╭─── ~✾~ *SYSTEM UPDATE* ~✾~ ───\n│\n│ ✅ *Status:* Online & Visible\n│ 📡 *Mode:* Standard\n│\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` 
+                    text: `┌────────────────────────┈\n` +
+                          `│      *sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ* \n` +
+                          `└────────────────────────┈\n\n` +
+                          `┌─『 sᴛᴀᴛᴜs ᴀᴄᴛɪᴠᴇ 』\n` +
+                          `│ ⚙ *sᴛᴀᴛᴜs:* ᴏɴʟɪɴᴇ & ᴠɪsɪʙʟᴇ\n` +
+                          `│ ⚙ *ᴍᴏᴅᴇ:* sᴛᴀɴᴅᴀʀᴅ ✦\n` +
+                          `└────────────────────────┈\n\n` +
+                          `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_` 
                 }, { quoted: msg });
             } 
 
             else if (mode === 'freeze') {
-                // TIER 2: OFFICIAL GHOST (FROZEN/HIDDEN)
-                // This hides last seen COMPLETELY and stays stagnant.
+                // TIER 2: OFFICIAL GHOST
                 await sock.updateLastSeenPrivacy('none');
                 await sock.updateOnlinePrivacy('match_last_seen');
                 await sock.sendPresenceUpdate('unavailable');
 
                 await sock.sendMessage(from, { react: { text: "❄️", key: msg.key } });
                 await sock.sendMessage(from, { 
-                    text: `╭─── ~✾~ *SYSTEM UPDATE* ~✾~ ───\n│\n│ ❄️ *Status:* Last Seen Frozen\n│ 🛡️ *Safety:* 100% Secure\n│ 💡 *Note:* You cannot see others.\n│\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` 
+                    text: `┌────────────────────────┈\n` +
+                          `│      *sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ* \n` +
+                          `└────────────────────────┈\n\n` +
+                          `┌─『 ғʀᴏᴢᴇɴ_ɢʜᴏsᴛ 』\n` +
+                          `│ ❄️ *sᴛᴀᴛᴜs:* ʟᴀsᴛ sᴇᴇɴ ғʀᴏᴢᴇɴ\n` +
+                          `│ 🛡️ *sᴀғᴇᴛʏ:* 𝟷𝟶𝟶% sᴇᴄᴜʀᴇ\n` +
+                          `│ ⚙ *ɴᴏᴛᴇ:* ʀᴇᴄɪᴘʀᴏᴄɪᴛʏ ᴅɪsᴀʙʟᴇᴅ\n` +
+                          `└────────────────────────┈` 
                 }, { quoted: msg });
             }
 
             else if (mode === 'godpro') {
-                // TIER 3: GOD PRO (ONE-WAY TRAFFIC)
+                // TIER 3: GOD PRO
                 if (args[1] !== 'accept') {
                     return await sock.sendMessage(from, { 
-                        text: `╭─── ~✾~ *EXTREME ALERT* ~✾~ ───\n│\n│ ⚠️ *Warning:* God Pro Mode\n│ 👁️ *Vision:* You see them\n│ ❄️ *Timestamp:* Stagnant/Old\n│ 🛡️ *Signals:* Typing & Reading OFF\n│\n│ _To activate, type:_\n│ *${prefix}online godpro accept*\n╰─── ~✾~ *Vinnie Hub* ~✾~ ───` 
+                        text: `┌────────────────────────┈\n` +
+                              `│      *ᴇxᴛʀᴇᴍᴇ_ᴀʟᴇʀᴛ* \n` +
+                              `└────────────────────────┈\n\n` +
+                              `┌─『 ɢᴏᴅ ᴘʀᴏ ᴍᴏᴅᴇ 』\n` +
+                              `│ ⚠️ *ᴡᴀʀɴɪɴɢ:* ᴏɴᴇ-ᴡᴀʏ ᴍɪʀʀᴏʀ\n` +
+                              `│ 👁️ *ᴠɪsɪᴏɴ:* ʏᴏᴜ sᴇᴇ ᴛʜᴇᴍ\n` +
+                              `│ ❄️ *ᴛɪᴍᴇ:* sᴛᴀɢɴᴀɴᴛ/ᴏʟᴅ\n` +
+                              `│ 🛡️ *sɪɢɴᴀʟs:* ᴛʏᴘɪɴɢ/ʀᴇᴀᴅ ᴏғғ\n` +
+                              `└────────────────────────┈\n\n` +
+                              `◈ *ᴀᴄᴛɪᴠᴀᴛᴇ:* ${prefix}ᴏɴʟɪɴᴇ ɢᴏᴅᴘʀᴏ ᴀᴄᴄᴇᴘᴛ` 
                     }, { quoted: msg });
                 }
                 
-                // 1. Open Eyes (Reciprocity)
                 await sock.updateLastSeenPrivacy('all');
                 await sock.updateOnlinePrivacy('all');
-                
-                // 2. Kill signals (Stealth)
-                // We don't call read or compose presence here
                 await sock.sendPresenceUpdate('unavailable');
                 
-                // Note: You must ensure your index.js 'auto-read' is off
                 await sock.sendMessage(from, { react: { text: "🌀", key: msg.key } });
                 await sock.sendMessage(from, { 
-                    text: `╭─── ~✾~ *GOD PRO: ACTIVE* ~✾~ ───\n│\n│ 👁️ *Status:* One-Way Mirror On\n│ 🔇 *Stealth:* Typing/Reading Blocked\n│ ❄️ *Time:* Frozen at this moment\n│\n╰─── ~✾~ *Infinite Impact* ~✾~ ───` 
+                    text: `┌─『 ɢᴏᴅ ᴘʀᴏ: ᴀᴄᴛɪᴠᴇ 』\n` +
+                          `│ 👁️ *sᴛᴀᴛᴜs:* ᴏɴᴇ-ᴡᴀʏ ᴍɪʀʀᴏʀ ᴏɴ\n` +
+                          `│ 🔇 *sᴛᴇᴀʟᴛʜ:* ᴛʏᴘɪɴɢ ʙʟᴏᴄᴋᴇᴅ\n` +
+                          `│ ❄️ *ᴛɪᴍᴇ:* ғʀᴏᴢᴇɴ ᴀᴛ ɴᴏᴡ\n` +
+                          `└────────────────────────┈` 
                 }, { quoted: msg });
             }
 
@@ -66,32 +87,35 @@ module.exports = {
                 await sock.updateLastSeenPrivacy('all');
                 await sock.updateOnlinePrivacy('all');
                 await sock.sendPresenceUpdate('available');
-                await sock.sendMessage(from, { text: "🔄 *System:* Stealth disabled." }, { quoted: msg });
+                await sock.sendMessage(from, { text: "┌─『 sʏsᴛᴇᴍ 』\n│ 🔄 sᴛᴇᴀʟᴛʜ ᴅɪsᴀʙʟᴇᴅ.\n└────────────────────────┈" }, { quoted: msg });
             }
 
             else {
-                // RESTORED STYLED MENU
-                const menu = `╭─── ~✾~ *STEALTH HUB* ~✾~ ───\n` +
-                             `│\n` +
-                             `│  ◦ *${prefix}online on*\n` +
-                             `│    └─ Standard Visibility\n` +
-                             `│\n` +
-                             `│  ◦ *${prefix}online freeze*\n` +
-                             `│    └─ Safe Frozen Ghost\n` +
-                             `│\n` +
-                             `│  ◦ *${prefix}online godpro*\n` +
-                             `│    └─ Mirror (Risky/Experimental)\n` +
-                             `│\n` +
-                             `│  ◦ *${prefix}online off*\n` +
-                             `│    └─ Reset to Default\n` +
-                             `├──────────────────────────\n` +
-                             `│  © 2026 | Vinnie Hub\n` +
-                             `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
+                // ELITE STEALTH MENU
+                let menu = `┌────────────────────────┈\n`;
+                menu += `│      *sᴛᴇᴀʟᴛʜ_ʜᴜʙ* \n`;
+                menu += `└────────────────────────┈\n\n`;
+                
+                menu += `┌─『 ᴄᴏɴғɪɢᴜʀᴀᴛɪᴏɴ 』\n`;
+                menu += `│ ├─◈ ${prefix}ᴏɴʟɪɴᴇ ᴏɴ\n`;
+                menu += `│ │   └─ sᴛᴀɴᴅᴀʀᴅ ᴠɪsɪʙɪʟɪᴛʏ\n`;
+                menu += `│ ├─◈ ${prefix}ᴏɴʟɪɴᴇ ғʀᴇᴇᴢᴇ\n`;
+                menu += `│ │   └─ sᴀғᴇ ғʀᴏᴢᴇɴ ɢʜᴏsᴛ\n`;
+                menu += `│ ├─◈ ${prefix}ᴏɴʟɪɴᴇ ɢᴏᴅᴘʀᴏ\n`;
+                menu += `│ │   └─ ᴍɪʀʀᴏʀ (ᴇxᴘᴇʀɪᴍᴇɴᴛᴀʟ)\n`;
+                menu += `│ ╰─◈ ${prefix}ᴏɴʟɪɴᴇ ᴏғғ\n`;
+                menu += `│     └─ ʀᴇsᴇᴛ ᴛᴏ ᴅᴇғᴀᴜʟᴛ\n`;
+                menu += `└────────────────────────┈\n\n`;
+                
+                menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+                
                 await sock.sendMessage(from, { text: menu }, { quoted: msg });
             }
 
         } catch (e) {
-            await sock.sendMessage(from, { text: `❌ *Error:* ${e.message}` }, { quoted: msg });
+            await sock.sendMessage(from, { text: `┌─『 ᴇʀʀᴏʀ 』\n│ ⚙ ${e.message}\n└────────────────────────┈` }, { quoted: msg });
         }
     }
 };
+
+export default onlineCommand;
