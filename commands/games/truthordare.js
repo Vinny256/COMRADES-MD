@@ -1,8 +1,8 @@
-module.exports = {
+const todaCommand = {
     name: "toda",
     category: "games",
     desc: "Classic Truth or Dare game",
-    async execute(sock, msg, args, { from }) {
+    async execute(sock, msg, args, { from, prefix }) {
         const type = args[0]?.toLowerCase();
 
         const truths = [
@@ -31,17 +31,43 @@ module.exports = {
 
         if (type === 'truth') {
             const randomTruth = truths[Math.floor(Math.random() * truths.length)];
-            const response = `┏━━━━━ ✿ *V_HUB TRUTH* ✿ ━━━━━┓\n┃\n┃  🤔 *Question:* \n┃  👉 ${randomTruth}\n┃\n┃  _Answer honestly!_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-            await sock.sendMessage(from, { text: response }, { quoted: msg });
+            let truthMsg = `┌────────────────────────┈\n`;
+            truthMsg += `│      *ᴠ-ʜᴜʙ_ᴛʀᴜᴛʜ* \n`;
+            truthMsg += `└────────────────────────┈\n\n`;
+            truthMsg += `┌─『 sᴏᴄɪᴀʟ_ᴇxᴘᴏsᴜʀᴇ 』\n`;
+            truthMsg += `│ 🤔 *ǫᴜᴇsᴛɪᴏɴ:* \n`;
+            truthMsg += `│ 👉 ${randomTruth}\n`;
+            truthMsg += `└────────────────────────┈\n\n`;
+            truthMsg += `_ᴀɴsᴡᴇʀ ʜᴏɴᴇsᴛʟʏ ᴏʀ ʙᴇ ᴘᴜʀɢᴇᴅ._`;
+
+            await sock.sendMessage(from, { text: truthMsg }, { quoted: msg });
 
         } else if (type === 'dare') {
             const randomDare = dares[Math.floor(Math.random() * dares.length)];
-            const response = `┏━━━━━ ✿ *V_HUB DARE* ✿ ━━━━━┓\n┃\n┃  🔥 *Challenge:* \n┃  👉 ${randomDare}\n┃\n┃  _No backing out now!_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-            await sock.sendMessage(from, { text: response }, { quoted: msg });
+            let dareMsg = `┌────────────────────────┈\n`;
+            dareMsg += `│      *ᴠ-ʜᴜʙ_ᴅᴀʀᴇ* \n`;
+            dareMsg += `└────────────────────────┈\n\n`;
+            dareMsg += `┌─『 ᴄʜᴀʟʟᴇɴɢᴇ_ᴀᴄᴛɪᴠᴇ 』\n`;
+            dareMsg += `│ 🔥 *ᴛᴀsᴋ:* \n`;
+            dareMsg += `│ 👉 ${randomDare}\n`;
+            dareMsg += `└────────────────────────┈\n\n`;
+            dareMsg += `_ɴᴏ ʙᴀᴄᴋɪɴɢ ᴏᴜᴛ ɴᴏᴡ._`;
+
+            await sock.sendMessage(from, { text: dareMsg }, { quoted: msg });
 
         } else {
-            const menu = `┏━━━━━ ✿ *TRUTH OR DARE* ✿ ━━━━━┓\n┃\n┃  Choose your fate:\n┃\n┃  👉 *.toda truth*\n┃  👉 *.toda dare*\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            let menu = `┌────────────────────────┈\n`;
+            menu += `│      *ᴛʀᴜᴛʜ_ᴏʀ_ᴅᴀʀᴇ* \n`;
+            menu += `└────────────────────────┈\n\n`;
+            menu += `┌─『 ᴄʜᴏᴏsᴇ_ʏᴏᴜʀ_ғᴀᴛᴇ 』\n`;
+            menu += `│ ⚙ *ᴏᴘᴛ𝟷:* ${prefix}ᴛᴏᴅᴀ ᴛʀᴜᴛʜ\n`;
+            menu += `│ ⚙ *ᴏᴘᴛ𝟸:* ${prefix}ᴛᴏᴅᴀ ᴅᴀʀᴇ\n`;
+            menu += `└────────────────────────┈\n\n`;
+            menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
             await sock.sendMessage(from, { text: menu }, { quoted: msg });
         }
     }
 };
+
+export default todaCommand;
