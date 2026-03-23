@@ -1,35 +1,37 @@
-module.exports = {
-    // 🚀 This Array makes them all "Different" commands in WhatsApp!
+import fetch from 'node-fetch';
+
+const animeCommand = {
+    // 🚀 Multi-command array for ESM loader
     name: ["hug", "slap", "pat", "kiss", "cuddle", "punch", "bite", "kill", "lick", "poke"],
     category: "anime",
     async execute(sock, msg, args, { prefix, from, command }) {
         
         try {
-            // 1. "God Mode" Reaction: React with an emoji first
+            // 1. Initial Reaction
             await sock.sendMessage(from, { react: { text: "✨", key: msg.key } });
 
-            // 2. Fetch the GIF from a stable Anime API (Waifu.pics)
-            // We use the 'command' variable so the API knows if you want a hug or a slap!
+            // 2. Fetch from Waifu.pics using the dynamic 'command'
             const response = await fetch(`https://api.waifu.pics/sfw/${command}`);
             
-            // 🛡️ Guardian Logic: Check if it's actually JSON
             if (!response.ok) throw new Error("API Down");
             const data = await response.json();
 
-            // 3. Who is getting the action?
+            // 3. Target Identification
             const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-            const target = mentioned ? `@${mentioned.split('@')[0]}` : "everyone";
+            const target = mentioned ? `@${mentioned.split('@')[0]}` : "ᴇᴠᴇʀʏᴏɴᴇ";
 
-            // 4. V_HUB Styling
-            const vHubMessage = `╭─── ~✾~ *V_HUB ANIME* ~✾~ ───\n` +
-                               `│\n` +
-                               `│ 🎭 *Action:* ${command.toUpperCase()}\n` +
-                               `│ 👤 *Target:* ${target}\n` +
-                               `│ ✨ *Vibe:* Pure Emotion\n` +
-                               `│\n` +
-                               `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
+            // --- ⚡ UNICODE SLEEK STYLING ---
+            const vHubMessage = `┌────────────────────────┈\n` +
+                                `│      *ᴀɴɪᴍᴇ_ᴀᴄᴛɪᴏɴ* \n` +
+                                `└────────────────────────┈\n\n` +
+                                `┌─『 ᴇᴍᴏᴛɪᴏɴ_ʟᴏɢ 』\n` +
+                                `│ ⚙ *ᴀᴄᴛɪᴏɴ:* ${command.toUpperCase()}\n` +
+                                `│ ⚙ *ᴛᴀʀɢᴇᴛ:* ${target}\n` +
+                                `│ ⚙ *ᴠɪʙᴇ:* ᴘᴜʀᴇ ᴇᴍᴏᴛɪᴏɴ ✦\n` +
+                                `└────────────────────────┈\n\n` +
+                                `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
-            // 5. Send as a GIF (video with gifPlayback)
+            // 4. Send as an Autoplay GIF
             await sock.sendMessage(from, { 
                 video: { url: data.url }, 
                 caption: vHubMessage,
@@ -37,12 +39,16 @@ module.exports = {
                 mentions: mentioned ? [mentioned] : []
             }, { quoted: msg });
 
-            // 6. Read Message (GB Style)
+            // 5. Read Message (Status Update)
             await sock.readMessages([msg.key]);
 
         } catch (e) {
             console.error(e);
-            await sock.sendMessage(from, { text: `❌ *V_HUB:* The anime server is shy right now. Try again!` }, { quoted: msg });
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ᴀɴɪᴍᴇ sᴇʀᴠᴇʀ ɪs sʜʏ ʀɪɢʜᴛ ɴᴏᴡ.\n└────────────────────────┈` 
+            }, { quoted: msg });
         }
     }
 };
+
+export default animeCommand;
