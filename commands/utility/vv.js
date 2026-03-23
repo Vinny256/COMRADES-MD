@@ -1,56 +1,84 @@
-const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
+import { downloadContentFromMessage } from "@whiskeysockets/baileys";
 
-module.exports = {
+const antiViewOnceCommand = {
     name: 'vv',
+    alias: ['viewonce', 'retrive'],
     category: 'utility',
-    async execute(sock, m, args) {
-        const remoteJid = m.key.remoteJid;
+    desc: 'Bypass and retrieve ViewOnce media',
+    async execute(sock, m, args, { from, prefix }) {
         
-        // 1. Get the Quoted Message
-        const quoted = m.message.extendedTextMessage?.contextInfo?.quotedMessage;
+        // --- ✦ INITIAL REACTION ---
+        await sock.sendMessage(from, { react: { text: "👁️", key: m.key } });
+
+        // 1. Identify the Quoted Message
+        const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        
         if (!quoted) {
-            return sock.sendMessage(remoteJid, { text: "❌ *V_HUB:* Reply to a ViewOnce message." });
+            return sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴀʟᴇʀᴛ 』\n│ ❌ *ɪɴᴠᴀʟɪᴅ_ᴛᴀʀɢᴇᴛ*\n│ ⚙ ʟᴏɢ: ʀᴇᴘʟʏ_ᴛᴏ_ᴀ_ᴠɪᴇᴡᴏɴᴄᴇ_ᴍsɢ\n└────────────────────────┈` 
+            });
         }
 
-        // 2. Deep Search for ViewOnce Content
-        // WhatsApp sometimes nests this differently
+        // 2. Deep Search for ViewOnce Content (V2 & Extension Handling)
         const viewOnce = quoted.viewOnceMessageV2 || quoted.viewOnceMessage || quoted.viewOnceMessageV2Extension;
-        const actualMsg = viewOnce ? viewOnce.message : quoted;
+        const actualMsg = viewOnce ? (viewOnce.message || viewOnce) : quoted;
 
         // 3. Identify Media Type
         const type = Object.keys(actualMsg)[0];
         const media = actualMsg[type];
 
-        // Validation: Is it actually ViewOnce?
+        // --- 🛡️ VALIDATION: IS IT ACTUALLY VIEWONCE? ---
         if (!viewOnce && !media?.viewOnce) {
-            return sock.sendMessage(remoteJid, { text: "⚠️ *V_HUB:* This is not a ViewOnce message." });
+            return sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴀʟᴇʀᴛ 』\n│ ⚠️ *ɴᴏᴛ_ᴠɪᴇᴡᴏɴᴄᴇ*\n│ ⚙ ʟᴏɢ: sᴛᴀɴᴅᴀʀᴅ_ᴍᴇᴅɪᴀ_ᴅᴇᴛᴇᴄᴛᴇᴅ\n└────────────────────────┈` 
+            });
         }
 
         try {
-            // 4. Download to RAM (Buffer) - NO DISK STORAGE
-            const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
+            // --- 🚀 DOWNLOAD TO RAM (ZERO DISK FOOTPRINT) ---
+            const mediaType = type.replace('Message', '');
+            const stream = await downloadContentFromMessage(media, mediaType);
+            
             let buffer = Buffer.from([]);
             for await (const chunk of stream) {
                 buffer = Buffer.concat([buffer, chunk]);
             }
 
-            // 5. Send to User
-            const caption = `✅ *V_HUB ANTI-VIEWONCE*\nType: ${type}`;
+            // --- 📑 RETRIEVAL UI CONSTRUCTION ---
+            let vvLog = `┌────────────────────────┈\n`;
+            vvLog += `│      *ᴠ-ʜᴜʙ_ᴀɴᴛɪ-ᴠɪᴇᴡᴏɴᴄᴇ* \n`;
+            vvLog += `└────────────────────────┈\n\n`;
             
+            vvLog += `┌─『 ᴅᴀᴛᴀ_ʀᴇᴛʀɪᴇᴠᴀʟ 』\n`;
+            vvLog += `│ ✅ *sᴛᴀᴛᴜs:* ʙʏᴘᴀssᴇᴅ\n`;
+            vvLog += `│ 📂 *ᴛʏᴘᴇ:* ${mediaType.toUpperCase()}\n`;
+            vvLog += `│ 🛡️ *sʜɪᴇʟᴅ:* ɴᴜᴄʟᴇᴀʀ_sɪʟᴇɴᴄᴇ\n`;
+            vvLog += `└────────────────────────┈\n\n`;
+            
+            vvLog += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            // --- 📦 REFLECTION PROTOCOL ---
             if (type === 'imageMessage') {
-                await sock.sendMessage(remoteJid, { image: buffer, caption }, { quoted: m });
+                await sock.sendMessage(from, { image: buffer, caption: vvLog }, { quoted: m });
             } else if (type === 'videoMessage') {
-                await sock.sendMessage(remoteJid, { video: buffer, caption }, { quoted: m });
+                await sock.sendMessage(from, { video: buffer, caption: vvLog }, { quoted: m });
             } else if (type === 'audioMessage') {
-                await sock.sendMessage(remoteJid, { audio: buffer, mimetype: 'audio/ogg' }, { quoted: m });
+                await sock.sendMessage(from, { 
+                    audio: buffer, 
+                    mimetype: 'audio/ogg; codecs=opus', 
+                    ptt: true 
+                }, { quoted: m });
             }
 
-            // 6. Manual Garbage Collection hint
+            // 6. Manual Memory Flush
             buffer = null; 
 
-        } catch (e) {
-            console.error(e);
-            await sock.sendMessage(remoteJid, { text: "❌ *V_HUB:* Media expired or could not be fetched." });
+        } catch (err) {
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ❌ *ʀᴇᴛʀɪᴇᴠᴀʟ_ғᴀɪʟᴇᴅ*\n│ ⚙ ʟᴏɢ: ᴍᴇᴅɪᴀ_ᴇxᴘɪʀᴇᴅ_ᴏʀ_ᴠᴏɪᴅ\n└────────────────────────┈` 
+            });
         }
     }
 };
+
+export default antiViewOnceCommand;
