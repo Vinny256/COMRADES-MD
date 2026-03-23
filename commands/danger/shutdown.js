@@ -1,20 +1,38 @@
-module.exports = {
+const shutdownCommand = {
     name: "shutdown",
     category: "danger",
     desc: "V_HUB: Emergency Stop",
     async execute(sock, msg, args, { from, isMe }) {
-        if (!isMe) return;
+        // --- 🛡️ FOUNDER SHIELD ---
+        if (!isMe) {
+            return await sock.sendMessage(from, { react: { text: "🚫", key: msg.key } });
+        }
 
+        // --- ✦ INITIAL REACTION ---
         await sock.sendMessage(from, { react: { text: "🛑", key: msg.key } });
         
-        await sock.sendMessage(from, { 
-            text: `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓\n┃\n┃ ☢️ *PROTOCOL:* Nuclear Shutdown\n┃ ⚠️ *Status:* Immediate Termination\n┃ 🔌 *Power:* Cutting Grid...\n┃\n┃ _System offline. Manual boot required._\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-        });
+        // --- ⚡ UNICODE SLEEK STYLING ---
+        let shutdownMsg = `┌────────────────────────┈\n`;
+        shutdownMsg += `│      *ɴᴜᴄʟᴇᴀʀ_sʜᴜᴛᴅᴏᴡɴ* \n`;
+        shutdownMsg += `└────────────────────────┈\n\n`;
+        
+        shutdownMsg += `┌─『 ᴘʀᴏᴛᴏᴄᴏʟ_ᴀᴄᴛɪᴠᴇ 』\n`;
+        shutdownMsg += `│ ⚙ *ᴛᴀʀɢᴇᴛ:* ᴍᴀɪɴ_ɢʀɪᴅ\n`;
+        shutdownMsg += `│ ⚙ *sᴛᴀᴛᴜs:* ᴛᴇʀᴍɪɴᴀᴛɪɴɢ_ᴘʀᴏᴄᴇss\n`;
+        shutdownMsg += `│ ⚙ *ᴘᴏᴡᴇʀ:* ᴄᴜᴛᴛɪɴɢ_ᴠᴏʟᴛᴀɢᴇ\n`;
+        shutdownMsg += `└────────────────────────┈\n\n`;
+        
+        shutdownMsg += `_sʏsᴛᴇᴍ ᴏғғʟɪɴᴇ. ᴍᴀɴᴜᴀʟ ʙᴏᴏᴛ ʀᴇǫᴜɪʀᴇᴅ._`;
 
-        // This kills the bot. 
-        // Warning: Heroku might try to restart it unless you scale the dyno to 0.
+        await sock.sendMessage(from, { text: shutdownMsg });
+
+        // --- ⚙️ TERMINATION DELAY ---
+        // Allows the message buffer to clear before the process dies.
         setTimeout(() => {
+            console.log(`🚀 [V_HUB] Emergency Shutdown executed by Founder.`);
             process.exit(1); 
         }, 3000);
     }
 };
+
+export default shutdownCommand;
