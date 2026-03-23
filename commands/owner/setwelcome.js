@@ -1,32 +1,63 @@
-const { MongoClient } = require("mongodb");
-const client = new MongoClient(process.env.MONGO_URI);
+import { MongoClient } from 'mongodb';
 
-const vStyle = (text) => {
-    return `┏━━━━━ ✿ *SETTINGS* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-};
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri);
 
-module.exports = {
+const setWelcomeCommand = {
     name: 'setwelcome',
     category: 'owner',
-    desc: 'Set custom welcome message',
-    async execute(sock, msg, args, { from, isMe }) {
+    desc: 'Set custom welcome message for groups',
+    async execute(sock, msg, args, { from, isMe, prefix }) {
+        // --- 🛡️ FOUNDER-ONLY SHIELD ---
         if (!isMe) return;
-        
-        const text = args.join(" ");
-        if (!text) return sock.sendMessage(from, { text: vStyle("Usage: .setwelcome Welcome to our group @user!") });
 
+        // --- 📝 INPUT VALIDATION ---
+        const text = args.join(" ");
+        if (!text) {
+            let usageMsg = `┌─『 ᴜsᴀɢᴇ_ɪɴғᴏ 』\n`;
+            usageMsg += `│ ⚙ *ᴄᴏᴍᴍᴀɴᴅ:* ${prefix}sᴇᴛᴡᴇʟᴄᴏᴍᴇ [ᴛᴇxᴛ]\n`;
+            usageMsg += `│ 💡 *ᴠᴀʀɪᴀʙʟᴇs:* @ᴜsᴇʀ, @ɢʀᴏᴜᴘ, @ᴅᴇsᴄ\n`;
+            usageMsg += `└────────────────────────┈`;
+            return sock.sendMessage(from, { text: usageMsg });
+        }
+
+        // --- ✦ INITIAL REACTION ---
         await sock.sendMessage(from, { react: { text: "📝", key: msg.key } });
 
-        // Logic to determine if we are setting it for 'this' group or a specific JID
+        // Identify if a specific group JID was provided in args, else use current
         const targetJid = args.find(a => a.endsWith('@g.us')) || from;
 
-        await client.connect();
-        await client.db("vinnieBot").collection("group_configs").updateOne(
-            { groupId: targetJid },
-            { $set: { welcomeText: text } },
-            { upsert: true }
-        );
+        try {
+            // --- 🚀 DATABASE UPDATE ---
+            await client.connect();
+            await client.db("vinnieBot").collection("group_configs").updateOne(
+                { groupId: targetJid },
+                { $set: { welcomeText: text } },
+                { upsert: true }
+            );
 
-        await sock.sendMessage(from, { text: vStyle(`✅ *Welcome Text Updated*\n┃ Group: ${targetJid.split('@')[0]}\n┃ Text: ${text}`) });
+            // --- 📑 CONFIGURATION LOG ---
+            let configLog = `┌────────────────────────┈\n`;
+            configLog += `│      *ᴡᴇʟᴄᴏᴍᴇ_ᴜᴘᴅᴀᴛᴇ* \n`;
+            configLog += `└────────────────────────┈\n\n`;
+            configLog += `┌─『 sᴛᴀᴛᴜs_ʀᴇᴘᴏʀᴛ 』\n`;
+            configLog += `│ ✅ *sᴛᴀᴛᴜs:* ᴄᴏɴғɪɢ_ʟɪᴠᴇ\n`;
+            configLog += `│ 📍 *ɢʀᴏᴜᴘ:* ${targetJid.split('@')[0]}\n`;
+            configLog += `│ 📝 *ᴛᴇxᴛ:* ${text}\n`;
+            configLog += `└────────────────────────┈\n\n`;
+            configLog += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            await sock.sendMessage(from, { text: configLog });
+
+        } catch (err) {
+            console.error("DB Error:", err);
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ʟᴏɢ:* ᴅᴀᴛᴀʙᴀsᴇ_ᴜᴘᴅᴀᴛᴇ_ғᴀɪʟᴇᴅ\n└────────────────────────┈` 
+            });
+        } finally {
+            await client.close();
+        }
     }
 };
+
+export default setWelcomeCommand;
