@@ -1,41 +1,86 @@
-module.exports = {
+import { MongoClient } from 'mongodb';
+
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri);
+
+const welcomeToggleCommand = {
     name: "welcome",
     category: "owner",
-    desc: "Toggle welcome messages for groups",
-    async execute(sock, msg, args, { from, isMe, settings }) {
-        if (!isMe) return; // Owner only
-        
-        await sock.sendMessage(from, { react: { text: "👋", key: msg.key } });
-        const action = args[0]?.toLowerCase(); // 'on', 'off'
-        const target = args[1]; // Group JID or 'all'
+    desc: "Toggle welcome messages (Global or Specific)",
+    async execute(sock, msg, args, { from, isMe, settings, prefix }) {
+        // --- 🛡️ FOUNDER-ONLY SHIELD ---
+        if (!isMe) return;
 
-        if (!action) return sock.sendMessage(from, { text: "❓ Usage: *.welcome on/off* (in group) or *.welcome on/off [jid/all]* (in inbox)" });
+        const action = args[0]?.toLowerCase(); // 'on' or 'off'
+        const target = args[1]; // 'all' or JID
 
-        // --- Logic for 'ALL' Groups ---
-        if (target === "all") {
-            settings.welcome = (action === "on");
-            // We use a global toggle in settings for "All"
-            await global.saveSettings();
-            return sock.sendMessage(from, { text: `┏━━ ✿ *GLOBAL SETTING* ✿ ━━┓\n┃\n┃ 👋 Welcome: *${action.toUpperCase()}*\n┃ 🌍 Applied to: *All Groups*\n┃\n┗━━━━━━━━━━━━━━┛` });
+        if (!action || !['on', 'off'].includes(action)) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴜsᴀɢᴇ_ɪɴғᴏ 』\n│ ⚙ *ᴄᴏᴍᴍᴀɴᴅ:* ${prefix}ᴡᴇʟᴄᴏᴍᴇ [ᴏɴ/ᴏғғ]\n│ ⚙ *ɢʟᴏʙᴀʟ:* ${prefix}ᴡᴇʟᴄᴏᴍᴇ [ᴏɴ/ᴏғғ] ᴀʟʟ\n└────────────────────────┈` 
+            });
         }
 
-        // --- Logic for Specific Group ---
-        const groupJid = target || from; 
-        if (!groupJid.endsWith('@g.us')) return sock.sendMessage(from, { text: "❌ Please provide a valid Group JID or use this in a group." });
+        // --- ✦ INITIAL REACTION ---
+        await sock.sendMessage(from, { react: { text: "👋", key: msg.key } });
 
-        // Store per-group settings in your DB
-        const { MongoClient } = require("mongodb");
-        const client = new MongoClient(process.env.MONGO_URI);
-        await client.connect();
-        await client.db("vinnieBot").collection("group_configs").updateOne(
-            { groupId: groupJid },
-            { $set: { welcome: (action === "on") } },
-            { upsert: true }
-        );
+        // --- 1. GLOBAL TOGGLE (settings.json) ---
+        if (target === "all") {
+            settings.welcome = (action === "on");
+            
+            if (global.saveSettings) await global.saveSettings();
+            
+            let globalMsg = `┌────────────────────────┈\n`;
+            globalMsg += `│      *ɢʟᴏʙᴀʟ_ᴡᴇʟᴄᴏᴍᴇ* \n`;
+            globalMsg += `└────────────────────────┈\n\n`;
+            globalMsg += `┌─『 sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ 』\n`;
+            globalMsg += `│ 👋 *sᴛᴀᴛᴜs:* ${action.toUpperCase()}\n`;
+            globalMsg += `│ 🌍 *sᴄᴏᴘᴇ:* ᴀʟʟ_ɢʀᴏᴜᴘs\n`;
+            globalMsg += `└────────────────────────┈\n\n`;
+            globalMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
-        const groupName = (await sock.groupMetadata(groupJid)).subject;
-        await sock.sendMessage(from, { 
-            text: `┏━━ ✿ *GROUP SETTING* ✿ ━━┓\n┃\n┃ 👋 Welcome: *${action.toUpperCase()}*\n┃ 🏛️ Group: *${groupName}*\n┃\n┗━━━━━━━━━━━━━━┛` 
-        });
+            return sock.sendMessage(from, { text: globalMsg });
+        }
+
+        // --- 2. SPECIFIC GROUP TOGGLE (MongoDB) ---
+        const groupJid = (target && target.endsWith('@g.us')) ? target : (from.endsWith('@g.us') ? from : null);
+
+        if (!groupJid) {
+            return sock.sendMessage(from, { text: "❌ ᴘʟᴇᴀsᴇ ᴜsᴇ ɪɴ ᴀ ɢʀᴏᴜᴘ ᴏʀ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴠᴀʟɪᴅ ᴊɪᴅ." });
+        }
+
+        try {
+            await client.connect();
+            const db = client.db("vinnieBot");
+            
+            await db.collection("group_configs").updateOne(
+                { groupId: groupJid },
+                { $set: { welcome: (action === "on") } },
+                { upsert: true }
+            );
+
+            const metadata = await sock.groupMetadata(groupJid);
+
+            let localMsg = `┌────────────────────────┈\n`;
+            localMsg += `│      *ᴡᴇʟᴄᴏᴍᴇ_ᴄᴏɴғɪɢ* \n`;
+            localMsg += `└────────────────────────┈\n\n`;
+            localMsg += `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n`;
+            localMsg += `│ 👋 *sᴛᴀᴛᴜs:* ${action.toUpperCase()}\n`;
+            localMsg += `│ 🏛️ *ɢʀᴏᴜᴘ:* ${metadata.subject}\n`;
+            localMsg += `│ ⚙ *ʟᴏɢ:* ᴜᴘᴅᴀᴛᴇ_sᴜᴄᴄᴇss ✦\n`;
+            localMsg += `└────────────────────────┈\n\n`;
+            localMsg += `_ɢʀᴏᴜᴘ_ɪᴅ: ${groupJid.split('@')[0]}_`;
+
+            await sock.sendMessage(from, { text: localMsg });
+
+        } catch (err) {
+            console.error("DB Error:", err);
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ʟᴏɢ:* ᴅᴀᴛᴀʙᴀsᴇ_ᴄᴏɴɴ_ғᴀɪʟᴇᴅ\n└────────────────────────┈` 
+            });
+        } finally {
+            await client.close();
+        }
     }
 };
+
+export default welcomeToggleCommand;
