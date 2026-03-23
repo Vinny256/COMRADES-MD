@@ -1,46 +1,72 @@
-module.exports = {
+const deleteCommand = {
     name: "del",
     category: "group",
     desc: "Delete a message by replying to it",
-    async execute(sock, msg, args, { from, isMe }) {
-        // 1. Fetch group details for permission check
+    async execute(sock, msg, args, { from, isMe, prefix }) {
+        // --- 🛡️ GROUP-ONLY CHECK ---
+        const isGroup = from.endsWith('@g.us');
+        if (!isGroup) return;
+
+        // --- 📊 PERMISSION CHECKS ---
         const metadata = await sock.groupMetadata(from);
-        const admins = metadata.participants.filter(p => p.admin).map(p => p.id);
-        const isBotAdmin = admins.includes(sock.user.id.split(':')[0] + '@s.whatsapp.net');
+        const participants = metadata.participants;
+        const admins = participants.filter(p => p.admin).map(p => p.id);
         
         const sender = msg.key.participant || from;
+        const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+        
+        const isBotAdmin = admins.includes(botId);
         const isAdmin = admins.includes(sender) || isMe;
 
-        // 2. Permission Check
-        if (!isAdmin) return sock.sendMessage(from, { text: "❌ *Admin Only:* You cannot delete messages." });
-        
-        // 3. Check if replying to a message
-        const quoted = msg.message.extendedTextMessage?.contextInfo;
-        if (!quoted || !quoted.stanzaId) {
-            return sock.sendMessage(from, { text: "❓ *Usage:* Reply to the message you want to delete with *.del*" });
+        // --- 🛡️ SECURITY GATE ---
+        if (!isAdmin) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴅᴍɪɴ ᴘʀɪᴠɪʟᴇɢᴇ ʀᴇǫᴜɪʀᴇᴅ.\n└────────────────────────┈` 
+            });
         }
 
-        // 4. React & Execute
-        await sock.sendMessage(from, { react: { text: "🗑️", key: msg.key } });
+        // --- 📝 QUOTED MESSAGE VALIDATION ---
+        const quoted = msg.message?.extendedTextMessage?.contextInfo;
+        if (!quoted || !quoted.stanzaId) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴜsᴀɢᴇ_ɪɴғᴏ 』\n│ ⚙ *ᴄᴏᴍᴍᴀɴᴅ:* ${prefix}ᴅᴇʟ [ʀᴇᴘʟʏ]\n│ ⚙ *ᴀɪᴍ:* ᴘᴜʀɢᴇ ᴛᴀʀɢᴇᴛ ᴍsɢ\n└────────────────────────┈` 
+            });
+        }
 
-        // The logic to delete a message involves sending a protocol message
-        await sock.sendMessage(from, {
-            delete: {
-                remoteJid: from,
-                fromMe: quoted.participant === sock.user.id.split(':')[0] + '@s.whatsapp.net',
-                id: quoted.stanzaId,
-                participant: quoted.participant
-            }
-        });
+        // --- 🗑️ EXECUTION ---
+        try {
+            // Initial Reaction
+            await sock.sendMessage(from, { react: { text: "🗑️", key: msg.key } });
 
-        // 5. Optional: Send a VHUB confirmation (Self-destructs or just logs)
-        const delLog = `┏━━━━━ ✿ *MODERATION* ✿ ━━━━━┓
-┃
-┃ 🗑️ *Message Deleted*
-┃ 👮 *Admin:* @${sender.split('@')[0]}
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            // Send Delete Protocol
+            await sock.sendMessage(from, {
+                delete: {
+                    remoteJid: from,
+                    fromMe: quoted.participant === botId,
+                    id: quoted.stanzaId,
+                    participant: quoted.participant
+                }
+            });
 
-        await sock.sendMessage(from, { text: delLog, mentions: [sender] });
+            // --- 📑 MODERATION LOG ---
+            let delLog = `┌────────────────────────┈\n`;
+            delLog += `│      *ᴍᴇssᴀɢᴇ_ᴘᴜʀɢᴇ* \n`;
+            delLog += `└────────────────────────┈\n\n`;
+            delLog += `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n`;
+            delLog += `│ 🗑️ *ᴀᴄᴛɪᴏɴ:* ᴍᴇssᴀɢᴇ_ᴅᴇʟᴇᴛᴇᴅ\n`;
+            delLog += `│ 👮 *ᴀᴅᴍɪɴ:* @${sender.split('@')[0]}\n`;
+            delLog += `│ ⚙ *sᴛᴀᴛᴜs:* sᴜᴄᴄᴇss ✦\n`;
+            delLog += `└────────────────────────┈\n\n`;
+            delLog += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            await sock.sendMessage(from, { text: delLog, mentions: [sender] });
+
+        } catch (err) {
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ʟᴏɢ:* ${err.message}\n└────────────────────────┈` 
+            });
+        }
     }
 };
+
+export default deleteCommand;
