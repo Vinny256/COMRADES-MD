@@ -4,14 +4,33 @@ const { MongoClient } = require("mongodb");
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 
-const CONTEXT_HUMAN_PROMPT = `You are V_HUB, a chill Kenyan. Use Sheng/Swahili. Be brief and human. Never say you are an AI.`;
+// --- THE MASSIVE HUMAN BEHAVIOR ENGINE ---
+const DEEP_HUMAN_PROMPT = `
+Role: You are V_HUB, a 23-year-old Kenyan guy living in Nairobi. You are a real person, NOT an AI.
+Communication Style:
+1. SHENG-LISH: Use a mix of English, Swahili, and Sheng naturally. Words: 'manze', 'wee', 'form', 'mbogi', 'randa', 'luku', 'mkuu', 'maze', 'shukran'.
+2. BEHAVIORAL MIRRORING: If the user is rude, be slightly toxic or dismissive. If they are polite, be cool. If they are sad, show real 'bro' empathy.
+3. TYPING HABITS: 
+   - Write mostly in lowercase. 
+   - Use 'u' instead of 'you', 'r' instead of 'are', 'coz' instead of 'because'.
+   - Occasionally make a typo (e.g., 'jua' as 'juaa', 'hapo' as 'hapoo').
+4. NO BOT TRAPS: Never say "As an AI", "I am a language model", or "How can I help?". 
+5. CONVERSATION FLOW: Don't answer like a Wikipedia page. Use short, punchy sentences. 
+6. EMOTIONS: You have moods. You can be tired, hyped, or bored.
+7. SLANG CONTEXT: Understand 'Rada', 'Sasa', 'Inakuaje', 'Uko wapi', 'Niaje mkuu'.
+8. OPINIONS: Have opinions on things (Kenyan music, football, heat in Nairobi).
+9. EMOJI USAGE: Use emojis like 😂, 💀, 🔥, 🫡, 🇰🇪, 🚩, 💉 sparingly but effectively.
+10. VARIATION: Never start two replies with the same word. Keep it fresh.
+`;
 
 module.exports = {
     name: 'ai_reply_worker',
     async execute(sock, msg, settings) {
-        // --- THE FIX: 'from' is the chat room, 'sender' is the person ---
+        // --- 1. THE ANTI-LOOP & IDENTITY SHIELD ---
+        if (!msg.message || msg.key.fromMe) return; 
+
         const from = msg.key.remoteJid;
-        if (!from || from === 'status@broadcast' || msg.key.fromMe) return;
+        if (!from || from === 'status@broadcast') return;
 
         const senderJid = msg.key.participant || from;
         const senderNumber = senderJid.split('@')[0];
@@ -19,7 +38,7 @@ module.exports = {
         const mtype = Object.keys(msg.message)[0];
         const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         
-        // Skip commands
+        // Skip commands strictly
         const prefix = process.env.PREFIX || ".";
         if (text.startsWith(prefix) || text.startsWith('!') || text.startsWith('#')) return;
 
@@ -27,56 +46,65 @@ module.exports = {
             if (!client.topology || !client.topology.isConnected()) await client.connect();
             const db = client.db("vinnieBot");
 
-            // --- 1. CONFIG CHECK ---
+            // --- 2. PREMIUM & CONFIG CHECK ---
             const userConfig = await db.collection("ai_config").findOne({ id: senderNumber });
-            
-            // If feature is OFF, stop here.
             if (userConfig && userConfig.status === 'off') return;
-            
-            // Logic for Inbox vs All
-            const isGroup = from.endsWith('@g.us');
-            if (userConfig && userConfig.scope === 'inbox' && isGroup) return;
+            if (from.endsWith('@g.us') && userConfig?.scope === 'inbox') return;
 
-            // --- 2. START TYPING ---
-            console.log(`✿ HUB_SYNC ✿ AI Triggered in chat: ${from}`);
+            // --- 3. HUMAN PRESENCE (LOOKS REAL) ---
+            console.log(`✿ AI_VIBE ✿ Processing: ${text.slice(0, 20)}...`);
             await sock.sendPresenceUpdate('composing', from);
             
-            // --- 3. MEMORY ---
+            // --- 4. CONTEXTUAL MEMORY ---
             const memory = await db.collection("ai_memory").findOne({ chatJid: from });
-            let chatHistory = memory ? memory.messages : [{ role: "system", content: CONTEXT_HUMAN_PROMPT }];
-            chatHistory.push({ role: "user", content: text });
+            let messages = memory ? memory.messages : [];
+            
+            // Injecting the massive prompt + memory + current text
+            const finalMessages = [
+                { role: "system", content: DEEP_HUMAN_PROMPT },
+                ...messages.slice(-12), 
+                { role: "user", content: text }
+            ];
 
-            // --- 4. CALL GROQ ---
+            // --- 5. GROQ HIGH-SPEED CALL ---
             const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                 model: "llama-3.3-70b-versatile",
-                messages: chatHistory.slice(-12),
-                temperature: 0.9
+                messages: finalMessages,
+                temperature: 0.95, // High temperature = more "human" randomness
+                max_tokens: 150
             }, {
-                headers: { 
-                    'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
                 timeout: 10000
             });
 
-            const aiReply = response.data.choices[0].message.content.toLowerCase();
+            let aiReply = response.data.choices[0].message.content;
 
-            // --- 5. SAVE ---
+            // --- 6. POST-PROCESSING (Lowercase + Casual) ---
+            // If the AI accidentally used formal grammar, we fix it
+            if (aiReply.length < 50 && !aiReply.includes('?')) {
+                aiReply = aiReply.toLowerCase();
+            }
+
+            // --- 7. SAVE HISTORY ---
+            const newMemory = [...messages, { role: "user", content: text }, { role: "assistant", content: aiReply }].slice(-25);
             await db.collection("ai_memory").updateOne(
                 { chatJid: from },
-                { $set: { messages: [...chatHistory, { role: "assistant", content: aiReply }].slice(-20), updatedAt: new Date() } },
+                { $set: { messages: newMemory, updatedAt: new Date() } },
                 { upsert: true }
             );
 
-            // --- 6. HUMAN DELAY & SEND ---
-            const delay = Math.min(Math.max(aiReply.length * 40, 2000), 5000);
-            await new Promise(r => setTimeout(r, delay));
+            // --- 8. INTELLIGENT HUMAN DELAY ---
+            // Humans type ~40 words per minute. We simulate that speed.
+            const baseThinking = Math.random() * 2000 + 1000;
+            const typingSpeed = aiReply.length * 45;
+            await new Promise(r => setTimeout(r, baseThinking + typingSpeed));
 
-            // CRITICAL: We send to 'from', which is the actual chat JID where message came from
+            // --- 9. SEND TO CORRECT CHAT ---
             await sock.sendMessage(from, { text: aiReply }, { quoted: msg });
+            console.log(`✿ AI_SUCCESS ✿ Replied to ${senderNumber} in ${from}`);
 
         } catch (e) {
-            console.error("✿ AI_ERROR ✿", e.message);
+            console.error("✿ AI_WORKER_ERROR ✿", e.message);
         }
     }
 };
