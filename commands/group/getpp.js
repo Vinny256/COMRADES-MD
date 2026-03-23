@@ -1,34 +1,51 @@
-module.exports = {
-    name: 'getpp',
-    category: 'group',
-    desc: 'Extracts the group profile picture in high resolution',
-    async execute(sock, msg, args, { from }) {
-        // Use the current group or a JID provided in args
-        const target = args[0] || from;
-
-        if (!target.endsWith('@g.us')) {
-            return sock.sendMessage(from, { text: "⚠️ Please use this in a group or provide a valid Group JID." });
+const getppCommand = {
+    name: "getpp",
+    category: "group",
+    desc: "Extracts profile pictures in high resolution",
+    async execute(sock, msg, args, { from, prefix }) {
+        // --- 🎯 TARGET DETECTION (Group, Tag, or Reply) ---
+        let target = from;
+        if (msg.message?.extendedTextMessage?.contextInfo?.mentionedJid?.[0]) {
+            target = msg.message.extendedTextMessage.contextInfo.mentionedJid[0];
+        } else if (msg.message?.extendedTextMessage?.contextInfo?.participant) {
+            target = msg.message.extendedTextMessage.contextInfo.participant;
+        } else if (args[0] && args[0].includes('@')) {
+            target = args[0].replace(/[^0-9]/g, '') + (args[0].includes('g.us') ? '@g.us' : '@s.whatsapp.net');
         }
 
+        // --- ✦ INITIAL REACTION ---
         await sock.sendMessage(from, { react: { text: "🖼️", key: msg.key } });
 
         try {
-            // Fetch the high-res URL
+            // Fetch the high-res URL ('image' type for full quality)
             const ppUrl = await sock.profilePictureUrl(target, 'image');
 
-            const caption = `┏━━━━━ ✿ *EXTRACTOR* ✿ ━━━━━┓\n┃\n┃ 📸 *Target:* Group Profile\n┃ 🛠️ *Quality:* High Definition\n┃ 📂 *Status:* Successfully Fetched\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            // --- 📑 PREMIUM CAPTION UI ---
+            let caption = `┌────────────────────────┈\n`;
+            caption += `│      *ᴠ-ʜᴜʙ_ᴇxᴛʀᴀᴄᴛᴏʀ* \n`;
+            caption += `└────────────────────────┈\n\n`;
+            caption += `┌─『 ᴍᴇᴅɪᴀ_ᴅᴇᴛᴀɪʟs 』\n`;
+            caption += `│ 📸 *ᴛᴀʀɢᴇᴛ:* ${target.split('@')[0]}\n`;
+            caption += `│ 🛠️ *ǫᴜᴀʟɪᴛʏ:* ʜɪɢʜ_ᴅᴇғɪɴɪᴛɪᴏɴ\n`;
+            caption += `│ 📂 *sᴛᴀᴛᴜs:* ʟɪᴠᴇ ✦\n`;
+            caption += `└────────────────────────┈\n\n`;
+            caption += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
             await sock.sendMessage(from, { 
                 image: { url: ppUrl }, 
                 caption: caption 
-            });
+            }, { quoted: msg });
 
         } catch (e) {
-            // If the group has no profile picture or privacy settings block it
-            console.error("PP Extraction Error:", e);
-            sock.sendMessage(from, { 
-                text: "┏━━━━━ ✿ *NOTICE* ✿ ━━━━━┓\n┃\n┃ ❌ *Failed to Extract Profile Picture.*\n┃ 💡 *Reason:* No image set or \n┃    privacy restrictions.\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛" 
-            });
+            // --- ⚠️ ERROR UI ---
+            let errorMsg = `┌─『 sʏsᴛᴇᴍ_ɴᴏᴛɪᴄᴇ 』\n`;
+            errorMsg += `│ ❌ *ᴇxᴛʀᴀᴄᴛɪᴏɴ_ғᴀɪʟᴇᴅ*\n`;
+            errorMsg += `│ ⚙ *ʀᴇᴀsᴏɴ:* ɴᴏ ɪᴍᴀɢᴇ ᴏʀ ᴘʀɪᴠᴀᴄʏ\n`;
+            errorMsg += `└────────────────────────┈`;
+            
+            await sock.sendMessage(from, { text: errorMsg });
         }
     }
 };
+
+export default getppCommand;
