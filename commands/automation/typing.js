@@ -1,8 +1,9 @@
-const fs = require('fs-extra');
-const path = require('path');
+import fs from 'fs-extra';
+import path from 'path';
+
 const settingsFile = './settings.json';
 
-module.exports = {
+const typingCommand = {
     name: "typing",
     category: "automation",
     description: "Configure 10-second typing automation",
@@ -10,20 +11,35 @@ module.exports = {
         // --- 🛡️ OWNER-ONLY GUARD ---
         if (!isMe) {
             return sock.sendMessage(from, { 
-                text: "✿ *HUB_SYNC* ✿\n\n❌ *Access Denied:* This configuration is restricted to the *Commander* only." 
+                text: `┌─『 ʜᴜʙ_sʏɴᴄ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ\n│ ⚙ *sᴛᴀᴛᴜs:* ᴄᴏᴍᴍᴀɴᴅᴇʀ ᴏɴʟʏ\n└────────────────────────┈` 
             }, { quoted: msg });
         }
 
         const mode = args[0]?.toLowerCase();
         const validModes = ['all', 'groups', 'inbox', 'off'];
 
-        // --- 🌸 VINNIE FLOWER REACT ---
-        await sock.sendMessage(from, { react: { text: "✿", key: msg.key } });
+        // --- ✦ UNICODE REACT ---
+        await sock.sendMessage(from, { react: { text: "✦", key: msg.key } });
 
         if (!mode || !validModes.includes(mode)) {
-            return sock.sendMessage(from, { 
-                text: `✿ *VINNIE HUB AUTOMATION* ✿\n\n*Current Mode:* ${settings.typingMode?.toUpperCase() || 'OFF'}\n\n*Where should I apply the typing effect?*\n\n1️⃣ *.typing all* (Everywhere)\n2️⃣ *.typing groups* (Groups only)\n3️⃣ *.typing inbox* (Private chats only)\n4️⃣ *.typing off* (Disable effect)` 
-            }, { quoted: msg });
+            let usage = `┌────────────────────────┈\n`;
+            usage += `│      *ᴛʏᴘɪɴɢ_ᴀᴜᴛᴏᴍᴀᴛɪᴏɴ* \n`;
+            usage += `└────────────────────────┈\n\n`;
+            
+            usage += `┌─『 ᴄᴜʀʀᴇɴᴛ sᴛᴀᴛᴇ 』\n`;
+            usage += `│ ⚙ *ᴍᴏᴅᴇ:* ${settings.typingMode?.toUpperCase() || 'ᴏғғ ✧'}\n`;
+            usage += `└────────────────────────┈\n\n`;
+            
+            usage += `┌─『 ᴄᴏɴғɪɢᴜʀᴀᴛɪᴏɴ 』\n`;
+            usage += `│ ├─◈ ${prefix}ᴛʏᴘɪɴɢ ᴀʟʟ\n`;
+            usage += `│ ├─◈ ${prefix}ᴛʏᴘɪɴɢ ɢʀᴏᴜᴘs\n`;
+            usage += `│ ├─◈ ${prefix}ᴛʏᴘɪɴɢ ɪɴʙᴏx\n`;
+            usage += `│ ╰─◈ ${prefix}ᴛʏᴘɪɴɢ ᴏғғ\n`;
+            usage += `└────────────────────────┈\n\n`;
+            
+            usage += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            return sock.sendMessage(from, { text: usage }, { quoted: msg });
         }
 
         // Update settings object
@@ -33,8 +49,19 @@ module.exports = {
         fs.writeJsonSync(settingsFile, settings);
         if (global.saveSettings) await global.saveSettings();
 
-        await sock.sendMessage(from, { 
-            text: `✿ *HUB_SYNC* ✿\n\n✅ *Typing Automation:* Now active for *${mode.toUpperCase()}*\n\n_Note: Commands and BlueTick actions bypass this 10s delay to stay fast._` 
-        }, { quoted: msg });
+        let confirmation = `┌────────────────────────┈\n`;
+        confirmation += `│      *ʜᴜʙ_sʏɴᴄ_sᴜᴄᴄᴇss* \n`;
+        confirmation += `└────────────────────────┈\n\n`;
+        
+        confirmation += `┌─『 ᴜᴘᴅᴀᴛᴇ_ʟᴏɢ 』\n`;
+        confirmation += `│ ⚙ *ᴛʏᴘɪɴɢ:* ᴀᴄᴛɪᴠᴇ ғᴏʀ ${mode.toUpperCase()} ✦\n`;
+        confirmation += `│ ⚙ *sʏsᴛᴇᴍ:* sʏɴᴄ ᴄᴏᴍᴘʟᴇᴛᴇ\n`;
+        confirmation += `└────────────────────────┈\n\n`;
+        
+        confirmation += `_ɴᴏᴛᴇ: ᴄᴏᴍᴍᴀɴᴅs ʙʏᴘᴀss ᴛʜɪs ᴅᴇʟᴀʏ._`;
+
+        await sock.sendMessage(from, { text: confirmation }, { quoted: msg });
     }
 };
+
+export default typingCommand;
