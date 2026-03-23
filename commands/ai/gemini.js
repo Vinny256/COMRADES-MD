@@ -1,10 +1,9 @@
-const axios = require('axios');
+import axios from 'axios';
 
 // This object will hold chat history in RAM
-// Format: { "user_number": [{role, content}, ...] }
 const chatMemory = {}; 
 
-module.exports = {
+const geminiCommand = {
     name: 'gemini',
     category: 'ai',
     async execute(sock, m, args) {
@@ -12,54 +11,75 @@ module.exports = {
         const text = args.join(" ");
         const apiKey = process.env.GROQ_API_KEY;
 
-        if (!text) return sock.sendMessage(from, { text: "❀ *V_HUB:* What's on your mind? 𖤣𖥧" });
+        if (!text) return sock.sendMessage(from, { 
+            text: `┌─『 ɢᴇᴍɪɴɪ_ᴀɪ 』\n│ ⚙ *ʜᴇʏ:* ${m.pushName}\n│ ⚙ ᴡʜᴀᴛ's ᴏɴ ʏᴏᴜʀ ᴍɪɴᴅ? ✧\n└────────────────────────┈` 
+        });
 
+        // Phase 1: Thinking State with Sleek Styling
         const { key: msgKey } = await sock.sendMessage(from, { 
-            text: "┏━━━━━━ 💠 ━━━━━━┓\n   ✨ *V_HUB AI* ✨\n  🌿 *Thinking...* 🌿\n┗━━━━━━ 🌸 ━━━━━━┛" 
+            text: `┌────────────────────────┈\n` +
+                  `│      *ɢᴇᴍɪɴɪ_ᴇɴɢɪɴᴇ* \n` +
+                  `└────────────────────────┈\n\n` +
+                  `┌─『 sᴛᴀᴛᴜs 』\n` +
+                  `│ ⚙ [ ᴛʜɪɴᴋɪɴɢ... ✦ ]\n` +
+                  `└────────────────────────┈` 
         }, { quoted: m });
 
         try {
             // --- 🧠 MEMORY LOGIC ---
-            // Initialize memory for new users
             if (!chatMemory[from]) {
                 chatMemory[from] = [
-                    { role: "system", content: "You are V_HUB AI, a helpful and elegant assistant. You remember previous parts of this conversation." }
+                    { 
+                        role: "system", 
+                        content: "You are Gemini, a highly intelligent and elegant AI developed by Google, integrated into Vinnie Digital Hub. You are helpful, concise, and professional. You must identify only as Gemini." 
+                    }
                 ];
             }
 
-            // Add the new user message to memory
+            // Add user message
             chatMemory[from].push({ role: "user", content: text });
 
-            // Keep only the last 10 messages to save space/RAM
+            // Maintain memory limit (Last 10 exchanges)
             if (chatMemory[from].length > 11) {
-                chatMemory[from].splice(1, 2); // Remove oldest exchange, keep system prompt
+                chatMemory[from].splice(1, 2); 
             }
 
             const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                 model: "llama-3.3-70b-versatile",
-                messages: chatMemory[from], // Send the WHOLE history
+                messages: chatMemory[from],
                 temperature: 0.7
             }, {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 10000
+                timeout: 15000
             });
 
             const reply = response.data.choices[0].message.content;
 
-            // Add the AI response to memory so it remembers what it said!
+            // Add AI response to memory
             chatMemory[from].push({ role: "assistant", content: reply });
 
-            const styledMsg = `✧─── 🌸 *V_HUB AI (GROQ)* 🌸 ───✧\n\n${reply}\n\n✧──── ❀ 💠 ❀ ────✧`;
+            // --- ⚡ UNICODE SLEEK STYLING ---
+            const styledMsg = `┌────────────────────────┈\n` +
+                              `│      *ɢᴇᴍɪɴɪ_ᴀɪ* \n` +
+                              `└────────────────────────┈\n\n` +
+                              `${reply}\n\n` +
+                              `┌────────────────────────┈\n` +
+                              `│   *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ*\n` +
+                              `└────────────────────────┈`;
 
             await sock.sendMessage(from, { text: styledMsg, edit: msgKey });
 
         } catch (e) {
             const errorMsg = e.response?.data?.error?.message || e.message;
-            process.stdout.write(`🚀 [GROQ ERROR] ${errorMsg}\n`);
-            await sock.sendMessage(from, { text: `❌ *V_HUB:* ${errorMsg}`, edit: msgKey });
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ʀᴇᴀsᴏɴ:* ${errorMsg}\n└────────────────────────┈`, 
+                edit: msgKey 
+            });
         }
     }
 };
+
+export default geminiCommand;
