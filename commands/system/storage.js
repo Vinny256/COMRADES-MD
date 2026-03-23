@@ -1,12 +1,19 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-module.exports = {
+// --- ESM DIRNAME REPLACEMENT ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const storageCommand = {
     name: "storage",
-    description: "Check bot storage usage with Comrade style.",
+    description: "Check bot storage usage with Elite Hub style.",
     category: "system",
-    async execute(sock, msg, args) {
-        const from = msg.key.remoteJid;
+    async execute(sock, msg, args, { from }) {
+        
+        // --- ✦ INITIAL REACTION ---
+        await sock.sendMessage(from, { react: { text: "📊", key: msg.key } });
 
         // Recursive function to get size in bytes
         const getDirSize = (dirPath) => {
@@ -15,44 +22,54 @@ module.exports = {
             const files = fs.readdirSync(dirPath);
             for (let i = 0; i < files.length; i++) {
                 const filePath = path.join(dirPath, files[i]);
-                const stats = fs.statSync(filePath);
-                if (stats.isFile()) size += stats.size;
-                else if (stats.isDirectory()) size += getDirSize(filePath);
+                try {
+                    const stats = fs.statSync(filePath);
+                    if (stats.isFile()) size += stats.size;
+                    else if (stats.isDirectory()) size += getDirSize(filePath);
+                } catch (e) {
+                    continue; // Skip files that are locked or inaccessible
+                }
             }
             return size;
         };
 
-        // --- PATHS ---
-        const authPath = path.join(__dirname, '../../auth_temp'); // Your session folder
-        const assetsPath = path.join(__dirname, '../../assets');   // Your media folder
+        // --- 📁 TARGET PATHS ---
+        const authPath = path.join(__dirname, '../../auth_temp'); 
+        const assetsPath = path.join(__dirname, '../../assets');  
 
         // Calculate Sizes in MB
         const authSize = (getDirSize(authPath) / 1024 / 1024).toFixed(2);
         const assetsSize = (getDirSize(assetsPath) / 1024 / 1024).toFixed(2);
         const totalSize = (parseFloat(authSize) + parseFloat(assetsSize)).toFixed(2);
 
-        // Status Logic
-        let status = "HEALTHY ✅";
-        if (totalSize > 500) status = "WARNING ⚠️";
-        if (totalSize > 2000) status = "CRITICAL 🚨";
+        // --- 🛠️ STATUS LOGIC ---
+        let status = "ʜᴇᴀʟᴛʜʏ ✅";
+        let statusColor = "ᴀᴄᴛɪᴠᴇ";
+        if (totalSize > 500) { status = "ᴡᴀʀɴɪɴɢ ⚠️"; statusColor = "ᴄᴀᴜᴛɪᴏɴ"; }
+        if (totalSize > 2000) { status = "ᴄʀɪᴛɪᴄᴀʟ 🚨"; statusColor = "ᴅᴀɴɢᴇʀ"; }
 
-        const storageText = `┏━━━━━ ✿ *COMRADE-STORAGE* ✿ ━━━━━┓
-┃
-┃ 📂 *SESSION (AUTH):* ${authSize} MB
-┃ 🎵 *ASSETS/MEDIA:* ${assetsSize} MB
-┃ 📊 *TOTAL USAGE:* ${totalSize} MB
-┃ 🛠️ *SYSTEM STATUS:* ${status}
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━┛
-_“Keeping your storage lean and clean...”_`;
+        // --- 📑 ANALYTICS UI CONSTRUCTION ---
+        let storageLog = `┌────────────────────────┈\n`;
+        storageLog += `│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ_ʟᴏɢ* \n`;
+        storageLog += `└────────────────────────┈\n\n`;
+        
+        storageLog += `┌─『 sᴛᴏʀᴀɢᴇ_ᴀɴᴀʟʏᴛɪᴄs 』\n`;
+        storageLog += `│ 📂 *sᴇssɪᴏɴ:* ${authSize} ᴍʙ\n`;
+        storageLog += `│ 🎵 *ᴀssᴇᴛs:* ${assetsSize} ᴍʙ\n`;
+        storageLog += `│ 📊 *ᴛᴏᴛᴀʟ:* ${totalSize} ᴍʙ\n`;
+        storageLog += `│ 🛠️ *sᴛᴀᴛᴜs:* ${status}\n`;
+        storageLog += `└────────────────────────┈\n\n`;
+        
+        storageLog += `_“ᴋᴇᴇᴘɪɴɢ ᴛʜᴇ ᴠᴀᴜʟᴛ ᴏᴘᴛɪᴍɪᴢᴇᴅ...”_`;
 
         await sock.sendMessage(from, { 
-            text: storageText,
+            text: storageLog,
             contextInfo: {
                 externalAdReply: {
-                    title: "STORAGE ANALYTICS",
-                    body: `Total: ${totalSize} MB | Status: ${status}`,
+                    title: `sʏsᴛᴇᴍ_ʜᴇᴀʟᴛʜ: ${statusColor.toUpperCase()}`,
+                    body: `ᴜsᴀɢᴇ: ${totalSize} ᴍʙ | sᴛᴀᴛᴜs: ${status}`,
                     thumbnailUrl: "https://vinnie-digital-hub.vercel.app/logo.png",
+                    sourceUrl: "https://vinnie-digital-hub.vercel.app",
                     mediaType: 1,
                     renderLargerThumbnail: false
                 }
@@ -60,3 +77,5 @@ _“Keeping your storage lean and clean...”_`;
         }, { quoted: msg });
     }
 };
+
+export default storageCommand;
