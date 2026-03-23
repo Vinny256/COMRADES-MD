@@ -1,15 +1,18 @@
-const axios = require('axios');
-
-module.exports = {
+const riddleCommand = {
     name: "riddle",
     category: "games",
     desc: "Solve a mystery riddle",
-    async execute(sock, msg, args, { from }) {
+    async execute(sock, msg, args, { from, prefix }) {
+        // 1. Initialize & Safety Check
+        if (!global.gamestate) global.gamestate = new Map();
+        
         if (global.gamestate.has(from)) {
-            return sock.sendMessage(from, { text: "❌ A game is already active!" });
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ_ᴀʟᴇʀᴛ 』\n│ ⚙ ᴀ ɢᴀᴍᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴀᴄᴛɪᴠᴇ!\n└────────────────────────┈` 
+            });
         }
 
-        // 🧠 Riddle Library (Manual list for high quality)
+        // 🧠 Riddle Library
         const riddles = [
             { q: "I have keys, but no locks. I have a space, but no room. You can enter, but can't leave. What am I?", a: "keyboard" },
             { q: "The more of this there is, the less you see. What is it?", a: "darkness" },
@@ -22,7 +25,7 @@ module.exports = {
 
         const selected = riddles[Math.floor(Math.random() * riddles.length)];
 
-        // 🎮 Set Game State
+        // 2. Set Game State
         const gameData = {
             name: "riddle",
             answer: selected.a.toLowerCase(),
@@ -31,32 +34,51 @@ module.exports = {
 
         global.gamestate.set(from, gameData);
 
-        const challenge = `┏━━━━━ ✿ *V_HUB RIDDLE* ✿ ━━━━━┓\n┃\n┃  🤔 *Riddle Me This:* \n┃  👉 "${selected.q}"\n┃\n┃  ⏱️ *Time:* 45 Seconds\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        // --- ✦ PREMIUM CHALLENGE UI ---
+        let challenge = `┌────────────────────────┈\n`;
+        challenge += `│      *ᴠ-ʜᴜʙ_ᴍʏsᴛᴇʀʏ* \n`;
+        challenge += `└────────────────────────┈\n\n`;
+        challenge += `┌─『 ʀɪᴅᴅʟᴇ_ᴍᴇ_ᴛʜɪs 』\n`;
+        challenge += `│ 🤔 *ǫᴜᴇsᴛɪᴏɴ:* \n`;
+        challenge += `│ 👉 "${selected.q}"\n`;
+        challenge += `│ ⏱️ *ᴛɪᴍᴇ:* 𝟺𝟻 sᴇᴄᴏɴᴅs\n`;
+        challenge += `└────────────────────────┈\n\n`;
+        challenge += `◈ *ʀᴇᴘʟʏ:* ᴛʏᴘᴇ ʏᴏᴜʀ ɢᴜᴇss!`;
         
         await sock.sendMessage(from, { text: challenge });
 
-        // Auto-cleanup after 45 seconds
+        // 3. Auto-Timeout Logic
         setTimeout(async () => {
             if (global.gamestate.has(from) && global.gamestate.get(from).name === "riddle") {
                 global.gamestate.delete(from);
-                await sock.sendMessage(from, { text: `⏰ *TIME OUT!*\n\nYou couldn't solve it. The answer was: *${selected.a.toUpperCase()}*` });
+                await sock.sendMessage(from, { 
+                    text: `┌─『 ᴛɪᴍᴇ_ᴏᴜᴛ 』\n│ ⚙ ᴍʏsᴛᴇʀʏ ᴜɴsᴏʟᴠᴇᴅ.\n│ ✅ *ᴀɴsᴡᴇʀ:* ${selected.a.toUpperCase()}\n└────────────────────────┈` 
+                });
             }
         }, 45000);
     },
 
-    // 🕹️ The Interceptor Logic
+    // 🕹️ Interceptor Logic
     async handleMove(sock, msg, text, game) {
         const from = msg.key.remoteJid;
         const userGuess = text.trim().toLowerCase();
 
         if (userGuess === game.answer) {
-            const winner = msg.pushName || "Genius";
+            const winner = msg.pushName || "ɢᴇɴɪᴜs";
 
-            await sock.sendMessage(from, { 
-                text: `🌟 *EUREKA!* \n\n👤 *User:* ${winner}\n✅ *Correct Answer:* ${game.answer.toUpperCase()}\n\n_You've solved the mystery._` 
-            }, { quoted: msg });
+            let victory = `┌────────────────────────┈\n`;
+            victory += `│      *ᴇᴜʀᴇᴋᴀ_ᴍᴏᴍᴇɴᴛ* \n`;
+            victory += `└────────────────────────┈\n\n`;
+            victory += `┌─『 sᴏʟᴠᴇᴅ 』\n`;
+            victory += `│ 👤 *ᴜsᴇʀ:* ${winner}\n`;
+            victory += `│ ✅ *ᴀɴsᴡᴇʀ:* ${game.answer.toUpperCase()}\n`;
+            victory += `└────────────────────────┈\n\n`;
+            victory += `_ʏᴏᴜ'ᴠᴇ sᴏʟᴠᴇᴅ ᴛʜᴇ ᴍʏsᴛᴇʀʏ._`;
 
+            await sock.sendMessage(from, { text: victory }, { quoted: msg });
             global.gamestate.delete(from);
         }
     }
 };
+
+export default riddleCommand;
