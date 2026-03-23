@@ -1,30 +1,42 @@
-module.exports = {
+const akinGame = {
     name: "akin",
     category: "games",
     desc: "Think of a character and I will guess it!",
     async execute(sock, msg, args, { from }) {
+        // 1. Check for existing game state
         if (global.gamestate.has(from)) {
-            return sock.sendMessage(from, { text: "❌ A game is already active!" });
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ_ᴀʟᴇʀᴛ 』\n│ ⚙ ᴀ ɢᴀᴍᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴀᴄᴛɪᴠᴇ!\n└────────────────────────┈` 
+            });
         }
 
-        // 🧠 Logic Tree for Guessing
+        // 🧠 Logic Tree questions
         const questions = [
             "Is your character from an Anime?", 
-            "Is your character a Superhero?",
-            "Does your character have special powers?",
-            "Is your character known for wearing a mask?"
+            "Is your character a Male?",
+            "Is your character the main protagonist?",
+            "Does your character wear Red or Orange?"
         ];
 
         const gameData = {
             name: "akin",
             step: 0,
+            questions,
             answers: [],
             player: msg.key.participant || from
         };
 
         global.gamestate.set(from, gameData);
 
-        const intro = `┏━━━━━ ✿ *V_HUB AKINATOR* ✿ ━━━━━┓\n┃\n┃  🧞 *Think of a famous character...*\n┃\n┃  ❓ *Q1:* ${questions[0]}\n┃\n┃  👉 *Reply with:* Yes / No\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        // --- ✦ PREMIUM INTRO UI ---
+        let intro = `┌────────────────────────┈\n`;
+        intro += `│      *ᴠ-ʜᴜʙ_ᴀᴋɪɴᴀᴛᴏʀ* \n`;
+        intro += `└────────────────────────┈\n\n`;
+        intro += `┌─『 ᴛʜɪɴᴋ_ᴏғ_ᴀ_ᴄʜᴀʀᴀᴄᴛᴇʀ 』\n`;
+        intro += `│ 🧞 *sᴛᴀᴛᴜs:* ɪɴɪᴛɪᴀʟɪᴢɪɴɢ...\n`;
+        intro += `│ ⚙ *ǫ𝟷:* ${questions[0]}\n`;
+        intro += `└────────────────────────┈\n\n`;
+        intro += `◈ *ʀᴇᴘʟʏ:* ʏᴇs | ɴᴏ`;
         
         await sock.sendMessage(from, { text: intro });
     },
@@ -33,33 +45,45 @@ module.exports = {
         const from = msg.key.remoteJid;
         const ans = text.toLowerCase().trim();
 
+        // Only process valid responses
         if (ans !== 'yes' && ans !== 'no') return;
 
         game.answers.push(ans);
         game.step++;
 
-        const questions = [
-            "Is your character from an Anime?",
-            "Is your character a Male?",
-            "Is your character the main protagonist?",
-            "Does your character wear Red/Orange?"
-        ];
+        if (game.step < game.questions.length) {
+            // --- ✦ NEXT QUESTION UI ---
+            let nextQ = `┌────────────────────────┈\n`;
+            nextQ += `│      *ᴠ-ʜᴜʙ_ᴀᴋɪɴᴀᴛᴏʀ* \n`;
+            nextQ += `└────────────────────────┈\n\n`;
+            nextQ += `┌─『 sᴛᴇᴘ_𝟶${game.step + 1} 』\n`;
+            nextQ += `│ ⚙ *ǫᴜᴇsᴛɪᴏɴ:* ${game.questions[game.step]}\n`;
+            nextQ += `└────────────────────────┈\n\n`;
+            nextQ += `◈ *ʀᴇᴘʟʏ:* ʏᴇs | ɴᴏ`;
 
-        if (game.step < questions.length) {
-            const nextQ = `┏━━━━━ ✿ *V_HUB AKINATOR* ✿ ━━━━━┓\n┃\n┃  ❓ *Q${game.step + 1}:* ${questions[game.step]}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
             await sock.sendMessage(from, { text: nextQ });
         } else {
-            // 🔮 The Final Guessing Logic (Example results)
-            let guess = "Iron Man"; 
-            if (game.answers[0] === 'yes' && game.answers[3] === 'yes') guess = "Naruto Uzumaki";
-            else if (game.answers[0] === 'yes' && game.answers[3] === 'no') guess = "Monkey D. Luffy";
-            else if (game.answers[0] === 'no' && game.answers[1] === 'yes') guess = "Spider-Man";
-            else guess = "Taylor Swift";
+            // 🔮 THE FINAL GUESSING LOGIC
+            let guess = "ɪʀᴏɴ ᴍᴀɴ"; 
+            if (game.answers[0] === 'yes' && game.answers[3] === 'yes') guess = "ɴᴀʀᴜᴛᴏ ᴜᴢᴜᴍᴀᴋɪ";
+            else if (game.answers[0] === 'yes' && game.answers[3] === 'no') guess = "ᴍᴏɴᴋᴇʏ ᴅ. ʟᴜғғʏ";
+            else if (game.answers[0] === 'no' && game.answers[1] === 'yes') guess = "sᴘɪᴅᴇʀ-ᴍᴀɴ";
+            else guess = "ᴛᴀʏʟᴏʀ sᴡɪғᴛ";
 
-            const result = `┏━━━━━ ✿ *V_HUB AKINATOR* ✿ ━━━━━┓\n┃\n┃  🔮 *I HAVE DECIDED!*\n┃\n┃  🎭 *Character:* ${guess}\n┃\n┃  _Was I right? Type .akin to play again!_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+            // --- ✦ FINAL RESULT UI ---
+            let result = `┌────────────────────────┈\n`;
+            result += `│      *ᴠ-ʜᴜʙ_ᴀᴋɪɴᴀᴛᴏʀ* \n`;
+            result += `└────────────────────────┈\n\n`;
+            result += `┌─『 ɪ_ʜᴀᴠᴇ_ᴅᴇᴄɪᴅᴇᴅ 』\n`;
+            result += `│ 🎭 *ᴄʜᴀʀᴀᴄᴛᴇʀ:* ${guess}\n`;
+            result += `│ ⚙ *sᴛᴀᴛᴜs:* ᴄᴏᴍᴘʟᴇᴛᴇ ✦\n`;
+            result += `└────────────────────────┈\n\n`;
+            result += `_ᴡᴀs ɪ ʀɪɢʜᴛ? ᴛʏᴘᴇ .ᴀᴋɪɴ ᴛᴏ ʀᴇsᴛᴀʀᴛ!_`;
             
             await sock.sendMessage(from, { text: result });
             global.gamestate.delete(from);
         }
     }
 };
+
+export default akinGame;
