@@ -1,14 +1,18 @@
-module.exports = {
+const mathChallenge = {
     name: "math",
     category: "games",
     desc: "Speed math challenge",
-    async execute(sock, msg, args, { from }) {
-        // ✅ ADDED OPTIONAL CHAINING (?.) TO PREVENT "UNDEFINED" CRASH
-        if (global.gamestate?.has?.(from)) {
-            return sock.sendMessage(from, { text: "❌ A game is already active here!" });
+    async execute(sock, msg, args, { from, prefix }) {
+        // 1. Initialize & Safety Check
+        if (!global.gamestate) global.gamestate = new Map();
+        
+        if (global.gamestate.has(from)) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ_ᴀʟᴇʀᴛ 』\n│ ⚙ ᴀ ɢᴀᴍᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴀᴄᴛɪᴠᴇ!\n└────────────────────────┈` 
+            });
         }
 
-        // Generate Random Math Problem
+        // 2. Generate Random Problem
         const operators = ['+', '-', '*'];
         const op = operators[Math.floor(Math.random() * operators.length)];
         let num1, num2;
@@ -21,46 +25,66 @@ module.exports = {
             num2 = Math.floor(Math.random() * 100) + 1;
         }
 
-        const answer = eval(`${num1} ${op} ${num2}`);
+        // Calculate Answer (Safe Eval substitute for simple math)
+        const mathOp = op === '*' ? '*' : op;
+        const answer = Function(`return ${num1} ${mathOp} ${num2}`)();
 
-        // Set Game State
+        // 3. Set Game State
         const gameData = {
             name: "math",
             answer: answer.toString(),
             startTime: Date.now()
         };
 
-        // ✅ SAFE SET (Ensures gamestate exists before setting)
-        if (!global.gamestate) global.gamestate = new Map();
         global.gamestate.set(from, gameData);
 
-        const challenge = `┏━━━━━ ✿ *V_HUB MATH* ✿ ━━━━━┓\n┃\n┃  ❓ *Solve this fast:* \n┃  👉  *${num1} ${op === '*' ? '×' : op} ${num2} = ?*\n┃\n┃  ⏱️ *Time:* 15 Seconds\n┃  💰 *Reward:* Bragging Rights\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        // --- ✦ PREMIUM CHALLENGE UI ---
+        let challenge = `┌────────────────────────┈\n`;
+        challenge += `│      *ᴠ-ʜᴜʙ_ᴍᴀᴛʜ_ʙʟɪᴛᴢ* \n`;
+        challenge += `└────────────────────────┈\n\n`;
+        challenge += `┌─『 sᴘᴇᴇᴅ_ᴄʜᴀʟʟᴇɴɢᴇ 』\n`;
+        challenge += `│ ❓ *sᴏʟᴠᴇ ᴛʜɪs ғᴀsᴛ:* \n`;
+        challenge += `│ 👉 *${num1} ${op === '*' ? '×' : op} ${num2} = ?*\n`;
+        challenge += `│ ⏱️ *ᴛɪᴍᴇ:* 𝟷𝟻 sᴇᴄᴏɴᴅs\n`;
+        challenge += `└────────────────────────┈\n\n`;
+        challenge += `◈ *ʀᴇᴘʟʏ:* ᴛʏᴘᴇ ᴛʜᴇ ᴀɴsᴡᴇʀ!`;
         
         await sock.sendMessage(from, { text: challenge });
 
-        // Auto-delete game if no one answers in 15 seconds
+        // 4. Auto-Timeout Logic
         setTimeout(async () => {
-            if (global.gamestate?.has?.(from) && global.gamestate?.get?.(from)?.name === "math") {
+            if (global.gamestate.has(from) && global.gamestate.get(from).name === "math") {
                 global.gamestate.delete(from);
-                await sock.sendMessage(from, { text: `⏰ *TIME OUT!* No one answered.\nCorrect was: *${answer}*` });
+                await sock.sendMessage(from, { 
+                    text: `┌─『 ᴛɪᴍᴇ_ᴏᴜᴛ 』\n│ ⚙ ɴᴏ ᴏɴᴇ ᴀɴsᴡᴇʀᴇᴅ ɪɴ ᴛɪᴍᴇ.\n│ ✅ *ᴀɴsᴡᴇʀ:* ${answer}\n└────────────────────────┈` 
+                });
             }
         }, 15000);
     },
 
-    // 🕹️ The Interceptor Logic
+    // 🕹️ Interceptor Logic
     async handleMove(sock, msg, text, game) {
         const from = msg.key.remoteJid;
         const userAnswer = text.trim();
 
         if (userAnswer === game.answer) {
             const timeTaken = ((Date.now() - game.startTime) / 1000).toFixed(2);
-            const winner = msg.pushName || "User";
+            const winner = msg.pushName || "ᴜsᴇʀ";
 
-            await sock.sendMessage(from, { 
-                text: `🏆 *WINNER!* \n\n👤 *User:* ${winner}\n✅ *Answer:* ${game.answer}\n⚡ *Speed:* ${timeTaken} seconds\n\n_Game Over._` 
-            }, { quoted: msg });
+            let victory = `┌────────────────────────┈\n`;
+            victory += `│      *ᴍᴀᴛʜ_ᴄʜᴀᴍᴘɪᴏɴ* \n`;
+            victory += `└────────────────────────┈\n\n`;
+            victory += `┌─『 ᴡɪɴɴᴇʀ_ᴅᴇᴛᴀɪʟs 』\n`;
+            victory += `│ 👤 *ᴜsᴇʀ:* ${winner}\n`;
+            victory += `│ ✅ *ᴀɴsᴡᴇʀ:* ${game.answer}\n`;
+            victory += `│ ⚡ *sᴘᴇᴇᴅ:* ${timeTaken}s\n`;
+            victory += `└────────────────────────┈\n\n`;
+            victory += `_ɢᴀᴍᴇ ᴏᴠᴇʀ. ɢɢ!_`;
 
-            global.gamestate?.delete?.(from);
+            await sock.sendMessage(from, { text: victory }, { quoted: msg });
+            global.gamestate.delete(from);
         }
     }
 };
+
+export default mathChallenge;
