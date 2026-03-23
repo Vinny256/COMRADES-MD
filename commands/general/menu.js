@@ -1,56 +1,60 @@
-module.exports = {
+import path from 'path';
+
+const menuCommand = {
     name: "menu",
     category: "general",
     async execute(sock, msg, args, { prefix, commands, from, settings }) {
         const hours = new Date().getHours();
-        let greeting = hours < 12 ? "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌅" : hours < 17 ? "ɢᴏᴏᴅ ᴀꜰᴛᴇʀɴᴏᴏɴ ☀️" : hours < 21 ? "ɢᴏᴏᴅ ᴇᴠᴇɴɪɴɢ 🌆" : "ɢᴏᴏᴅ ɴɪɢʜᴛ 🌙";
+        // Replacing emojis with clean Unicode Status indicators
+        let greeting = hours < 12 ? "ᴍᴏʀɴɪɴɢ ✧" : hours < 17 ? "ᴀꜰᴛᴇʀɴᴏᴏɴ ✦" : hours < 21 ? "ᴇᴠᴇɴɪɴɢ ✧" : "ɴɪɢʜᴛ ✦";
 
         const uptimeSeconds = process.uptime();
         const uptimeString = `${Math.floor(uptimeSeconds / 3600)}ʜ ${Math.floor((uptimeSeconds % 3600) / 60)}ᴍ`;
 
         const hubName = "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ";
         
-        // 🚀 GITHUB DIRECT LINK (Upload your menu video with song to assets/menu.mp4)
         const vinnieVideo = "https://raw.githubusercontent.com/Vinny256/COMRADES-MD/main/assets/menu.mp4"; 
         const vinnieThumb = "https://i.imgur.com/XHUY4VI.jpeg";
         const channelLink = "https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h";
 
+        // --- 📂 DATA ENGINE ---
         const cats = {};
         commands.forEach(cmd => {
-            const category = (cmd.category || "unassigned").toLowerCase();
+            const category = (cmd.category || "General").toUpperCase();
             if (!cats[category]) cats[category] = [];
-            cats[category].push(cmd.name);
+            const cmdName = Array.isArray(cmd.name) ? cmd.name[0] : cmd.name;
+            if (!cats[category].includes(cmdName)) {
+                cats[category].push(cmdName);
+            }
         });
         const sortedCategories = Object.keys(cats).sort();
 
-        let menu = `┏━━━━━━ ✿ *${hubName}* ✿ ━━━━━━┓\n┃\n`;
-        menu += `┃  ✨ *${greeting}*\n`;
-        menu += `┃  👤 *ᴜsᴇʀ:* ${msg.pushName || 'ᴄᴏᴍʀᴀᴅᴇ'}\n`;
-        menu += `┃  📊 *ᴄᴏᴍᴍᴀɴᴅs:* ${commands.size}\n`;
-        menu += `┃  ⏳ *ᴜᴘᴛɪᴍᴇ:* ${uptimeString}\n┃\n`;
+        // --- ⚡ UNICODE SLEEK ENGINE ---
+        let menu = `┌────────────────────────┈\n`;
+        menu += `│      *${hubName}* \n`;
+        menu += `└────────────────────────┈\n\n`;
+        
+        menu += `┌─『 sʏsᴛᴇᴍ sᴛᴀᴛᴜs 』\n`;
+        menu += `│ ⚙ *ɪᴅᴇɴᴛɪᴛʏ:* ${msg.pushName || 'ᴄᴏᴍʀᴀᴅᴇ'}\n`;
+        menu += `│ ⚙ *ʀᴜɴᴛɪᴍᴇ:* ${uptimeString}\n`;
+        menu += `│ ⚙ *ᴠᴇʀsɪᴏɴ:* ᴠ𝟽.𝟶.𝟶\n`;
+        menu += `│ ⚙ *ᴘʀᴇғɪx:* [ ${prefix} ]\n`;
+        menu += `└────────────────────────┈\n\n`;
 
-        const selection = args[0];
-        if (!selection || selection === "00") {
-            menu += `┣────── 『 🛰️ **ᴄᴀᴛᴇɢᴏʀɪᴇs** 』 ──────\n┃\n`;
-            sortedCategories.forEach((cat, index) => {
-                menu += `┃  *[ ${index + 1} ]* ${cat.toUpperCase()}\n`;
-            });
-            menu += `┃\n┃  💡 *ᴛɪᴘ:* ᴛʏᴘᴇ ᴛʜᴇ ɴᴜᴍʙᴇʀ ᴏɴʟʏ\n`;
-        } else if (!isNaN(selection)) {
-            const catIndex = parseInt(selection) - 1;
-            const selectedCat = sortedCategories[catIndex];
-            if (selectedCat) {
-                menu += `┣────── 『 📂 **${selectedCat.toUpperCase()}** 』 ──────\n┃\n`;
-                cats[selectedCat].forEach(cmdName => {
-                    menu += `┃  ◦ ${prefix}${cmdName}\n`;
-                });
-                menu += `┃\n┃  *[ 0 ]* ʙᴀᴄᴋ\n┃  *[ 00 ]* ᴍᴀɪɴ ᴍᴇɴᴜ\n`;
-            } else if (selection === "0") {
-                return this.execute(sock, msg, [], { prefix, commands, from, settings });
+        // Loop through categories
+        for (const cat of sortedCategories) {
+            menu += `┌──『 *${cat}* 』\n`;
+            
+            const categoryCommands = cats[cat].sort();
+            for (let i = 0; i < categoryCommands.length; i++) {
+                const isLast = i === categoryCommands.length - 1;
+                // Using branch unicodes for the bullet structure
+                menu += `│ ${isLast ? '╰' : '├'}─◈ *${prefix}${categoryCommands[i]}*\n`;
             }
+            menu += `└────────────────────────┈\n\n`;
         }
 
-        menu += `┃\n┣──────────────────────────\n┃   © 2026 | ᴠɪɴɴɪᴇ ʜᴜʙ\n┗━━━━━ ~✾~ *ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ* ~✾~ ━━━━━┛`;
+        menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
         // --- 🚀 NUCLEAR AUDIO-VIDEO ENGINE ---
         let videoContent = global.vinnieMenuCache ? global.vinnieMenuCache : { url: vinnieVideo };
@@ -64,27 +68,27 @@ module.exports = {
                 verifiedBadge: true, 
                 forwardingScore: 999,
                 isForwarded: true,
-                // --- 🛡️ OFFICIAL CHANNEL SYNC ---
                 forwardedNewsletterMessageInfo: {
-                    newsletterJid: '120363305104443156@newsletter', // Your unique Channel JID
+                    newsletterJid: '120363305104443156@newsletter', 
                     newsletterName: "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ᴜᴘᴅᴀᴛᴇs",
                     serverMessageId: 1
                 },
                 externalAdReply: {
                     title: hubName,
-                    body: `ᴏꜰꜰɪᴄɪᴀʟ ᴜᴘᴅᴀᴛᴇs | ᴜᴘᴛɪᴍᴇ: ${uptimeString}`,
+                    body: `${greeting} | sʏsᴛᴇᴍ ᴏɴʟɪɴᴇ`,
                     mediaType: 2,
                     thumbnailUrl: vinnieThumb,
-                    sourceUrl: channelLink, // Your new channel link
+                    sourceUrl: channelLink, 
                     showAdAttribution: true,
                     renderLargerThumbnail: true
                 }
             }
         }, { quoted: msg });
 
-        // Cache the video ID for instant delivery to the next user
         if (!global.vinnieMenuCache && sentMsg.message?.videoMessage) {
             global.vinnieMenuCache = sentMsg.message.videoMessage;
         }
     }
 };
+
+export default menuCommand;
