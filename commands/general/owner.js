@@ -1,46 +1,48 @@
-module.exports = {
+const ownerCommand = {
     name: "owner",
     category: "general",
     desc: "V_HUB: Meet the Founder",
     async execute(sock, msg, args, { from }) {
         // --- 💎 FOUNDER IDENTITY ---
-        const ownerName = "Vinnie Digital Hub";
-        const ownerLocation = "Kiambu, Kenya 🇰🇪";
-        const institution = "University of Embu (UoE)";
+        const ownerName = "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ";
+        const ownerLocation = "ᴋɪᴀᴍʙᴜ, ᴋᴇɴʏᴀ 🇰🇪";
+        const institution = "ᴜɴɪᴠᴇʀsɪᴛʏ ᴏғ ᴇᴍʙᴜ (ᴜᴏᴇ)";
         const contact = "254768666068";
 
         // Best React Emoji for Identity
         await sock.sendMessage(from, { react: { text: "👑", key: msg.key } });
 
-        // --- ✿ VINNIE HUB STYLING ✿ ---
-        const vcard = 'BEGIN:VCARD\n' // Creating a clickable contact card
+        // --- ✦ VCARD GENERATOR ✦ ---
+        const vcard = 'BEGIN:VCARD\n'
             + 'VERSION:3.0\n' 
             + `FN:${ownerName}\n` 
             + `ORG:Vinnie Digital Hub;\n` 
             + `TEL;type=CELL;type=VOICE;waid=${contact}:${contact}\n` 
             + 'END:VCARD';
 
-        const bio = `┏━━━━━ ✿ *VINNIE HUB FOUNDER* ✿ ━━━━━┓
-┃
-┃  👤 *Name:* ${ownerName}
-┃  🇰🇪 *Origin:* ${ownerLocation}
-┃  🎓 *Studies:* ${institution}
-┃  🛠️ *Status:* Full-Stack Developer
-┃
-┃  👋 *About:* ┃  _Developing digital solutions from the_ 
-┃  _heart of Embu to the rest of Kenya._
-┃
-┃  📞 *Contact:* https://wa.me/${contact}
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+        // --- ⚡ UNICODE SLEEK STYLING ---
+        const bio = `┌────────────────────────┈\n` +
+                    `│      *${ownerName}* \n` +
+                    `└────────────────────────┈\n\n` +
+                    `┌─『 ғᴏᴜɴᴅᴇʀ ɪᴅᴇɴᴛɪᴛʏ 』\n` +
+                    `│ ⚙ *ɴᴀᴍᴇ:* ${ownerName}\n` +
+                    `│ ⚙ *ᴏʀɪɢɪɴ:* ${ownerLocation}\n` +
+                    `│ ⚙ *sᴛᴜᴅɪᴇs:* ${institution}\n` +
+                    `│ ⚙ *sᴛᴀᴛᴜs:* ғᴜʟʟ-sᴛᴀᴄᴋ ᴅᴇᴠ\n` +
+                    `└────────────────────────┈\n\n` +
+                    `┌─『 ᴀʙᴏᴜᴛ 』\n` +
+                    `│ ◈ _ᴅᴇᴠᴇʟᴏᴘɪɴɢ ᴅɪɢɪᴛᴀʟ sᴏʟᴜᴛɪᴏɴs_\n` +
+                    `│ ◈ _ғʀᴏᴍ ᴛʜᴇ ʜᴇᴀʀᴛ ᴏғ ᴇᴍʙᴜ._\n` +
+                    `└────────────────────────┈\n\n` +
+                    `◈ *ᴄᴏɴᴛᴀᴄᴛ:* wa.me/${contact}`;
 
-        // Sending the Bio message first
+        // 1. Sending the Bio message
         await sock.sendMessage(from, { 
             text: bio, 
             mentions: [contact + '@s.whatsapp.net'] 
         }, { quoted: msg });
 
-        // Sending the Clickable V-Card right after
+        // 2. Sending the Clickable V-Card
         await sock.sendMessage(from, { 
             contacts: { 
                 displayName: ownerName, 
@@ -49,3 +51,5 @@ module.exports = {
         }, { quoted: msg });
     }
 };
+
+export default ownerCommand;
