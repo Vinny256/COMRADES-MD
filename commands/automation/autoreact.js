@@ -1,32 +1,54 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+
 const settingsFile = './settings.json';
 
-module.exports = {
+const autoreactCommand = {
     name: "autoreact",
     category: "automation",
     description: "Manage Status Auto-Reaction",
     async execute(sock, msg, args, { from, prefix }) {
-        let settings = fs.readJsonSync(settingsFile);
+        // Load settings safely
+        let settings = {};
+        if (fs.existsSync(settingsFile)) {
+            settings = fs.readJsonSync(settingsFile);
+        }
         
         // Ensure the structure exists
         if (!settings.status) settings.status = { autoReact: false, emoji: "✨" };
 
         const param = args[0]?.toLowerCase();
 
-        const vStyle = (text) => `╭─── ~✾~ *VINNIE HUB* ~✾~ ───\n│\n${text}\n│\n╰─── ~✾~ *Status Grid* ~✾~ ───`;
-
+        // --- ⚡ UNICODE SLEEK STYLING ---
         // Case: .autoreact on
         if (param === "on") {
             settings.status.autoReact = true;
             fs.writeJsonSync(settingsFile, settings);
-            return sock.sendMessage(from, { text: vStyle(`│  🟢 *Auto-React:* ENABLED\n│  ✨ *Current Emoji:* ${settings.status.emoji}`) });
+            
+            let onMsg = `┌────────────────────────┈\n`;
+            onMsg += `│      *ᴀᴜᴛᴏʀᴇᴀᴄᴛ_ᴇɴᴀʙʟᴇᴅ* \n`;
+            onMsg += `└────────────────────────┈\n\n`;
+            onMsg += `┌─『 sʏsᴛᴇᴍ sᴛᴀᴛᴜs 』\n`;
+            onMsg += `│ ⚙ *ᴀᴜᴛᴏ-ʀᴇᴀᴄᴛ:* ᴀᴄᴛɪᴠᴇ ✦\n`;
+            onMsg += `│ ⚙ *ᴇᴍᴏᴊɪ:* ${settings.status.emoji}\n`;
+            onMsg += `└────────────────────────┈\n\n`;
+            onMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+            
+            return sock.sendMessage(from, { text: onMsg });
         }
 
         // Case: .autoreact off
         if (param === "off") {
             settings.status.autoReact = false;
             fs.writeJsonSync(settingsFile, settings);
-            return sock.sendMessage(from, { text: vStyle(`│  🔴 *Auto-React:* DISABLED`) });
+            
+            let offMsg = `┌────────────────────────┈\n`;
+            offMsg += `│      *ᴀᴜᴛᴏʀᴇᴀᴄᴛ_ᴅɪsᴀʙʟᴇᴅ* \n`;
+            offMsg += `└────────────────────────┈\n\n`;
+            offMsg += `┌─『 sʏsᴛᴇᴍ sᴛᴀᴛᴜs 』\n`;
+            offMsg += `│ ⚙ *ᴀᴜᴛᴏ-ʀᴇᴀᴄᴛ:* ᴏғғʟɪɴᴇ ✧\n`;
+            offMsg += `└────────────────────────┈`;
+            
+            return sock.sendMessage(from, { text: offMsg });
         }
 
         // Case: .autoreact emoji [target_emoji]
@@ -34,16 +56,35 @@ module.exports = {
             settings.status.autoReact = true; // Auto-enable when setting emoji
             settings.status.emoji = args[1];
             fs.writeJsonSync(settingsFile, settings);
-            return sock.sendMessage(from, { text: vStyle(`│  ✅ *New Emoji Set:* ${args[1]}\n│  🚀 *Auto-React:* ACTIVE`) });
+            
+            let emoMsg = `┌────────────────────────┈\n`;
+            emoMsg += `│      *ᴇᴍᴏᴊɪ_ᴜᴘᴅᴀᴛᴇᴅ* \n`;
+            emoMsg += `└────────────────────────┈\n\n`;
+            emoMsg += `┌─『 ᴄᴏɴғɪɢ ᴅᴇᴛᴀɪʟs 』\n`;
+            emoMsg += `│ ⚙ *ɴᴇᴡ ᴇᴍᴏᴊɪ:* ${args[1]}\n`;
+            emoMsg += `│ ⚙ *ᴀᴜᴛᴏ-ʀᴇᴀᴄᴛ:* ᴀᴄᴛɪᴠᴇ ✦\n`;
+            emoMsg += `└────────────────────────┈`;
+            
+            return sock.sendMessage(from, { text: emoMsg });
         }
 
-        // Usage Guide
-        const usage = `│  💡 *Usage:* \n` +
-                      `│  ◦  ${prefix}autoreact on / off\n` +
-                      `│  ◦  ${prefix}autoreact emoji ❤️\n` +
-                      `│\n` +
-                      `│  *Current:* ${settings.status.autoReact ? 'ON' : 'OFF'} (${settings.status.emoji})`;
+        // Usage Guide (The Dashboard)
+        let usage = `┌────────────────────────┈\n`;
+        usage += `│      *sᴛᴀᴛᴜs_ɢʀɪᴅ* \n`;
+        usage += `└────────────────────────┈\n\n`;
         
-        return sock.sendMessage(from, { text: vStyle(usage) });
+        usage += `┌─『 ᴄᴏɴғɪɢᴜʀᴀᴛɪᴏɴ 』\n`;
+        usage += `│ ├─◈ ${prefix}ᴀᴜᴛᴏʀᴇᴀᴄᴛ ᴏɴ / ᴏғғ\n`;
+        usage += `│ ╰─◈ ${prefix}ᴀᴜᴛᴏʀᴇᴀᴄᴛ ᴇᴍᴏᴊɪ [📩]\n`;
+        usage += `└────────────────────────┈\n\n`;
+        
+        usage += `┌─『 ᴄᴜʀʀᴇɴᴛ sᴛᴀᴛᴇ 』\n`;
+        usage += `│ ⚙ *ᴍᴏᴅᴇ:* ${settings.status.autoReact ? 'ᴏɴ ✦' : 'ᴏғғ ✧'}\n`;
+        usage += `│ ⚙ *ᴇᴍᴏᴊɪ:* ${settings.status.emoji}\n`;
+        usage += `└────────────────────────┈`;
+        
+        return sock.sendMessage(from, { text: usage });
     }
 };
+
+export default autoreactCommand;
