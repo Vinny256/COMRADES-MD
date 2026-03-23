@@ -1,6 +1,4 @@
 const { MongoClient } = require("mongodb");
-
-// Using the same URI from your process.env
 const client = new MongoClient(process.env.MONGO_URI || "");
 
 module.exports = {
@@ -9,57 +7,37 @@ module.exports = {
     async execute(sock, m, args) {
         const from = m.key.remoteJid;
         const senderJid = m.key.participant || from;
-        const senderId = senderJid.split('@')[0];
+        const senderNumber = senderJid.split('@')[0];
+        const pushName = m.pushName || "User";
         
-        // Connect to your vinnieBot database
         const db = client.db("vinnieBot");
         const configColl = db.collection("ai_config");
 
-        // 1. Show Status if no args are provided
         if (args.length === 0) {
-            const current = await configColl.findOne({ id: senderId }) || { status: 'off', scope: 'inbox' };
-            const menu = `┏━━━━━━ 💠 *V_HUB AI* ━━━━━━┓
-┃ 
-┃ *STATUS:* ${current.status === 'on' ? '✅ ACTIVE' : '❌ DISABLED'}
-┃ *SCOPE:* ${current.scope === 'all' ? '🌍 ALL CHATS' : '📩 INBOX ONLY'}
-┃ 
-┣━━━━━━━━━━━━━━━━━━━━━━
-┃ *COMMANDS:*
-┃ 📑 *.autoreply on*
-┃ 📑 *.autoreply off*
-┃ 📑 *.autoreply inbox* (DM Only)
-┃ 📑 *.autoreply all* (Groups + DM)
-┃ 
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-            return sock.sendMessage(from, { text: menu }, { quoted: m });
+            return sock.sendMessage(from, { text: "💠 *V_HUB AI*\nUsage: .autoreply on | off | inbox | all" });
         }
 
         const input = args[0].toLowerCase();
-        let updateData = {};
+        let updateData = { updatedAt: new Date() };
 
-        // 2. Logic for Toggling and Scoping
-        if (input === 'on') {
-            updateData.status = 'on';
-        } else if (input === 'off') {
-            updateData.status = 'off';
-        } else if (input === 'inbox') {
-            updateData.status = 'on';
-            updateData.scope = 'inbox';
-        } else if (input === 'all') {
-            updateData.status = 'on';
-            updateData.scope = 'all';
-        } else {
-            return sock.sendMessage(from, { text: "⚠️ *V_HUB:* Invalid option. Use *on, off, inbox,* or *all*." });
+        if (input === 'on') updateData.status = 'on';
+        else if (input === 'off') updateData.status = 'off';
+        else if (input === 'inbox') { updateData.status = 'on'; updateData.scope = 'inbox'; }
+        else if (input === 'all') { updateData.status = 'on'; updateData.scope = 'all'; }
+        else return sock.sendMessage(from, { text: "❌ Invalid option." });
+
+        try {
+            // --- THE FIX: Save to both Number AND Name to be 100% sure ---
+            await configColl.updateOne({ id: senderNumber }, { $set: updateData }, { upsert: true });
+            await configColl.updateOne({ id: pushName }, { $set: updateData }, { upsert: true });
+
+            console.log(`✅ AI_CONFIG Saved for ${senderNumber} (${pushName}): ${input}`);
+            
+            await sock.sendMessage(from, { 
+                text: `✨ *V_HUB AI UPDATED*\n\nStatus: *${updateData.status || 'on'}*\nScope: *${updateData.scope || 'all'}*` 
+            }, { quoted: m });
+        } catch (e) {
+            console.error("Database Error:", e.message);
         }
-
-        // 3. Save to MongoDB
-        await configColl.updateOne(
-            { id: senderId }, 
-            { $set: updateData }, 
-            { upsert: true }
-        );
-
-        const successMsg = `✨ *V_HUB CONFIG UPDATED* ✨\n\nAI is now *${updateData.status || 'Active'}* for *${updateData.scope || 'selected'}* chats.`;
-        await sock.sendMessage(from, { text: successMsg }, { quoted: m });
     }
 };
