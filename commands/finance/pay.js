@@ -1,25 +1,22 @@
-const hubClient = require('../../utils/hubClient');
 
-module.exports = {
+import hubClient from '../../utils/hubClient.js'; 
+
+const payCommand = {
     name: 'pay',
     category: 'finance',
-    async execute(conn, m, args) {
-        // --- 1. SMART SOCKET SELECTION ---
-        const sock = conn?.sendMessage ? conn : (m.conn || global.conn);
+    async execute(sock, m, args) {
         const from = m.key.remoteJid;
         if (!from) return;
 
         try {
-            // --- 2. IDENTITY & PHONE CLEANING ---
+            // --- 1. IDENTITY & SECURITY ---
             const sender = m.key.participant || m.key.remoteJid;
-            const senderPhone = sender.replace(/[^0-9]/g, ''); // Strips @s.whatsapp.net
+            const senderPhone = sender.replace(/[^0-9]/g, ''); 
+            const rawName = m.pushName || "ᴠ_ʜᴜʙ_ᴍᴇᴍʙᴇʀ";
             
-            const rawName = m.pushName || "V_Hub_Member";
-            
-            // SECURITY: Block anonymous/default names
-            if (rawName === "V_Hub_Member" || !m.pushName) {
+            if (rawName === "ᴠ_ʜᴜʙ_ᴍᴇᴍʙᴇʀ" || !m.pushName) {
                 return sock.sendMessage(from, { 
-                    text: "┏━━━━━ ✿ *V_HUB_SECURITY* ✿ ━━━━━┓\n┃\n┃ ❌ *ACCESS DENIED*\n┃ 👤 *USER:* Anonymous\n┃\n┃ _Please set a name in WhatsApp_\n┃ _settings to enable finance tools._\n┗━━━━━━━━━━━━━━━━━━━━━━┛" 
+                    text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴄᴄᴇss ᴅᴇɴɪᴇᴅ\n│ ⚙ *ʀᴇᴀsᴏɴ:* ᴀɴᴏɴʏᴍᴏᴜs ᴜsᴇʀ\n│ 💡 sᴇᴛ ᴀ ɴᴀᴍᴇ ɪɴ ᴡᴀ sᴇᴛᴛɪɴɢs.\n└────────────────────────┈` 
                 }, { quoted: m });
             }
 
@@ -27,32 +24,43 @@ module.exports = {
             const amount = args[0];
             let targetPhone = args[1];
 
-            // --- 3. INPUT VALIDATION ---
+            // --- 2. INPUT VALIDATION ---
+            const prefix = process.env.PREFIX || '.';
             if (!amount || isNaN(amount) || !targetPhone) {
-                return sock.sendMessage(from, { text: `📑 *Usage:* ${process.env.PREFIX || '.'}pay <amount> <phone>` }, { quoted: m });
+                return sock.sendMessage(from, { 
+                    text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ᴜsᴀɢᴇ:* ${prefix}ᴘᴀʏ [ᴀᴍᴏᴜɴᴛ] [ᴘʜᴏɴᴇ]\n│ ⚙ *ᴇx:* ${prefix}ᴘᴀʏ 𝟻𝟶𝟶 𝟶𝟽𝟷𝟸𝟹𝟺𝟻𝟼𝟽𝟾\n└────────────────────────┈` 
+                }, { quoted: m });
             }
 
             if (Number(amount) < 10) {
-                return sock.sendMessage(from, { text: "⚠️ *V_HUB:* Minimum withdrawal is KSH 10." }, { quoted: m });
+                return sock.sendMessage(from, { text: "┌─『 ᴠ_ʜᴜʙ 』\n│ ⚠️ ᴍɪɴɪᴍᴜᴍ ᴡɪᴛʜᴅʀᴀᴡᴀʟ ɪs ᴋsʜ 𝟷𝟶.\n└────────────────────────┈" }, { quoted: m });
             }
 
-            // Standardize target phone to 254 format
+            // Standardize target phone
             if (targetPhone.startsWith('0')) targetPhone = '254' + targetPhone.slice(1);
             if (targetPhone.startsWith('+')) targetPhone = targetPhone.slice(1);
 
-            const wait = await sock.sendMessage(from, { text: "⏳ *V_HUB:* Contacting Finance Server..." }, { quoted: m });
+            const { key } = await sock.sendMessage(from, { 
+                text: `┌────────────────────────┈\n` +
+                      `│      *ғɪɴᴀɴᴄᴇ_sᴇʀᴠᴇʀ* \n` +
+                      `└────────────────────────┈\n\n` +
+                      `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n` +
+                      `│ ⚙ *ᴀᴄᴛɪᴏɴ:* ᴄᴏɴᴛᴀᴄᴛɪɴɢ_ʜᴜʙ\n` +
+                      `│ ⚙ *sᴛᴀᴛ:* [ ᴀᴜᴛʜᴇɴᴛɪᴄᴀᴛɪɴɢ... ]\n` +
+                      `└────────────────────────┈`
+            }, { quoted: m });
 
-            // --- 4. THE API CALL (Where the 404 happens) ---
+            // --- 3. API AUTHENTICATION ---
             const check = await hubClient.checkStatus(senderPhone);
 
             if (!check || check.status !== "OK") {
                 return sock.sendMessage(from, { 
-                    text: `┏━━━━━ ✿ *V_HUB_ERROR* ✿ ━━━━━┓\n┃\n┃ ❌ *USER NOT FOUND*\n┃ 📱 *PHONE:* ${senderPhone}\n┃\n┃ _Register on the hub first!_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`,
-                    edit: wait.key 
+                    text: `┌─『 ᴠ_ʜᴜʙ ᴇʀʀᴏʀ 』\n│ ⚙ *sᴛᴀᴛᴜs:* ᴜsᴇʀ ɴᴏᴛ ғᴏᴜɴᴅ\n│ ⚙ *ᴘʜᴏɴᴇ:* ${senderPhone}\n│ 💡 ʀᴇɢɪsᴛᴇʀ ғɪʀsᴛ ᴠɪᴀ: .ɴᴇᴡ\n└────────────────────────┈`,
+                    edit: key 
                 });
             }
 
-            // --- 5. LIMITS & BALANCE ---
+            // --- 4. LIMITS & BALANCE ---
             const DAILY_MAX = 10000;
             const spentToday = (check.history || [])
                 .filter(tx => tx.type === "WITHDRAW" && new Date(tx.date).toDateString() === new Date().toDateString())
@@ -60,30 +68,44 @@ module.exports = {
 
             if (spentToday + Number(amount) > DAILY_MAX) {
                 return sock.sendMessage(from, { 
-                    text: `❌ *LIMIT:* Daily limit is KSH ${DAILY_MAX}. You spent KSH ${spentToday}.`,
-                    edit: wait.key 
+                    text: `┌─『 ʟɪᴍɪᴛ_ᴀʟᴇʀᴛ 』\n│ ⚙ *ᴍᴀx:* ᴋsʜ ${DAILY_MAX}\n│ ⚙ *sᴘᴇɴᴛ:* ᴋsʜ ${spentToday}\n└────────────────────────┈`,
+                    edit: key 
                 });
             }
 
             if (Number(check.balance) < Number(amount)) {
-                return sock.sendMessage(from, { text: `❌ *INSUFFICIENT:* Balance: KSH ${check.balance}`, edit: wait.key });
+                return sock.sendMessage(from, { 
+                    text: `┌─『 ɪɴsᴜғғɪᴄɪᴇɴᴛ 』\n│ ⚙ *ʙᴀʟᴀɴᴄᴇ:* ᴋsʜ ${check.balance}\n└────────────────────────┈`, 
+                    edit: key 
+                });
             }
 
-            // --- 6. DISBURSEMENT ---
+            // --- 5. DISBURSEMENT ---
             const res = await hubClient.withdraw(targetPhone, amount, truncatedName);
 
             if (res && res.success) {
-                const finalReceipt = `┏━━━━━ ✿ *V_HUB_SUCCESS* ✿ ━━━━━┓\n┃\n┃ ✅ *TRANSACTION COMPLETE*\n┃ 💵 *AMOUNT:* KSH ${amount}\n┃ 📱 *SENT TO:* ${targetPhone}\n┃ 🧾 *REF:* ${res.receipt || 'HUB-TX'}\n┃ 🏦 *BAL:* KSH ${res.newBalance}\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-                await sock.sendMessage(from, { text: finalReceipt, edit: wait.key });
+                let successMsg = `┌────────────────────────┈\n`;
+                successMsg += `│      *ᴠ_ʜᴜʙ_sᴜᴄᴄᴇss* \n`;
+                successMsg += `└────────────────────────┈\n\n`;
+                successMsg += `┌─『 ᴛx_ᴄᴏᴍᴘʟᴇᴛᴇ 』\n`;
+                successMsg += `│ ✅ *ᴀᴍᴏᴜɴᴛ:* ᴋsʜ ${amount}\n`;
+                successMsg += `│ 📱 *sᴇɴᴛ ᴛᴏ:* ${targetPhone}\n`;
+                successMsg += `│ 🧾 *ʀᴇғ:* ${res.receipt || 'ʜᴜʙ-ᴛx'}\n`;
+                successMsg += `│ 🏦 *ʙᴀʟ:* ᴋsʜ ${res.newBalance}\n`;
+                successMsg += `└────────────────────────┈`;
+                
+                await sock.sendMessage(from, { text: successMsg, edit: key });
             } else {
-                throw new Error(res?.message || "Gateway Offline");
+                throw new Error(res?.message || "ɢᴀᴛᴇᴡᴀʏ ᴏғғʟɪɴᴇ");
             }
 
         } catch (err) {
             console.error("┃ ❌ PAY_ERROR:", err.message);
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *V_HUB_STATUS* ✿ ━━━━━┓\n┃\n┃ ❌ *SYSTEM ERROR*\n┃ ⚠️ *LOG:* ${err.message}\n┃\n┃ _Report this to Admin!_\n┗━━━━━━━━━━━━━━━━━━━━━━┛`
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ʟᴏɢ:* ${err.message}\n│ ⚠️ ʀᴇᴘᴏʀᴛ ᴛᴏ ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ.\n└────────────────────────┈`
             });
         }
     }
 };
+
+export default payCommand;
