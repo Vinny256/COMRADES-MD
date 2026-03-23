@@ -1,17 +1,29 @@
-const yts = require('yt-search');
-const ytdl = require('@distube/ytdl-core');
+import yts from 'yt-search';
+import ytdl from '@distube/ytdl-core';
 
-module.exports = {
+const playCommand = {
     name: "play",
     category: "downloader",
-    desc: "Premium YouTube Downloder",
+    desc: "Premium YouTube Downloader",
     async execute(sock, msg, args, { prefix, from }) {
         const query = args.join(" ");
-        if (!query) return sock.sendMessage(from, { text: "┃ ❌ Usage: .play [name]" });
+        
+        // 1. Validation Logic
+        if (!query) {
+            return sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ᴜsᴀɢᴇ:* ${prefix}ᴘʟᴀʏ [ɴᴀᴍᴇ]\n└────────────────────────┈` 
+            });
+        }
 
-        // Phase 1: Requesting State
+        // Phase 1: Requesting State (Sleek UI)
         const { key } = await sock.sendMessage(from, { 
-            text: `┏━━━━━ ✿ V_HUB_SYS ✿ ━━━━━┓\n┃\n┃  QUERY: ${query.slice(0, 15)}...\n┃  STAT: [ REQUESTING... ]\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛` 
+            text: `┌────────────────────────┈\n` +
+                  `│      *ʏᴛ_ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* \n` +
+                  `└────────────────────────┈\n\n` +
+                  `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n` +
+                  `│ ⚙ *ǫᴜᴇʀʏ:* ${query.slice(0, 15)}...\n` +
+                  `│ ⚙ *sᴛᴀᴛ:* [ ʀᴇǫᴜᴇsᴛɪɴɢ... ]\n` +
+                  `└────────────────────────┈`
         });
 
         try {
@@ -19,24 +31,31 @@ module.exports = {
             const video = search.videos[0];
             if (!video) throw new Error("Not_Found");
 
-            // Phase 2: Extracting (Edit Message)
+            // Phase 2: Extracting (Sleek UI Edit)
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ V_HUB_SYS ✿ ━━━━━┓\n┃\n┃  TITLE: ${video.title.slice(0, 15)}...\n┃  STAT: [ EXTRACTING... ]\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛`, 
+                text: `┌────────────────────────┈\n` +
+                      `│      *ʏᴛ_ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* \n` +
+                      `└────────────────────────┈\n\n` +
+                      `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n` +
+                      `│ ⚙ *ᴛɪᴛʟᴇ:* ${video.title.slice(0, 15)}...\n` +
+                      `│ ⚙ *sᴛᴀᴛ:* [ ᴇxᴛʀᴀᴄᴛɪɴɢ... ]\n` +
+                      `└────────────────────────┈`, 
                 edit: key 
             });
 
-            // Use @distube/ytdl-core with specific agent settings to bypass Heroku blocks
             const videoUrl = video.url;
             const info = await ytdl.getInfo(videoUrl);
             const format = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'mp4' });
 
-            let caption = `┏━━━━━ ✿ YT_RESULT ✿ ━━━━━┓\n`;
-            caption += `┃\n`;
-            caption += `┃  TITLE: ${video.title.slice(0, 20)}\n`;
-            caption += `┃  TIME: ${video.timestamp}\n`;
-            caption += `┃  QUAL: HD_720P\n`;
-            caption += `┃\n`;
-            caption += `┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛`;
+            let caption = `┌────────────────────────┈\n`;
+            caption += `│      *ʏᴛ_ʀᴇsᴜʟᴛ* \n`;
+            caption += `└────────────────────────┈\n\n`;
+            caption += `┌─『 ᴍᴇᴅɪᴀ_ᴅᴇᴛᴀɪʟs 』\n`;
+            caption += `│ ⚙ *ᴛɪᴛʟᴇ:* ${video.title.slice(0, 25)}\n`;
+            caption += `│ ⚙ *ᴅᴜʀᴀᴛɪᴏɴ:* ${video.timestamp}\n`;
+            caption += `│ ⚙ *ǫᴜᴀʟɪᴛʏ:* ʜᴅ_ᴀᴜᴛᴏ\n`;
+            caption += `└────────────────────────┈\n\n`;
+            caption += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
             // Phase 3: Final Delivery
             await sock.sendMessage(from, { 
@@ -44,13 +63,17 @@ module.exports = {
                 caption: caption 
             }, { quoted: msg });
 
+            // Cleanup the "Rendering" message
             await sock.sendMessage(from, { delete: key });
 
         } catch (e) {
+            console.error(`❌ [COMMAND_ERR] YouTube download failed: ${e.message}`);
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ ERROR_LOG ✿ ━━━━━┓\n┃\n┃  STAT: FAILED\n┃  ERR: REGION_BLOCK\n┃  TIP: USE COOKIES\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━━━━┛`, 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *sᴛᴀᴛ:* ғᴀɪʟᴇᴅ\n│ ⚙ *ᴇʀʀ:* ʀᴇɢɪᴏɴ_ʙʟᴏᴄᴋ\n│ ⚙ *ᴛɪᴘ:* ᴄʜᴇᴄᴋ sᴇʀᴠᴇʀ ɪᴘ\n└────────────────────────┈`, 
                 edit: key 
             });
         }
     }
 };
+
+export default playCommand;
