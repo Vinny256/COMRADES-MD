@@ -1,17 +1,22 @@
-module.exports = {
+const songCommand = {
     name: "song",
     category: "download",
-    async execute(sock, msg, args, { prefix, from, isMe }) {
+    async execute(sock, msg, args, { prefix, from }) {
         const query = args.join(" ");
-        if (!query) return await sock.sendMessage(from, { text: `❌ *V_HUB:* What song are we looking for?\nExample: *${prefix}song Lifestyle*` });
+        
+        // 1. Validation Logic
+        if (!query) {
+            return await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ᴜsᴀɢᴇ:* ${prefix}sᴏɴɢ [ɴᴀᴍᴇ]\n│ ⚙ *ᴇx:* ${prefix}sᴏɴɢ ʟɪғᴇsᴛʏʟᴇ\n└────────────────────────┈` 
+            });
+        }
 
         try {
-            // 1. Give the user feedback immediately
+            // 2. Initial Feedback
             await sock.sendMessage(from, { react: { text: "⏳", key: msg.key } });
             await sock.sendPresenceUpdate('composing', from);
 
-            // 2. Fetch from a high-speed YouTube to MP3 API
-            // Note: I'm using a stable public API for you
+            // 3. Fetch from API (ESM Native Fetch)
             const searchApi = `https://api.vreden.my.id/api/ytmp3?url=${encodeURIComponent(query)}`;
             const response = await fetch(searchApi);
             const data = await response.json();
@@ -20,32 +25,38 @@ module.exports = {
                 throw new Error("Song not found or API down");
             }
 
-            const { title, download, metadata } = data.result;
+            const { title, download } = data.result;
 
-            // 3. Send the "Found it" info first
-            const infoMsg = `╭─── ~✾~ *V_HUB MUSIC* ~✾~ ───\n` +
-                           `│\n` +
-                           `│ 🎵 *Title:* ${title}\n` +
-                           `│ 📥 *Status:* Sending Audio...\n` +
-                           `│\n` +
-                           `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
-            
+            // 4. Elite Info Dashboard
+            let infoMsg = `┌────────────────────────┈\n`;
+            infoMsg += `│      *ᴠ_ʜᴜʙ_ᴍᴜsɪᴄ* \n`;
+            infoMsg += `└────────────────────────┈\n\n`;
+            infoMsg += `┌─『 sᴏɴɢ_ғᴏᴜɴᴅ 』\n`;
+            infoMsg += `│ 🎵 *ᴛɪᴛʟᴇ:* ${title}\n`;
+            infoMsg += `│ 📥 *sᴛᴀᴛᴜs:* sᴇɴᴅɪɴɢ_ᴀᴜᴅɪᴏ\n`;
+            infoMsg += `│ ⚙ *sʏsᴛᴇᴍ:* ᴠɪɴɴɪᴇ_ʜᴜʙ_ᴠ𝟽\n`;
+            infoMsg += `└────────────────────────┈\n\n`;
+            infoMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
             await sock.sendMessage(from, { text: infoMsg }, { quoted: msg });
 
-            // 4. THE MAGIC: Send the actual Audio file
-            // We set 'mimetype' to 'audio/mpeg' so it shows as a playable track
+            // 5. Final Delivery (MP3 File)
             await sock.sendMessage(from, { 
                 audio: { url: download }, 
                 mimetype: 'audio/mpeg',
                 fileName: `${title}.mp3`
             }, { quoted: msg });
 
-            // 5. Success Reaction
+            // 6. Success Reaction
             await sock.sendMessage(from, { react: { text: "✅", key: msg.key } });
 
         } catch (e) {
-            console.error(e);
-            await sock.sendMessage(from, { text: `❌ *V_HUB Error:* I couldn't process that song. Try a different name.` }, { quoted: msg });
+            console.error(`❌ [MUSIC_ERR]: ${e.message}`);
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ᴄᴏᴜʟᴅ ɴᴏᴛ ᴘʀᴏᴄᴇss sᴏɴɢ.\n│ ⚙ ᴛʀʏ ᴀ ᴅɪғғᴇʀᴇɴᴛ ǫᴜᴇʀʏ.\n└────────────────────────┈` 
+            }, { quoted: msg });
         }
     }
 };
+
+export default songCommand;
