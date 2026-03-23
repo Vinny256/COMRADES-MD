@@ -13,7 +13,6 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion, jidDecode } = require("@whiskeysockets/baileys");
 const fs = require('fs-extra');
 const path = require('path');
 const pino = require('pino');
@@ -30,6 +29,20 @@ const statusCache = new Set();
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.activeGames) global.activeGames = new Map(); 
 if (!global.gamestate) global.gamestate = new Map(); 
+
+// --- v7 MIGRATION: DYNAMIC IMPORT HANDLER ---
+let makeWASocket, useMultiFileAuthState, DisconnectReason, makeCacheableSignalKeyStore, Browsers, fetchLatestBaileysVersion, jidDecode, isPnUser, isLidUser;
+
+async function loadBaileys() {
+    const baileys = await import('@whiskeysockets/baileys');
+    makeWASocket = baileys.default;
+    useMultiFileAuthState = baileys.useMultiFileAuthState;
+    DisconnectReason = baileys.DisconnectReason;
+    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore;
+    Browsers = baileys.Browsers;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    jidDecode = baileys.jidDecode;
+}
 
 const decodeJid = (jid) => {
     if (!jid) return jid;
@@ -86,6 +99,8 @@ global.saveSettings = async () => {
 let sock;
 
 async function startVinnieHub() {
+    await loadBaileys(); // Ensure ESM Baileys is loaded
+
     const authFolder = './auth_temp';
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
@@ -118,9 +133,12 @@ async function startVinnieHub() {
     const { version } = await fetchLatestBaileysVersion();
     
     sock = makeWASocket({
+        // v7 Keys REQUIREMENT: Cacheable Signal Key Store is now standard to prevent Bad MAC
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
         markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
+        // Syncing LIDs on connection
+        shouldSyncLidPnMappings: true 
     });
 
     sock.ev.on('creds.update', async () => {
@@ -184,8 +202,15 @@ async function startVinnieHub() {
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
         let msg = messages[0];
-        const from = msg.key.remoteJid;
+        let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
+
+        // --- v7 LID RESOLVER ---
+        // If the ID is an LID, try to get the Phone Number (PN) for consistent logging
+        if (from.includes('lid')) {
+            const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
+            if (pn) from = pn;
+        }
 
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
@@ -196,13 +221,18 @@ async function startVinnieHub() {
             settings = { ...settings, ...savedSettings };
         } catch(e) { }
 
-        const sender = msg.key.participant || from;
+        let sender = msg.key.participant || from;
+        // Resolve sender LID to PN as well
+        if (sender.includes('lid')) {
+            const senderPn = await sock.signalRepository.lidMapping.getPNForLID(sender);
+            if (senderPn) sender = senderPn;
+        }
+
         const botNumber = decodeJid(sock.user.id);
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
-        // --- IMPROVED LOGGING (SEEING SENT AND RECEIVED) ---
         const logLabel = msg.key.fromMe ? 'SENT' : (from.endsWith('@g.us') ? 'GROUP' : 'PVT');
-        console.log(`[${logLabel}] ${msg.pushName || 'Me'}: ${textContent}`);
+        console.log(`[${logLabel}] ${msg.pushName || 'User'}: ${textContent}`);
 
         if (!msg.key.fromMe) {
             client.db("vinnieBot").collection("logs").insertOne({
@@ -217,8 +247,7 @@ async function startVinnieHub() {
             try {
                 await sock.readMessages([msg.key]);
                 await sock.sendMessage(from, { react: { text: '✨', key: msg.key } }, { statusJidList: [msg.key.participant] });
-                console.log(`Status Viewed & Reacted: ${msg.pushName || 'User'}`);
-            } catch (e) { console.error("Status Error:", e.message); }
+            } catch (e) { }
         }
 
         if (!msg.key.fromMe && settings.typingMode !== 'off') {
@@ -277,27 +306,21 @@ async function startVinnieHub() {
             }
         }
 
-        // --- IMPROVED SMART PARALLEL WORKERS ---
         loadedWorkers.forEach(worker => {
             try {
                 if (worker && typeof worker.execute === 'function') {
-                    // Log when AI Worker is active
                     if (worker.name === 'ai_reply_worker' && !msg.key.fromMe && !isCommand) {
                         console.log(`✿ HUB_SYNC ✿ Processing AI Reply for: ${from.split('@')[0]}`);
                     }
-                    worker.execute(sock, msg, settings).catch(e => {
-                        console.error(`Worker Execution Error [${worker.name}]:`, e.message);
-                    });
+                    worker.execute(sock, msg, settings).catch(() => {});
                 } 
                 else if (typeof worker === 'function') {
-                    worker(sock, msg, settings).catch(e => {});
+                    worker(sock, msg, settings).catch(() => {});
                 }
-            } catch (err) {
-                console.error("Worker Loop Crash:", err.message);
-            }
+            } catch (err) { }
         });
-    }); // <--- Fixed Bracket 1
-} // <--- Fixed Bracket 2
+    });
+}
 
 app.post('/v_hub_notify', async (req, res) => {
     const { jid, text } = req.body;
