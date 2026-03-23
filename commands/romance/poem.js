@@ -1,51 +1,77 @@
-module.exports = {
+const poemCommand = {
     name: "poem",
     category: "romance",
+    desc: "Fetch a random literary poem",
     async execute(sock, msg, args, { prefix, from, isMe }) {
         
-        try {
-            // 1. Show "Typing..." so they know the bot is "writing"
-            await sock.sendPresenceUpdate('composing', from); 
+        // --- ✦ INITIAL REACTION ---
+        await sock.sendMessage(from, { react: { text: "📖", key: msg.key } });
+        
+        // 1. Show "Typing..." to simulate the bot "composing" the verse
+        await sock.sendPresenceUpdate('composing', from); 
 
-            // 2. Fetch a random poem from PoetryDB
-            // We ask for 1 random poem
+        try {
+            // 2. Fetch from PoetryDB (1 Random Poem)
             const response = await fetch('https://poetrydb.org/random/1');
+            
+            if (!response.ok) throw new Error("API_OFFLINE");
             const data = await response.json();
             
-            // PoetryDB returns an array, so we take the first item [0]
             const poem = data[0];
             const title = poem.title;
             const author = poem.author;
             
-            // 3. Limit the length (Max 15 lines) so it stays readable on WhatsApp
+            // 3. WhatsApp Formatting & Length Control (Limit to 15 lines)
             const lines = poem.lines.slice(0, 15).join('\n');
-            const footer = poem.lines.length > 15 ? "... (Check full version online)" : "";
+            const footerText = poem.lines.length > 15 ? "│ ... (ᴛᴇxᴛ_ᴛʀᴜɴᴄᴀᴛᴇᴅ)" : "";
 
-            // 4. V_HUB Styling
-            const vHubMessage = `╭─── ~✾~ *V_HUB POETRY* ~✾~ ───\n` +
-                               `│\n` +
-                               `│ 📖 *Title:* ${title}\n` +
-                               `│ ✍️ *Author:* ${author}\n` +
-                               `│\n` +
-                               `│ ${lines}\n` +
-                               `│ ${footer}\n` +
-                               `│\n` +
-                               `╰─── ~✾~ *Infinite Impact* ~✾~ ───`;
+            // --- 📑 POETRY UI CONSTRUCTION ---
+            let poemMsg = `┌────────────────────────┈\n`;
+            poemMsg += `│      *ᴠ-ʜᴜʙ_ʟɪᴛᴇʀᴀʀʏ_ʟᴏɢ* \n`;
+            poemMsg += `└────────────────────────┈\n\n`;
+            
+            poemMsg += `┌─『 ᴘᴏᴇᴛɪᴄ_ɪɴsɪɢʜᴛ 』\n`;
+            poemMsg += `│ 📖 *ᴛɪᴛʟᴇ:* ${title}\n`;
+            poemMsg += `│ ✍️ *ᴀᴜᴛʜᴏʀ:* ${author}\n`;
+            poemMsg += `│ ┈┈┈┈┈┈┈┈┈┈┈┈┈\n`;
+            poemMsg += `│ \n`;
+            
+            // Map lines to include the side-border for professional look
+            poem.lines.slice(0, 15).forEach(line => {
+                poemMsg += `│ ${line}\n`;
+            });
 
-            // 5. Send with Mention and Quote
+            if (footerText) poemMsg += `${footerText}\n`;
+            
+            poemMsg += `│ \n`;
+            poemMsg += `└────────────────────────┈\n\n`;
+            
+            poemMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            // 4. Send with Mention and Quote
             await sock.sendMessage(from, { 
-                text: vHubMessage,
+                text: poemMsg, 
                 mentions: [from] 
             }, { quoted: msg });
 
-            // 6. Read After Reply (GB Style)
+            // 5. Read After Reply (GB Style Elite)
             await sock.readMessages([msg.key]);
 
         } catch (e) {
-            console.error("Poetry API Error:", e);
-            await sock.sendMessage(from, { 
-                text: "❌ *V_HUB Error:* The library is closed. (API failed)" 
-            }, { quoted: msg });
+            // --- 🛡️ ELITE FALLBACK SYSTEM ---
+            const fallbackPoem = "Roses are red,\nYour code is blue,\nIf I was an AI,\nI'd still prompt for you. 🌹";
+
+            let errorMsg = `┌────────────────────────┈\n`;
+            errorMsg += `│      *ᴠ-ʜᴜʙ_ʟɪᴛᴇʀᴀʀʏ_ʟᴏɢ* \n`;
+            errorMsg += `└────────────────────────┈\n\n`;
+            errorMsg += `┌─『 sʏsᴛᴇᴍ_ғᴀɪʟsᴀғᴇ 』\n`;
+            errorMsg += `│ ${fallbackPoem}\n`;
+            errorMsg += `│ ⚙ *sᴛᴀᴛᴜs:* ᴏғғʟɪɴᴇ_ᴍᴏᴅᴇ\n`;
+            errorMsg += `└────────────────────────┈\n`;
+
+            await sock.sendMessage(from, { text: errorMsg }, { quoted: msg });
         }
     }
 };
+
+export default poemCommand;
