@@ -1,13 +1,16 @@
-module.exports = {
+const hangmanCommand = {
     name: "hangman",
     category: "games",
     desc: "Guess the word letter by letter",
     async execute(sock, msg, args, { from }) {
+        // 1. Check for existing game state
         if (global.gamestate.has(from)) {
-            return sock.sendMessage(from, { text: "❌ A game is already active!" });
+            return sock.sendMessage(from, { 
+                text: `┌─『 ᴠ_ʜᴜʙ_ᴀʟᴇʀᴛ 』\n│ ⚙ ᴀ ɢᴀᴍᴇ ɪs ᴀʟʀᴇᴀᴅʏ ᴀᴄᴛɪᴠᴇ!\n└────────────────────────┈` 
+            });
         }
 
-        const words = ["GALAXY", "PROGRAM", "VINNIE", "WHATSAPP", "VALORANT", "NETFLIX", "AVENGER"];
+        const words = ["GALAXY", "PROGRAM", "VINNIE", "WHATSAPP", "VALORANT", "NETFLIX", "AVENGER", "BITCOIN", "KERNEL"];
         const target = words[Math.floor(Math.random() * words.length)];
         
         const gameData = {
@@ -25,10 +28,12 @@ module.exports = {
         const from = msg.key.remoteJid;
         const letter = text.trim().toUpperCase();
 
-        if (letter.length !== 1 || game.guessed.includes(letter)) return;
+        // Validation: Must be 1 letter and not already guessed
+        if (letter.length !== 1 || !/[A-Z]/.test(letter) || game.guessed.includes(letter)) return;
 
         game.guessed.push(letter);
 
+        // Check if letter is in the word
         if (!game.word.includes(letter)) {
             game.lives--;
         }
@@ -36,22 +41,52 @@ module.exports = {
         const isWin = game.word.split('').every(char => game.guessed.includes(char));
 
         if (isWin) {
-            await sock.sendMessage(from, { text: `🎉 *VICTORY!* You guessed the word: *${game.word}*\n\n${renderHangman(game)}` });
+            let winMsg = `┌────────────────────────┈\n`;
+            winMsg += `│      *ᴠɪᴄᴛᴏʀʏ_ᴀᴄʜɪᴇᴠᴇᴅ* \n`;
+            winMsg += `└────────────────────────┈\n\n`;
+            winMsg += `┌─『 ɢᴀᴍᴇ_ᴏᴠᴇʀ 』\n`;
+            winMsg += `│ 🎉 ᴄᴏɴɢʀᴀᴛs! ʏᴏᴜ ɢᴜᴇssᴇᴅ: *${game.word}*\n`;
+            winMsg += `│ ⚙ sᴛᴀᴛᴜs: ᴡɪɴɴᴇʀ ✦\n`;
+            winMsg += `└────────────────────────┈`;
+            
+            await sock.sendMessage(from, { text: winMsg });
             return global.gamestate.delete(from);
         }
 
         if (game.lives <= 0) {
-            await sock.sendMessage(from, { text: `💀 *GAME OVER!* The word was: *${game.word}*\n\n${renderHangman(game)}` });
+            let lossMsg = `┌────────────────────────┈\n`;
+            lossMsg += `│      *ᴍɪssɪᴏɴ_ғᴀɪʟᴇᴅ* \n`;
+            lossMsg += `└────────────────────────┈\n\n`;
+            lossMsg += `┌─『 ɢᴀᴍᴇ_ᴏᴠᴇʀ 』\n`;
+            lossMsg += `│ 💀 ʏᴏᴜ ʟᴏsᴛ! ᴛʜᴇ ᴡᴏʀᴅ ᴡᴀs: *${game.word}*\n`;
+            lossMsg += `│ ⚙ sᴛᴀᴛᴜs: ᴇʟɪᴍɪɴᴀᴛᴇᴅ\n`;
+            lossMsg += `└────────────────────────┈`;
+
+            await sock.sendMessage(from, { text: lossMsg });
             return global.gamestate.delete(from);
         }
 
+        // Send updated board
         await sock.sendMessage(from, { text: renderHangman(game) });
     }
 };
 
+// --- ELITE RENDERER ---
 function renderHangman(game) {
-    const stages = ["💀", "🪂", "🦶", "🦵", "💪", "🦾", "🏠"]; // Simplified hangman logic
     const displayWord = game.word.split('').map(char => game.guessed.includes(char) ? char : "_").join(" ");
+    const misses = game.guessed.filter(l => !game.word.includes(l)).join(", ");
     
-    return `┏━━━━━ ✿ *HANGMAN* ✿ ━━━━━┓\n┃\n┃  ❤️ Lives: ${"❤️".repeat(game.lives)}\n┃  🧩 Word: ${displayWord}\n┃  🚫 Misses: [${game.guessed.filter(l => !game.word.includes(l))}]\n┃\n┃  👉 *Type one letter!*\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+    let board = `┌────────────────────────┈\n`;
+    board += `│      *ᴠ-ʜᴜʙ_ʜᴀɴɢᴍᴀɴ* \n`;
+    board += `└────────────────────────┈\n\n`;
+    board += `┌─『 sᴛᴀᴛᴜs_ᴘᴀɴᴇʟ 』\n`;
+    board += `│ ❤️ *ʟɪᴠᴇs:* ${"❤️".repeat(game.lives)}${"🖤".repeat(6 - game.lives)}\n`;
+    board += `│ 🧩 *ᴡᴏʀᴅ:* \`${displayWord}\`\n`;
+    board += `│ 🚫 *ᴍɪssᴇs:* [ ${misses || 'ɴᴏɴᴇ'} ]\n`;
+    board += `└────────────────────────┈\n\n`;
+    board += `◈ *ʀᴇᴘʟʏ:* ᴛʏᴘᴇ ᴏɴᴇ ʟᴇᴛᴛᴇʀ`;
+
+    return board;
 }
+
+export default hangmanCommand;
