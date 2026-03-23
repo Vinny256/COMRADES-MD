@@ -1,7 +1,9 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+import path from 'path';
+
 const settingsFile = './settings.json';
 
-module.exports = {
+const antideleteCommand = {
     name: "antidelete",
     category: "automation",
     description: "Configure Anti-Delete behavior and routing",
@@ -15,23 +17,27 @@ module.exports = {
         const mode = args[0]?.toLowerCase(); // all, groups, inbox, off
         const dest = args[1]?.toLowerCase(); // chat, inbox
 
-        // 2. Styling and Usage Guide
-        const vStyle = (text) => `╭─── ~✾~ *VINNIE HUB* ~✾~ ───\n│\n${text}\n│\n╰─── ~✾~ *Anti-Delete* ~✾~ ───`;
-
+        // --- ⚡ UNICODE SLEEK STYLING ---
         if (!mode || !['all', 'groups', 'inbox', 'off'].includes(mode)) {
-            const usage = `│  💡 *Usage:* ${prefix}antidelete [mode] [dest]\n` +
-                          `│\n` +
-                          `│  📡 *Modes:* \n` +
-                          `│  ◦  *all* : Monitor everywhere\n` +
-                          `│  ◦  *groups* : Monitor groups only\n` +
-                          `│  ◦  *inbox* : Monitor DMs only\n` +
-                          `│  ◦  *off* : Disable system\n` +
-                          `│\n` +
-                          `│  🚚 *Destinations:* \n` +
-                          `│  ◦  *chat* : Restore in the same chat\n` +
-                          `│  ◦  *inbox* : Restore silently to your DM`;
+            let usage = `┌────────────────────────┈\n`;
+            usage += `│      *ᴀɴᴛɪᴅᴇʟᴇᴛᴇ_ᴄᴏɴғɪɢ* \n`;
+            usage += `└────────────────────────┈\n\n`;
             
-            return sock.sendMessage(from, { text: vStyle(usage) }, { quoted: msg });
+            usage += `┌─『 sʏsᴛᴇᴍ ᴍᴏᴅᴇs 』\n`;
+            usage += `│ ├─◈ *ᴀʟʟ* : ᴍᴏɴɪᴛᴏʀ ᴇᴠᴇʀʏᴡʜᴇʀᴇ\n`;
+            usage += `│ ├─◈ *ɢʀᴏᴜᴘs* : ᴍᴏɴɪᴛᴏʀ ɢʀᴏᴜᴘs\n`;
+            usage += `│ ├─◈ *ɪɴʙᴏx* : ᴍᴏɴɪᴛᴏʀ ᴅᴍs\n`;
+            usage += `│ ╰─◈ *ᴏғғ* : ᴅɪsᴀʙʟᴇ sʏsᴛᴇᴍ\n`;
+            usage += `└────────────────────────┈\n\n`;
+            
+            usage += `┌─『 ᴅᴇsᴛɪɴᴀᴛɪᴏɴs 』\n`;
+            usage += `│ ├─◈ *ᴄʜᴀᴛ* : ʀᴇsᴛᴏʀᴇ ʜᴇʀᴇ\n`;
+            usage += `│ ╰─◈ *ɪɴʙᴏx* : ʀᴇsᴛᴏʀᴇ ᴛᴏ ᴅᴍ\n`;
+            usage += `└────────────────────────┈\n\n`;
+            
+            usage += `◈ *ᴜsᴀɢᴇ:* ${prefix}antidelete [ᴍᴏᴅᴇ] [ᴅᴇsᴛ]`;
+            
+            return sock.sendMessage(from, { text: usage }, { quoted: msg });
         }
 
         // 3. Update Settings
@@ -45,11 +51,20 @@ module.exports = {
         // 4. Success Reaction and Confirmation
         await sock.sendMessage(from, { react: { text: "🕵️‍♂️", key: msg.key } });
 
-        const confirmation = `│  ✅ *Status:* ${mode.toUpperCase()}\n` +
-                             `│  🚚 *Routing:* ${settings.antidelete.dest.toUpperCase()}\n` +
-                             `│\n` +
-                             `│  🚀 _Vinnie Hub is now monitoring._`;
+        let confirmation = `┌────────────────────────┈\n`;
+        confirmation += `│      *ᴀɴᴛɪᴅᴇʟᴇᴛᴇ_sᴇᴛ* \n`;
+        confirmation += `└────────────────────────┈\n\n`;
+        
+        confirmation += `┌─『 sᴛᴀᴛᴜs ᴜᴘᴅᴀᴛᴇ 』\n`;
+        confirmation += `│ ⚙ *ᴍᴏᴅᴇ:* ${mode.toUpperCase()}\n`;
+        confirmation += `│ ⚙ *ʀᴏᴜᴛɪɴɢ:* ${settings.antidelete.dest.toUpperCase()}\n`;
+        confirmation += `│ ⚙ *sʏsᴛᴇᴍ:* ᴀᴄᴛɪᴠᴇ ✦\n`;
+        confirmation += `└────────────────────────┈\n\n`;
+        
+        confirmation += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
-        return sock.sendMessage(from, { text: vStyle(confirmation) }, { quoted: msg });
+        return sock.sendMessage(from, { text: confirmation }, { quoted: msg });
     }
 };
+
+export default antideleteCommand;
