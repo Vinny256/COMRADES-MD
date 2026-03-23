@@ -1,67 +1,79 @@
-const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
+import { downloadContentFromMessage } from "@whiskeysockets/baileys";
 
-/**
- * COMRADES-MD | UTILITY: STATUS_SAVER
- * Description: Captures status/media to RAM and reflects back to user.
- * Structure: Automated Category Loader Compatible.
- */
-
-const vStyle = (text) => {
-    return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-};
-
-module.exports = {
+const statusSaveCommand = {
     name: 'save',
     alias: ['send', 's'],
     category: 'utility',
-    async execute(sock, m, args) {
-        const remoteJid = m.key.remoteJid;
+    desc: 'Capture and download WhatsApp Status media',
+    async execute(sock, m, args, { from, prefix }) {
+        
+        // --- ✦ INITIAL REACTION ---
+        await sock.sendMessage(from, { react: { text: "📥", key: m.key } });
 
-        // 1. Get the Quoted Message (The Status)
-        const quotedInfo = m.message.extendedTextMessage?.contextInfo;
+        // 1. Get the Quoted Message metadata
+        const quotedInfo = m.message?.extendedTextMessage?.contextInfo;
         const quotedMsg = quotedInfo?.quotedMessage;
 
-        // Validation: Is the user replying to a status?
+        // --- 🛡️ VALIDATION: IS THIS A STATUS? ---
         if (!quotedMsg || quotedInfo.remoteJid !== 'status@broadcast') {
-            return await sock.sendMessage(remoteJid, { 
-                text: vStyle("INVALID_TARGET: Reply to a Status.") 
+            return await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴀʟᴇʀᴛ 』\n│ ❌ *ɪɴᴠᴀʟɪᴅ_ᴛᴀʀɢᴇᴛ*\n│ ⚙ ʟᴏɢ: ʀᴇᴘʟʏ_ᴛᴏ_ᴀ_sᴛᴀᴛᴜs\n└────────────────────────┈` 
             });
         }
 
         try {
-            // 2. Identify Media Type from the Status
+            // 2. Identify Media Type
             const type = Object.keys(quotedMsg)[0];
             const media = quotedMsg[type];
+            const mediaType = type.replace('Message', '');
 
-            // 3. Download to RAM (Buffer) - NO DISK STORAGE
-            const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
+            // --- 🚀 DOWNLOAD TO RAM (ZERO DISK FOOTPRINT) ---
+            const stream = await downloadContentFromMessage(media, mediaType);
             let buffer = Buffer.from([]);
             for await (const chunk of stream) {
                 buffer = Buffer.concat([buffer, chunk]);
             }
 
-            // 4. Send back to User
-            const caption = vStyle(`STATUS_CAPTURED\n┃  Type: ${type.replace('Message', '')}`);
+            // --- 📑 CAPTION UI CONSTRUCTION ---
+            let saveLog = `┌────────────────────────┈\n`;
+            saveLog += `│      *ᴠ-ʜᴜʙ_sᴛᴀᴛᴜs_ᴄᴀᴘᴛᴜʀᴇ* \n`;
+            saveLog += `└────────────────────────┈\n\n`;
             
+            saveLog += `┌─『 ᴍᴇᴅɪᴀ_ɪɴᴅᴇx 』\n`;
+            saveLog += `│ ✅ *sᴛᴀᴛᴜs:* ᴄᴀᴘᴛᴜʀᴇᴅ\n`;
+            saveLog += `│ 📂 *ᴛʏᴘᴇ:* ${mediaType.toUpperCase()}\n`;
+            saveLog += `│ ⚙ *ʟᴏɢ:* ʀᴀᴍ_ʙᴜғғᴇʀ_sʏɴᴄ\n`;
+            saveLog += `└────────────────────────┈\n\n`;
+            
+            saveLog += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            // --- 📦 REFLECTION PROTOCOL ---
             if (type === 'imageMessage') {
-                await sock.sendMessage(remoteJid, { image: buffer, caption }, { quoted: m });
+                await sock.sendMessage(from, { image: buffer, caption: saveLog }, { quoted: m });
             } else if (type === 'videoMessage') {
-                await sock.sendMessage(remoteJid, { video: buffer, caption }, { quoted: m });
+                await sock.sendMessage(from, { video: buffer, caption: saveLog }, { quoted: m });
             } else if (type === 'audioMessage') {
-                await sock.sendMessage(remoteJid, { audio: buffer, mimetype: 'audio/ogg' }, { quoted: m });
+                // For Status Voice Notes
+                await sock.sendMessage(from, { 
+                    audio: buffer, 
+                    mimetype: 'audio/ogg; codecs=opus', 
+                    ptt: true 
+                }, { quoted: m });
             } else {
-                // Handle cases like status text or unsupported media
-                await sock.sendMessage(remoteJid, { text: vStyle("UNSUPPORTED_STATUS_TYPE") });
+                await sock.sendMessage(from, { 
+                    text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ❌ *ᴜɴsᴜᴘᴘᴏʀᴛᴇᴅ_ᴛʏᴘᴇ*\n│ ⚙ ʟᴏɢ: ${type}\n└────────────────────────┈` 
+                });
             }
 
-            // 5. Manual Garbage Collection
+            // 5. Manual Memory Flush
             buffer = null;
 
-        } catch (e) {
-            console.error(e);
-            await sock.sendMessage(remoteJid, { 
-                text: vStyle("ERROR: STATUS_EXPIRED_OR_FAILED") 
+        } catch (err) {
+            await sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ❌ *ᴄᴀᴘᴛᴜʀᴇ_ғᴀɪʟᴇᴅ*\n│ ⚙ ʟᴏɢ: sᴛᴀᴛᴜs_ᴇxᴘɪʀᴇᴅ_ᴏʀ_ᴅᴇʟᴇᴛᴇᴅ\n└────────────────────────┈` 
             });
         }
     }
 };
+
+export default statusSaveCommand;
