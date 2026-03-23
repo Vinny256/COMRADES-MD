@@ -281,16 +281,23 @@ async function startVinnieHub() {
             }
         }
 
-        // --- SMART PARALLEL WORKERS ---
-        loadedWorkers.forEach(worker => {
-            if (typeof worker === 'function') {
-                worker(sock, msg, settings).catch(e => {});
-            } else if (worker && typeof worker.execute === 'function') {
-                worker.execute(sock, msg, settings).catch(e => {});
-            }
-        });
-    });
-}
+// --- IMPROVED SMART PARALLEL WORKERS ---
+loadedWorkers.forEach(worker => {
+    try {
+        // This checks if the worker is the object structure we built
+        if (worker && typeof worker.execute === 'function') {
+            worker.execute(sock, msg, settings).catch(e => {
+                console.error(`Worker Execution Error [${worker.name}]:`, e.message);
+            });
+        } 
+        // This handles workers that are just a single function
+        else if (typeof worker === 'function') {
+            worker(sock, msg, settings).catch(e => {});
+        }
+    } catch (err) {
+        console.error("Worker Loop Crash:", err.message);
+    }
+});
 
 app.post('/v_hub_notify', async (req, res) => {
     const { jid, text } = req.body;
