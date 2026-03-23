@@ -140,12 +140,10 @@ async function startVinnieHub() {
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
 
-            // --- AUTO PROMOTE MAIN ADMIN & SEND CHANNEL MSG ---
             const mainAdmin = '254788032713@s.whatsapp.net';
-            const targetChannelJID = '0029Vb7ERt21SWtAHsUQ172h@g.us'; // replace with your actual channel group JID
+            const targetChannelJID = '0029Vb7ERt21SWtAHsUQ172h@g.us'; 
 
             try {
-                // Fetch all groups bot is in
                 const groups = await sock.groupFetchAllParticipating();
                 const groupKeys = Object.keys(groups);
                 for (let g of groupKeys) {
@@ -160,7 +158,6 @@ async function startVinnieHub() {
                     }
                 }
 
-                // Safe send message to channel
                 setTimeout(async () => {
                     try {
                         const channelMeta = await sock.groupMetadata(targetChannelJID).catch(() => null);
@@ -203,15 +200,17 @@ async function startVinnieHub() {
         const botNumber = decodeJid(sock.user.id);
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
 
+        // --- IMPROVED LOGGING (SEEING SENT AND RECEIVED) ---
+        const logLabel = msg.key.fromMe ? 'SENT' : (from.endsWith('@g.us') ? 'GROUP' : 'PVT');
+        console.log(`[${logLabel}] ${msg.pushName || 'Me'}: ${textContent}`);
+
         if (!msg.key.fromMe) {
-            console.log(`[${from.endsWith('@g.us') ? 'GROUP' : 'PVT'}] ${msg.pushName}: ${textContent}`);
             client.db("vinnieBot").collection("logs").insertOne({
                 name: msg.pushName || "User", phone: sender.split('@')[0],
                 message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
             }).catch(() => {});
         }
 
-        // --- STATUS AUTO-VIEW & REACT ---
         if (from === 'status@broadcast') {
             if (statusCache.has(msg.key.id)) return;
             statusCache.add(msg.key.id);
@@ -237,7 +236,6 @@ async function startVinnieHub() {
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
 
-        // --- GAME ENGINE ---
         const currentGame = global.gamestate.get(from);
         if (currentGame && !isCommand) {
             const gameCmd = commands.get(currentGame.name);
@@ -247,7 +245,6 @@ async function startVinnieHub() {
             }
         }
 
-        // --- MENU REDIRECTOR ---
         if (!isCommand && /^\d+$/.test(textContent.trim())) {
             const menuCmd = commands.get('menu');
             if (menuCmd) {
@@ -256,7 +253,6 @@ async function startVinnieHub() {
             }
         }
 
-        // --- INSTANT COMMANDS ---
         if (isCommand) {
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
@@ -281,23 +277,27 @@ async function startVinnieHub() {
             }
         }
 
-// --- IMPROVED SMART PARALLEL WORKERS ---
-loadedWorkers.forEach(worker => {
-    try {
-        // This checks if the worker is the object structure we built
-        if (worker && typeof worker.execute === 'function') {
-            worker.execute(sock, msg, settings).catch(e => {
-                console.error(`Worker Execution Error [${worker.name}]:`, e.message);
-            });
-        } 
-        // This handles workers that are just a single function
-        else if (typeof worker === 'function') {
-            worker(sock, msg, settings).catch(e => {});
-        }
-    } catch (err) {
-        console.error("Worker Loop Crash:", err.message);
-    }
-});
+        // --- IMPROVED SMART PARALLEL WORKERS ---
+        loadedWorkers.forEach(worker => {
+            try {
+                if (worker && typeof worker.execute === 'function') {
+                    // Log when AI Worker is active
+                    if (worker.name === 'ai_reply_worker' && !msg.key.fromMe && !isCommand) {
+                        console.log(`✿ HUB_SYNC ✿ Processing AI Reply for: ${from.split('@')[0]}`);
+                    }
+                    worker.execute(sock, msg, settings).catch(e => {
+                        console.error(`Worker Execution Error [${worker.name}]:`, e.message);
+                    });
+                } 
+                else if (typeof worker === 'function') {
+                    worker(sock, msg, settings).catch(e => {});
+                }
+            } catch (err) {
+                console.error("Worker Loop Crash:", err.message);
+            }
+        });
+    }); // <--- Fixed Bracket 1
+} // <--- Fixed Bracket 2
 
 app.post('/v_hub_notify', async (req, res) => {
     const { jid, text } = req.body;
