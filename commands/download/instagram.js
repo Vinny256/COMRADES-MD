@@ -1,39 +1,53 @@
-const { igDownload } = require('../../lib/igScraper');
+// Ensure your igScraper is also updated to ESM or use dynamic import
+import { igDownload } from '../../lib/igScraper.js'; 
 
-module.exports = {
+const igCommand = {
     name: "ig",
     category: "downloader",
     desc: "Download Instagram Media",
     async execute(sock, msg, args, { from }) {
         const url = args[0];
+        const senderName = msg.pushName || "ᴄᴏᴍʀᴀᴅᴇ";
+
+        // 1. Validation Logic
         if (!url || !url.includes('instagram.com')) {
-            return sock.sendMessage(from, { text: "┃ ❌ Error: Provide a valid Instagram link" });
+            return sock.sendMessage(from, { 
+                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ᴘʀᴏᴠɪᴅᴇ ᴀ ᴠᴀʟɪᴅ ɪɢ ʟɪɴᴋ.\n└────────────────────────┈` 
+            });
         }
 
-        const senderName = msg.pushName || "User";
-        console.log(`📥 [DOWNLOAD] IG request from ${senderName} in chat ${from}`);
+        console.log(`📥 [DOWNLOAD] IG request from ${senderName} in ${from}`);
 
+        // 2. Rendering State (Sleek UI)
         const { key } = await sock.sendMessage(from, { 
-            text: `┏━━━━━ ✿ V_HUB_LAB ✿ ━━━━━┓\n┃\n┃  TYPE: IG_SCRAPER\n┃  STAT: [ RENDERING... ]\n┃\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛` 
+            text: `┌────────────────────────┈\n` +
+                  `│      *ɪɢ_ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* \n` +
+                  `└────────────────────────┈\n\n` +
+                  `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n` +
+                  `│ ⚙ *ᴛʏᴘᴇ:* ɪɢ_sᴄʀᴀᴘᴇʀ\n` +
+                  `│ ⚙ *sᴛᴀᴛ:* [ ʀᴇɴᴅᴇʀɪɴɢ... ]\n` +
+                  `└────────────────────────┈`
         });
 
         try {
             const result = await igDownload(url);
 
-            // Determine if it's a video or image based on URL (Standard IG CDN check)
+            // 3. Media Type Detection
             const isVideo = result.mediaUrl.includes('.mp4') || url.includes('/reels/');
 
+            // 4. Dispatch Media
             if (isVideo) {
                 console.log(`🎞️ [SENDING] Video file to ${from}`);
                 await sock.sendMessage(from, { 
                     video: { url: result.mediaUrl }, 
-                    caption: "✅ *V_HUB_IG_DOWNLOADER*" 
+                    caption: `┌─『 ᴅᴏᴡɴʟᴏᴀᴅ_ᴄᴏᴍᴘʟᴇᴛᴇ 』\n│ ⚙ *sᴏᴜʀᴄᴇ:* ɪɴsᴛᴀɢʀᴀᴍ\n│ ⚙ *ᴠɪʙᴇ:* ᴠɪɴɴɪᴇ_ʜᴜʙ\n└────────────────────────┈`,
+                    gifPlayback: false 
                 }, { quoted: msg });
             } else {
                 console.log(`🖼️ [SENDING] Image file to ${from}`);
                 await sock.sendMessage(from, { 
                     image: { url: result.mediaUrl }, 
-                    caption: "✅ *V_HUB_IG_DOWNLOADER*" 
+                    caption: `┌─『 ᴅᴏᴡɴʟᴏᴀᴅ_ᴄᴏᴍᴘʟᴇᴛᴇ 』\n│ ⚙ *sᴏᴜʀᴄᴇ:* ɪɴsᴛᴀɢʀᴀᴍ\n│ ⚙ *ᴠɪʙᴇ:* ᴠɪɴɴɪᴇ_ʜᴜʙ\n└────────────────────────┈` 
                 }, { quoted: msg });
             }
 
@@ -43,9 +57,11 @@ module.exports = {
         } catch (e) {
             console.error(`❌ [COMMAND_ERR] Instagram download failed: ${e.message}`);
             await sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ SCRAPE_ERR ✿ ━━━━━┓\n┃\n┃  STAT: FAILED\n┃  ERR: PRIVATE_OR_BLOCKED\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━━━━┛`, 
+                text: `┌─『 sᴄʀᴀᴘᴇ_ᴇʀʀ 』\n│ ⚙ *sᴛᴀᴛ:* ғᴀɪʟᴇᴅ\n│ ⚙ *ᴇʀʀ:* ᴘʀɪᴠᴀᴛᴇ_ᴏʀ_ʙʟᴏᴄᴋᴇᴅ\n└────────────────────────┈`, 
                 edit: key 
             });
         }
     }
 };
+
+export default igCommand;
