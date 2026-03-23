@@ -34,8 +34,8 @@ Role: You are V_HUB (Vinnie), a 23-year-old Kenyan guy. You live in Nairobi (Roy
 202. If a girl flirts, be playful/macho: "Luku ni fiti, unanimaliza 😂".
 203. If a guy flirts with you, be disgusted: "Acha hizi mambo mzee 🚩".
 204. "Niko kadi" means you are high or drunk—act slightly slower and more "vibey" if so.
-205. You know about "Character Development" (getting heart-broken in Nairobi).
-206. Use "🚩" for toxic behavior, "gaslighting", or "screenshots".
+205. You know about "Character Development" (heartbreak).
+206. Use the term "🚩" for toxic behavior, "gaslighting", or "screenshots".
 207-300. [You know about "Coffee dates" vs "Kibandaski dates". You understand the "Seen" at 2 AM trauma. You talk about "Sending fare" being a scam. You mention "Subaru boys" taking girls to Nanyuki. You know about "Situationships" and "Besties" who are actually dating. You talk about "Roysambu" girls vs "Kilimani" vibes.]
 
 [CURRENT AFFAIRS & TRENDS: RULES 301-400]
@@ -58,7 +58,7 @@ Role: You are V_HUB (Vinnie), a 23-year-old Kenyan guy. You live in Nairobi (Roy
 module.exports = {
     name: 'ai_reply_worker',
     async execute(sock, msg, settings) {
-        // --- 1. ANTI-LOOP & IDENTITY SHIELD ---
+        // --- 1. ANTI-LOOP: NEVER REPLY TO SELF ---
         if (!msg.message || msg.key.fromMe) return; 
 
         const from = msg.key.remoteJid;
@@ -66,11 +66,12 @@ module.exports = {
 
         const senderJid = msg.key.participant || from;
         const senderNumber = senderJid.split('@')[0];
+        const isGroup = from.endsWith('@g.us');
         
         const mtype = Object.keys(msg.message)[0];
         const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         
-        // Skip commands (dots, exclamations, etc.)
+        // Skip commands strictly to avoid bot fighting
         const prefix = process.env.PREFIX || ".";
         if (!text || text.startsWith(prefix) || text.startsWith('!') || text.startsWith('#')) return;
 
@@ -78,21 +79,25 @@ module.exports = {
             if (!client.topology || !client.topology.isConnected()) await client.connect();
             const db = client.db("vinnieBot");
 
-            // --- 2. GLOBAL MASTER TOGGLE ---
-            // Checking if 'mkorean' (OWNER) enabled AI globally
-            const masterConfig = await db.collection("ai_config").findOne({ id: "mkorean" });
-            if (masterConfig && masterConfig.status === 'off') return;
+            // --- 2. THE GLOBAL MASTER FIX ---
+            // Instead of checking the sender, we check YOUR status (mkorean)
+            const masterConfig = await db.collection("ai_config").findOne({ 
+                $or: [ { id: "mkorean" }, { id: "246454283149505" } ] 
+            });
 
-            // --- 3. THE "BRAIN" (CONTEXT & MEMORY) ---
-            // LOGGING: See exactly who sent the message
-            console.log(`✿ V_HUB ✿ Message from [${senderNumber}]: ${text.slice(0, 30)}...`);
+            // If the Owner hasn't turned it on, stop everything
+            if (!masterConfig || masterConfig.status === 'off') return;
+
+            // --- 3. THE BRAIN ---
+            console.log(`✿ V_HUB ✿ Incoming from [${senderNumber}] in ${isGroup ? 'Group' : 'Private'}: ${text.slice(0, 30)}...`);
             
+            // Show as "Typing..." to look human
             await sock.sendPresenceUpdate('composing', from);
             
             const memory = await db.collection("ai_memory").findOne({ chatJid: from });
             let chatHistory = memory ? memory.messages : [];
             
-            // STAY IN TOPIC: Sending last 20 messages for deep context
+            // STAY IN TOPIC: 20 messages context is elite for long stories
             const apiMessages = [
                 { role: "system", content: MASTER_HUMAN_PROMPT },
                 ...chatHistory.slice(-20), 
@@ -102,7 +107,7 @@ module.exports = {
             const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
                 model: "llama-3.3-70b-versatile",
                 messages: apiMessages,
-                temperature: 0.9,
+                temperature: 0.95,
                 max_tokens: 350
             }, {
                 headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
@@ -112,11 +117,10 @@ module.exports = {
             let aiReply = response.data.choices[0].message.content;
 
             // --- 4. HUMAN DELAY LOGIC ---
-            // Simulates typing. Longer messages take more time.
             const typingDuration = Math.min(Math.max(aiReply.length * 45, 2000), 8500);
             await new Promise(r => setTimeout(r, typingDuration));
 
-            // --- 5. THE SEND (QUOTED & TARGETED) ---
+            // --- 5. THE SEND (TARGETED RECOVERY) ---
             await sock.sendMessage(from, { text: aiReply }, { quoted: msg });
 
             // --- 6. DATABASE UPDATE (MEMORY) ---
@@ -127,8 +131,7 @@ module.exports = {
                 { upsert: true }
             );
 
-            // LOGGING: Confirm reply went to the right person
-            console.log(`✿ V_HUB ✿ Successfully Replied to [${senderNumber}] in chat [${from}]`);
+            console.log(`✿ V_HUB ✿ Success: Sent reply to ${from}`);
 
         } catch (e) {
             console.error("✿ V_HUB ERROR ✿", e.message);
