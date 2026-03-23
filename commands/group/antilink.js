@@ -1,78 +1,107 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+import { MongoClient } from 'mongodb';
+
 const settingsFile = './settings.json';
-const { MongoClient } = require("mongodb");
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri);
 
-const vStyle = (text) => {
-    return `┏━━━━━ ✿ *MODERATION* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-};
-
-module.exports = {
+const antilinkCommand = {
     name: 'antilink',
     category: 'group',
     desc: 'Toggle link protection (Local, Specific, or Global)',
-    async execute(sock, msg, args, { from, isMe, settings }) {
+    async execute(sock, msg, args, { from, isMe, settings, prefix }) {
         const action = args[0]?.toLowerCase(); // 'on' or 'off'
         const target = args[1]; // JID or 'all'
         
-        // 1. React with unique emoji
+        // --- ✦ INITIAL REACTION ---
         await sock.sendMessage(from, { react: { text: "🚫", key: msg.key } });
 
-        // 2. Global Toggle (Using "all") - Inbox only
+        // --- 1. GLOBAL TOGGLE (Master Control) ---
         if (target === "all") {
-            if (!isMe) return sock.sendMessage(from, { text: vStyle("Only the Bot Owner can use Global toggles.") });
+            if (!isMe) {
+                return sock.sendMessage(from, { 
+                    text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ғᴏᴜɴᴅᴇʀ ᴘʀɪᴠɪʟᴇɢᴇ ʀᴇǫᴜɪʀᴇᴅ.\n└────────────────────────┈` 
+                });
+            }
             
             settings.antilink = (action === 'on');
-            fs.writeJsonSync(settingsFile, settings); // Watchdog in index.js will push to Cloud
+            fs.writeJsonSync(settingsFile, settings); 
             
-            return sock.sendMessage(from, { 
-                text: vStyle(`🛡️ *GLOBAL ANTI-LINK*\n┃ Status: *${action.toUpperCase()}*\n┃ Scope: *All Groups*`) 
-            });
+            let globalMsg = `┌────────────────────────┈\n`;
+            globalMsg += `│      *ɢʟᴏʙᴀʟ_ᴀɴᴛɪ_ʟɪɴᴋ* \n`;
+            globalMsg += `└────────────────────────┈\n\n`;
+            globalMsg += `┌─『 sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ 』\n`;
+            globalMsg += `│ 🛡️ *sᴛᴀᴛᴜs:* ${action.toUpperCase()}\n`;
+            globalMsg += `│ ⚙ *sᴄᴏᴘᴇ:* ᴀʟʟ_ɢʀᴏᴜᴘs\n`;
+            globalMsg += `└────────────────────────┈\n\n`;
+            globalMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+            return sock.sendMessage(from, { text: globalMsg });
         }
 
-        // 3. Specific Group Toggle (Using JID in Inbox)
-        if (target && target.endsWith('@g.us')) {
-            if (!isMe) return;
-            
-            await client.connect();
-            await client.db("vinnieBot").collection("group_configs").updateOne(
-                { groupId: target },
-                { $set: { antilink: (action === 'on') } },
-                { upsert: true }
-            );
+        // --- 2. SPECIFIC/LOCAL GROUP TOGGLE ---
+        const groupId = (target && target.endsWith('@g.us')) ? target : (from.endsWith('@g.us') ? from : null);
 
-            return sock.sendMessage(from, { 
-                text: vStyle(`🛡️ *SPECIFIC ANTI-LINK*\n┃ Status: *${action.toUpperCase()}*\n┃ Group ID: ${target.split('@')[0]}`) 
-            });
-        }
-
-        // 4. Local Group Toggle (Used inside a group)
-        if (from.endsWith('@g.us')) {
-            // Check if user is Admin
-            const metadata = await sock.groupMetadata(from);
+        if (groupId) {
+            const metadata = await sock.groupMetadata(groupId);
             const admins = metadata.participants.filter(p => p.admin).map(p => p.id);
+            const botId = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+            
             const isAdmin = admins.includes(msg.key.participant || from) || isMe;
+            const isBotAdmin = admins.includes(botId);
 
-            if (!isAdmin) return sock.sendMessage(from, { text: vStyle("Access Denied. Admins only.") });
+            if (!isAdmin) {
+                return sock.sendMessage(from, { 
+                    text: `┌─『 ᴠ_ʜᴜʙ sᴇᴄᴜʀɪᴛʏ 』\n│ ⚙ *ᴀʟᴇʀᴛ:* ᴀᴅᴍɪɴ ᴘʀɪᴠɪʟᴇɢᴇ ʀᴇǫᴜɪʀᴇᴅ.\n└────────────────────────┈` 
+                });
+            }
+
+            if (!isBotAdmin && action === 'on') {
+                return sock.sendMessage(from, { 
+                    text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ᴇʀʀᴏʀ:* ʙᴏᴛ ɴᴇᴇᴅs ᴀᴅᴍɪɴ sᴛᴀᴛᴜs.\n└────────────────────────┈` 
+                });
+            }
 
             if (action === 'on' || action === 'off') {
-                await client.connect();
-                await client.db("vinnieBot").collection("group_configs").updateOne(
-                    { groupId: from },
-                    { $set: { antilink: (action === 'on') } },
-                    { upsert: true }
-                );
-                
-                return sock.sendMessage(from, { 
-                    text: vStyle(`🛡️ *ANTI-LINK ${action.toUpperCase()}*\n┃ Links are now ${action === 'on' ? '*Restricted*' : '*Allowed*'} here.`) 
-                });
+                try {
+                    await client.connect();
+                    await client.db("vinnieBot").collection("group_configs").updateOne(
+                        { groupId: groupId },
+                        { $set: { antilink: (action === 'on') } },
+                        { upsert: true }
+                    );
+                    
+                    let localMsg = `┌────────────────────────┈\n`;
+                    localMsg += `│      *ᴀɴᴛɪ_ʟɪɴᴋ_ᴄᴏɴғɪɢ* \n`;
+                    localMsg += `└────────────────────────┈\n\n`;
+                    localMsg += `┌─『 ᴍᴏᴅᴇʀᴀᴛɪᴏɴ 』\n`;
+                    localMsg += `│ 🛡️ *sᴛᴀᴛᴜs:* ${action.toUpperCase()}\n`;
+                    localMsg += `│ ⚙ *ʟɪɴᴋs:* ${action === 'on' ? 'ʀᴇsᴛʀɪᴄᴛᴇᴅ 🚫' : 'ᴀʟʟᴏᴡᴇᴅ ✅'}\n`;
+                    localMsg += `└────────────────────────┈\n\n`;
+                    localMsg += `_ɢʀᴏᴜᴘ_ɪᴅ: ${groupId.split('@')[0]}_`;
+
+                    return sock.sendMessage(from, { text: localMsg });
+                } catch (err) {
+                    console.error("DB Error:", err);
+                } finally {
+                    await client.close();
+                }
             }
         }
 
-        // 5. Help Message if usage is wrong
-        await sock.sendMessage(from, { 
-            text: vStyle(`❓ *Usage Guide*\n┃\n┃ *Local:* .antilink on\n┃ *Global:* .antilink on all\n┃ *Target:* .antilink on [jid]`) 
-        });
+        // --- 3. HELP UI ---
+        let helpMsg = `┌────────────────────────┈\n`;
+        helpMsg += `│      *ᴀɴᴛɪ_ʟɪɴᴋ_ɢᴜɪᴅᴇ* \n`;
+        helpMsg += `└────────────────────────┈\n\n`;
+        helpMsg += `┌─『 ᴄᴏᴍᴍᴀɴᴅs 』\n`;
+        helpMsg += `│ ⚙ ${prefix}ᴀɴᴛɪʟɪɴᴋ ᴏɴ\n`;
+        helpMsg += `│ ⚙ ${prefix}ᴀɴᴛɪʟɪɴᴋ ᴏɴ ᴀʟʟ\n`;
+        helpMsg += `│ ⚙ ${prefix}ᴀɴᴛɪʟɪɴᴋ ᴏɴ [ᴊɪᴅ]\n`;
+        helpMsg += `└────────────────────────┈\n\n`;
+        helpMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+
+        await sock.sendMessage(from, { text: helpMsg });
     }
 };
+
+export default antilinkCommand;
