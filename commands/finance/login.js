@@ -1,11 +1,12 @@
-const { MongoClient } = require('mongodb');
+import { MongoClient } from 'mongodb';
+
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri);
 
 // Memory cache to track login steps
 global.loginState = global.loginState || new Map();
 
-module.exports = {
+const loginCommand = {
     name: 'login',
     category: 'finance',
     async execute(sock, msg, args, { prefix }) {
@@ -17,16 +18,23 @@ module.exports = {
         // --- STEP 1: INITIAL TRIGGER (.login) ---
         if (!global.loginState.has(senderPhone)) {
             global.loginState.set(senderPhone, { step: 1 });
-            return sock.sendMessage(from, { 
-                text: `┏━━━━━ ✿ *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* ✿ ━━━━━┓\n┃\n┃ 🏦 *ᴠ-ʜᴜʙ ʙᴀɴᴋɪɴɢ ʟᴏɢɪɴ*\n┃ _ᴇɴᴛᴇʀ ʏᴏᴜʀ ᴄʀᴇᴅᴇɴᴛɪᴀʟs._\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ɪs ʏᴏᴜʀ ᴠ-ʜᴜʙ ɪᴅ?\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}login VH-1001\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-            }, { quoted: msg });
+            
+            let step1Msg = `┌────────────────────────┈\n`;
+            step1Msg += `│      *ᴠ-ʜᴜʙ_ʙᴀɴᴋɪɴɢ* \n`;
+            step1Msg += `└────────────────────────┈\n\n`;
+            step1Msg += `┌─『 ᴀᴄᴄᴏᴜɴᴛ_ᴀᴄᴄᴇss 』\n`;
+            step1Msg += `│ ⚙ *sᴛᴀᴛᴜs:* ʟᴏɢɪɴ_ʀᴇǫᴜɪʀᴇᴅ\n`;
+            step1Msg += `│ ⚙ *ǫᴜᴇsᴛɪᴏɴ:* ᴡʜᴀᴛ ɪs ʏᴏᴜʀ ᴠ-ʜᴜʙ ɪᴅ?\n`;
+            step1Msg += `└────────────────────────┈\n\n`;
+            step1Msg += `◈ *ʀᴇᴘʟʏ:* ${prefix}ʟᴏɢɪɴ ᴠʜ-𝟷𝟶𝟶𝟷`;
+            
+            return sock.sendMessage(from, { text: step1Msg }, { quoted: msg });
         }
 
         const state = global.loginState.get(senderPhone);
 
         // --- STEP 2: VERIFY ID/NAME & ASK PIN ---
         if (state.step === 1) {
-            // Cleverly format ID if it's just a number, otherwise handle string/name
             const formattedId = (!isNaN(answer) && answer.length > 0) ? `VH-${answer.toUpperCase()}` : answer.toUpperCase();
             const searchId = answer.toUpperCase().startsWith('VH-') ? answer.toUpperCase() : formattedId;
             
@@ -34,7 +42,6 @@ module.exports = {
                 await client.connect();
                 const db = client.db("vinnieBot");
                 
-                // --- 🔍 SMART SEARCH: Find by VH-ID (formatted) OR by Name ---
                 const user = await db.collection("users").findOne({ 
                     $or: [
                         { v_hub_id: searchId },
@@ -44,83 +51,79 @@ module.exports = {
 
                 if (!user) {
                     global.loginState.delete(senderPhone);
-                    return sock.sendMessage(from, { text: "❌ *ᴀᴄᴄᴏᴜɴᴛ ɴᴏᴛ ꜰᴏᴜɴᴅ:* ᴘʟᴇᴀsᴇ ᴄʀᴇᴀᴛᴇ ᴏɴᴇ ᴡɪᴛʜ `.new`" });
+                    return sock.sendMessage(from, { text: "┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ᴀᴄᴄᴏᴜɴᴛ ɴᴏᴛ ғᴏᴜɴᴅ.\n│ ⚙ ᴄʀᴇᴀᴛᴇ ᴏɴᴇ ᴡɪᴛʜ: .ɴᴇᴡ\n└────────────────────────┈" });
                 }
 
                 state.vHubId = user.v_hub_id;
                 state.name = user.name;
                 state.step = 2;
-                return sock.sendMessage(from, { 
-                    text: `┏━━━━━ ✿ *ᴠ-ʜᴜʙ sᴇᴄᴜʀɪᴛʏ* ✿ ━━━━━┓\n┃\n┃ 👤 *ᴜsᴇʀ:* ${user.name}\n┃ 🆔 *ɪᴅ:* ${user.v_hub_id}\n┃\n┃ ❓ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ ʏᴏᴜʀ 4-ᴅɪɢɪᴛ ᴘɪɴ.\n┃\n┃ 💡 *ʀᴇᴘʟʏ:* \`${prefix}login 2580\`\n┗━━━━━━━━━━━━━━━━━━━━━━┛` 
-                }, { quoted: msg });
+
+                let step2Msg = `┌────────────────────────┈\n`;
+                step2Msg += `│      *ᴠ-ʜᴜʙ_sᴇᴄᴜʀɪᴛʏ* \n`;
+                step2Msg += `└────────────────────────┈\n\n`;
+                step2Msg += `┌─『 ɪᴅᴇɴᴛɪᴛʏ_ᴄᴏɴғɪʀᴍᴇᴅ 』\n`;
+                step2Msg += `│ 👤 *ᴜsᴇʀ:* ${user.name}\n`;
+                step2Msg += `│ 🆔 *ɪᴅ:* ${user.v_hub_id}\n`;
+                step2Msg += `│ ⚙ *ǫᴜᴇsᴛɪᴏɴ:* ᴇɴᴛᴇʀ 𝟺-ᴅɪɢɪᴛ ᴘɪɴ.\n`;
+                step2Msg += `└────────────────────────┈\n\n`;
+                step2Msg += `◈ *ʀᴇᴘʟʏ:* ${prefix}ʟᴏɢɪɴ [ᴘɪɴ]`;
+
+                return sock.sendMessage(from, { text: step2Msg }, { quoted: msg });
             } catch (e) {
                 global.loginState.delete(senderPhone);
-                return sock.sendMessage(from, { text: "❌ *sʏsᴛᴇᴍ ᴇʀʀᴏʀ:* ᴅʙ ᴏꜰꜰʟɪɴᴇ." });
+                return sock.sendMessage(from, { text: "┌─『 ᴅʙ_ᴇʀʀᴏʀ 』\n│ ⚙ sʏsᴛᴇᴍ ᴏғғʟɪɴᴇ.\n└────────────────────────┈" });
             }
         }
 
-        // --- STEP 3: VERIFY PIN & SHOW DASHBOARD (WITH SELF-DESTRUCT) ---
+        // --- STEP 3: VERIFY PIN & SHOW DASHBOARD ---
         if (state.step === 2) {
             try {
                 const db = client.db("vinnieBot");
                 const user = await db.collection("users").findOne({ v_hub_id: state.vHubId });
-
-                // Use the PIN from the wallet registration
                 const wallet = await db.collection("wallets").findOne({ vHubId: state.vHubId });
 
                 if (wallet.pin !== answer) {
-                    return sock.sendMessage(from, { text: "⚠️ *ᴡʀᴏɴɢ ᴘɪɴ:* ᴛʀʏ ᴀɢᴀɪɴ ᴡɪᴛʜ `.login <PIN>`" });
+                    return sock.sendMessage(from, { text: "┌─『 sᴇᴄᴜʀɪᴛʏ_ᴀʟᴇʀᴛ 』\n│ ⚠️ ᴡʀᴏɴɢ ᴘɪɴ. ᴛʀʏ ᴀɢᴀɪɴ.\n└────────────────────────┈" });
                 }
 
-                // LOGIN SUCCESS - CLEAR STATE & SHOW MENU
                 global.loginState.delete(senderPhone);
 
-                const bankingMenu = `┏━━━━━ ✿ *ᴠ-ʜᴜʙ ᴅᴀsʜʙᴏᴀʀᴅ* ✿ ━━━━━┓
-┃
-┃ ✨ *ᴡᴇʟᴄᴏᴍᴇ ʙᴀᴄᴋ,* ${user.name}!
-┃ 🆔 *ᴀᴄᴄᴏᴜɴᴛ:* ${user.v_hub_id}
-┃ 🏦 *ʙᴀʟᴀɴᴄᴇ:* ᴋsʜ ${user.balance}
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ 📥 *[ ${prefix}prompt ]* ┃ _ᴅᴇᴘᴏsɪᴛ ꜰᴜɴᴅs_
-┃
-┃ 💸 *[ ${prefix}withdraw ]* ┃ _ᴡɪᴛʜᴅʀᴀᴡ ᴄᴀsʜ_
-┃
-┃ 🔄 *[ ${prefix}transfer ]* ┃ _sᴇɴᴅ ᴛᴏ ᴠ-ʜᴜʙ_
-┃
-┃ 📜 *[ ${prefix}statement ]* ┃ _ʟᴀsᴛ 𝟓 ᴛx_
-┃
-┃ 🔐 *[ ${prefix}changepin ]* ┃ _ᴜᴘᴅᴀᴛᴇ sᴇᴄᴜʀɪᴛʏ_
-┃
-┃ 🗑️ *[ ${prefix}close ]* ┃ _ᴄʟᴏsᴇ sᴇssɪᴏɴ_
-┃
-┣━━━━━━━━━━━━━━━━━━━━━━┫
-┃
-┃ ⚠️ *sᴇᴄᴜʀɪᴛʏ:* ᴛʜɪs ᴍᴇɴᴜ ᴡɪʟʟ sᴇʟꜰ-ᴅᴇsᴛʀᴜᴄᴛ
-┃ ɪɴ 𝟑 ᴍɪɴᴜᴛᴇs ꜰᴏʀ ʏᴏᴜʀ ᴘʀɪᴠᴀᴄʏ.
-┃
-┃ © 2026 | ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+                let dashboard = `┌────────────────────────┈\n`;
+                dashboard += `│      *ᴠ-ʜᴜʙ_ᴅᴀsʜʙᴏᴀʀᴅ* \n`;
+                dashboard += `└────────────────────────┈\n\n`;
+                dashboard += `┌─『 ᴀᴄᴄᴏᴜɴᴛ_sᴜᴍᴍᴀʀʏ 』\n`;
+                dashboard += `│ ✨ *ᴡᴇʟᴄᴏᴍᴇ,* ${user.name}\n`;
+                dashboard += `│ 🆔 *ɪᴅ:* ${user.v_hub_id}\n`;
+                dashboard += `│ 🏦 *ʙᴀʟᴀɴᴄᴇ:* ᴋsʜ ${user.balance}\n`;
+                dashboard += `└────────────────────────┈\n\n`;
+                dashboard += `┌─『 ғɪɴᴀɴᴄᴇ_ᴍᴇɴᴜ 』\n`;
+                dashboard += `│ ├─◈ ${prefix}ᴅᴇᴘᴏsɪᴛ\n`;
+                dashboard += `│ ├─◈ ${prefix}ᴡɪᴛʜᴅʀᴀᴡ\n`;
+                dashboard += `│ ├─◈ ${prefix}ᴛʀᴀɴsғᴇʀ\n`;
+                dashboard += `│ ├─◈ ${prefix}sᴛᴀᴛᴇᴍᴇɴᴛ\n`;
+                dashboard += `│ ╰─◈ ${prefix}ᴄʟᴏsᴇ\n`;
+                dashboard += `└────────────────────────┈\n\n`;
+                dashboard += `_⚠️ sᴇssɪᴏɴ ᴇxᴘɪʀᴇs ɪɴ 𝟷𝟾𝟶s_`;
 
-                const sentMsg = await sock.sendMessage(from, { text: bankingMenu }, { quoted: msg });
+                const sentMsg = await sock.sendMessage(from, { text: dashboard }, { quoted: msg });
 
-                // --- 💣 SELF-DESTRUCT ENGINE 💣 ---
+                // --- 💣 SELF-DESTRUCT ENGINE ---
                 setTimeout(async () => {
                     try {
                         await sock.sendMessage(from, { delete: sentMsg.key });
-                        console.log(`┃ 🗑️ SESSION_CLEANUP: Dashboard for ${user.v_hub_id} deleted.`);
+                        console.log(`┃ 🗑️ SESSION_CLEANUP: Dashboard for ${user.v_hub_id} purged.`);
                     } catch (err) {
-                        console.error("┃ ❌ DELETE_FAILED:", err.message);
+                        console.error("┃ ❌ PURGE_FAILED:", err.message);
                     }
-                }, 180000); // 180,000ms = 3 Minutes
+                }, 180000); 
 
                 return;
-
             } catch (e) {
                 global.loginState.delete(senderPhone);
-                return sock.sendMessage(from, { text: "❌ *ʟᴏɢɪɴ ꜰᴀɪʟᴇᴅ:* ᴅʙ ᴇʀʀᴏʀ." });
+                return sock.sendMessage(from, { text: "┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ ʟᴏɢɪɴ ᴘʀᴏᴄᴇss ғᴀɪʟᴇᴅ.\n└────────────────────────┈" });
             }
         }
     }
 };
+
+export default loginCommand;
