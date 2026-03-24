@@ -13,7 +13,7 @@ import express from 'express';
 const app = express();
 app.use(express.json());
 
-import baileys from "@whiskeysockets/baileys";
+import pkg from "@whiskeysockets/baileys";
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
@@ -22,7 +22,7 @@ const {
     Browsers, 
     fetchLatestBaileysVersion, 
     jidDecode 
-} = baileys;
+} = pkg;
 
 import fs from 'fs-extra';
 import path from 'path';
