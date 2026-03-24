@@ -1,4 +1,6 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+import path from 'path';
+
 const settingsFile = './settings.json';
 
 const bios = [
@@ -28,23 +30,37 @@ const bios = [
     "23:00 | Final Sync: V_Hub Standing By 🌌"
 ];
 
-module.exports = {
+const bioWorker = {
+    name: "autobio_worker",
     async startBioRotation(sock) {
-        // Run check every hour
+        // Run check every hour (3600000 ms)
         setInterval(async () => {
             try {
+                if (!fs.existsSync(settingsFile)) return;
+                
                 const settings = fs.readJsonSync(settingsFile);
                 if (!settings.autobio) return; 
 
                 const date = new Date();
-                const hour = (date.getUTCHours() + 3) % 24; // Kenya Time (UTC+3)
+                // Kenya Time Logic: UTC + 3
+                const hour = (date.getUTCHours() + 3) % 24; 
                 const currentBio = `${bios[hour]} | Updated by V_Hub_Bot`;
 
                 await sock.updateProfileStatus(currentBio);
-                console.log(`┏━━━━━ ✿ BIO_SYNC ✿ ━━━━━┓\n┃  HOUR: ${hour}:00\n┃  STAT: UPDATED\n┗━━━━ ✿ INF_IMPACT ✿ ━━━━┛`);
+                
+                console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_ʙɪᴏ_sʏɴᴄ* \n└────────────────────────┈\n\n┌─『 sʏsᴛᴇᴍ_ᴜᴘᴅᴀᴛᴇ 』\n│ 🕒 *ʜᴏᴜʀ:* ${hour}:00 ᴇᴀᴛ\n│ ✅ *sᴛᴀᴛ:* sᴜᴄᴄᴇssғᴜʟ\n│ ⚙ *ʟᴏɢ:* ʙɪᴏ_ʀᴏᴛᴀᴛᴇᴅ\n└────────────────────────┈\n`);
             } catch (e) {
                 // Silently skip to prevent crash
+                console.error("Bio Rotation Error:", e.message);
             }
         }, 3600000); 
+    },
+
+    // Standard execute for the loader
+    async execute(sock) {
+        // This ensures that when index.js loads the worker, the rotation starts
+        this.startBioRotation(sock);
     }
 };
+
+export default bioWorker;
