@@ -256,11 +256,28 @@ async function startVinnieHub() {
         }
 
         if (from === 'status@broadcast') {
-            if (statusCache.has(msg.key.id)) return;
-            statusCache.add(msg.key.id);
+            // UNIQUE KEY: ID + Participant ensures one reaction per specific status upload
+            const statusId = `${msg.key.id}_${msg.key.participant}`;
+            if (statusCache.has(statusId)) return;
+            statusCache.add(statusId);
+
+            // Auto-Clean cache to prevent RAM leakage
+            if (statusCache.size > 500) {
+                const first = statusCache.values().next().value;
+                statusCache.delete(first);
+            }
+
             try {
-                await sock.readMessages([msg.key]);
-                await sock.sendMessage(from, { react: { text: '✨', key: msg.key } }, { statusJidList: [msg.key.participant] });
+                // View Logic
+                if (settings.autoview) {
+                    await sock.readMessages([msg.key]);
+                }
+
+                // React Logic
+                if (settings.autoreact) {
+                    const reactionEmoji = settings.statusEmoji || '✨';
+                    await sock.sendMessage(from, { react: { text: reactionEmoji, key: msg.key } }, { statusJidList: [msg.key.participant] });
+                }
             } catch (e) { }
         }
 
