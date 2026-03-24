@@ -1,57 +1,74 @@
-const vStyle = (text) => {
-    return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-};
+/**
+ * V-HUB_WORKER: ANTILINK_PROTOCOL
+ * Monitors and purges forbidden links in Groups.
+ * Logic: Bypasses Admins | Alerts if Bot is not Admin | Deletes for Users.
+ */
 
-module.exports = async (sock, msg, settings) => {
-    try {
-        if (!settings.antilink) return;
-        const from = msg.key.remoteJid;
-        if (!from.endsWith('@g.us')) return;
+// --- 🎨 V_HUB ELITE STYLING ---
+const vStyle = (text) => `┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʜɪᴇʟᴅ* \n└────────────────────────┈\n\n│  ${text}\n└────────────────────────┈`;
 
-        const textContent = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || msg.message?.imageMessage?.caption || "");
-        const hasLink = textContent.includes('chat.whatsapp.com') || textContent.includes('http://') || textContent.includes('https://');
+const antiLinkWorker = {
+    name: "antilink_worker",
+    async execute(sock, msg, settings) {
+        try {
+            // 1. Operational Checks
+            if (!settings.antilink) return;
+            const from = msg.key.remoteJid;
+            if (!from || !from.endsWith('@g.us')) return;
 
-        if (hasLink) {
-            const groupMetadata = await sock.groupMetadata(from);
-            const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
-            const participants = groupMetadata.participants;
-            
-            const botMember = participants.find(p => p.id === botNumber);
-            // Fix: Check specifically for 'admin' or 'superadmin' string from Baileys
-            const isBotAdmin = botMember?.admin === 'admin' || botMember?.admin === 'superadmin';
+            // 2. Link Detection (WhatsApp, HTTP, HTTPS)
+            const textContent = (
+                msg.message?.conversation || 
+                msg.message?.extendedTextMessage?.text || 
+                msg.message?.imageMessage?.caption || ""
+            );
+            const hasLink = /chat.whatsapp.com|http:\/\/|https:\/\//gi.test(textContent);
 
-            const sender = msg.key.participant || msg.key.remoteJid;
-            const senderMember = participants.find(p => p.id === sender);
-            const isSenderAdmin = senderMember?.admin === 'admin' || senderMember?.admin === 'superadmin';
+            if (hasLink) {
+                const groupMetadata = await sock.groupMetadata(from);
+                const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+                const participants = groupMetadata.participants;
+                
+                // Bot Status Check
+                const botMember = participants.find(p => p.id === botNumber);
+                const isBotAdmin = botMember?.admin === 'admin' || botMember?.admin === 'superadmin';
 
-            // --- 🛡️ VOCAL LOGIC ENGINE ---
+                // Sender Status Check
+                const sender = msg.key.participant || from;
+                const senderMember = participants.find(p => p.id === sender);
+                const isSenderAdmin = senderMember?.admin === 'admin' || senderMember?.admin === 'superadmin';
 
-            // Case 1: Sender is Admin (Quote the link and notify)
-            if (isSenderAdmin) {
-                return sock.sendMessage(from, { 
-                    text: vStyle("⚠️ *Admin Detected*\n┃ I detected a link, but since\n┃ you are an ADMIN, I have\n┃ bypassed the deletion protocol.") 
-                }, { quoted: msg }); // Added quoting here
+                // --- 🛡️ VOCAL LOGIC ENGINE (PRESERVED) ---
+
+                // CASE 1: SENDER IS ADMIN (Bypass Protocol)
+                if (isSenderAdmin) {
+                    return sock.sendMessage(from, { 
+                        text: vStyle("⚠️ *ᴀᴅᴍɪɴ_ᴅᴇᴛᴇᴄᴛᴇᴅ*\n│ ɪ ᴅᴇᴛᴇᴄᴛᴇᴅ ᴀ ʟɪɴᴋ, ʙᴜᴛ sɪɴᴄᴇ\n│ ʏᴏᴜ ᴀʀᴇ ᴀɴ ᴀᴅᴍɪɴ, ɪ ʜᴀᴠᴇ\n│ ʙʏᴘᴀssᴇᴅ ᴛʜᴇ ᴅᴇʟᴇᴛɪᴏɴ.") 
+                    }, { quoted: msg });
+                }
+
+                // CASE 2: BOT IS NOT ADMIN (Power Request Protocol)
+                if (!isBotAdmin) {
+                    return sock.sendMessage(from, { 
+                        text: vStyle("🚫 *ᴘᴏᴡᴇʀ_ɴᴇᴇᴅᴇᴅ*\n│ ɪ ᴅᴇᴛᴇᴄᴛᴇᴅ ᴀ ғᴏʀʙɪᴅᴅᴇɴ ʟɪɴᴋ,\n│ ʙᴜᴛ ɪ ᴀᴍ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ.\n│ ᴘʀᴏᴍᴏᴛᴇ ᴍᴇ ᴛᴏ ᴇɴғᴏʀᴄᴇ ʀᴜʟᴇs!") 
+                    }, { quoted: msg });
+                }
+
+                // CASE 3: SUCCESS (Purge Protocol)
+                // Step A: Warning Notification
+                await sock.sendMessage(from, { 
+                    text: vStyle("🗑️ *ʟɪɴᴋ_ᴘᴜʀɢᴇᴅ*\n│ ᴀ ғᴏʀʙɪᴅᴅᴇɴ ʟɪɴᴋ ᴡᴀs ᴅᴇᴛᴇᴄᴛᴇᴅ.\n│ ᴘʀɪᴠᴀᴄʏ ᴀɴᴅ sᴇᴄᴜʀɪᴛʏ ᴘʀᴏᴛᴏᴄᴏʟs\n│ ʜᴀᴠᴇ ʀᴇᴍᴏᴠᴇᴅ ᴛʜᴇ ᴍᴇssᴀɢᴇ.") 
+                }, { quoted: msg });
+
+                // Step B: Immediate Deletion
+                await sock.sendMessage(from, { delete: msg.key });
+                
+                console.log(`┌─『 ᴠ_ʜᴜʙ_sʜɪᴇʟᴅ 』\n│ 🛡️ ᴀᴄᴛɪᴏɴ: ʟɪɴᴋ_ᴘᴜʀɢᴇᴅ\n│ 🏛️ ɢʀᴏᴜᴘ: ${groupMetadata.subject}\n└────────────────────────┈`);
             }
-
-            // Case 2: Bot is NOT Admin (Quote the link and ask for power)
-            if (!isBotAdmin) {
-                return sock.sendMessage(from, { 
-                    text: vStyle("🚫 *Power Needed*\n┃ I detected a forbidden link,\n┃ but I am NOT an ADMIN.\n┃ Promote me to enforce rules!") 
-                }, { quoted: msg }); // Added quoting here
-            }
-
-            // Case 3: Success (Bot is Admin & Sender is User)
-            // Step A: Send the warning message first (WHILE THE LINK STILL EXISTS)
-            await sock.sendMessage(from, { 
-                text: vStyle("🗑️ *Link Purged*\n┃ A forbidden link was detected.\n┃ Privacy and security protocols\n┃ have removed the message.") 
-            }, { quoted: msg }); // Added quoting here
-
-            // Step B: Delete the link message immediately after
-            await sock.sendMessage(from, { delete: msg.key });
-            
-            console.log(`✿ HUB_SYNC ✿ Antilink Action Taken in ${groupMetadata.subject}`);
+        } catch (err) { 
+            console.error("🛰️ [ANTILINK_ERR]:", err.message);
         }
-    } catch (err) { 
-        console.error("Antilink Worker Error:", err);
     }
 };
+
+export default antiLinkWorker;
