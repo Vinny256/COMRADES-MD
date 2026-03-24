@@ -1,17 +1,18 @@
 {
   "autoview": true,
   "autoreact": true,
+  "statusEmoji": "✨",
   "antilink": true,
   "autobio": true,
   "antiviewonce": true,
-  "typing": true,
-  "recording": false,
+  "typing": false,
+  "recording": true,
   "antidelete": true,
   "antimention": false,
   "welcome": false,
   "goodbye": false,
   "antibot": false,
   "alwaysRecording": true,
-  "recordMode": "all"
-  
+  "recordMode": "all",
+  "autosave": true
 }
