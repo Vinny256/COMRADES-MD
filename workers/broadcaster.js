@@ -1,55 +1,73 @@
-const fs = require('fs-extra');
-const { MongoClient } = require("mongodb");
-const client = new MongoClient(process.env.MONGO_URI);
+import fs from 'fs-extra';
+import { MongoClient } from "mongodb";
 
-async function startAutoPromotion(sock) {
-    setInterval(async () => {
-        try {
-            await client.connect();
-            const db = client.db("vinnieBot");
-            const broadcastCol = db.collection("broadcast_tracker");
+// --- 🛡️ PERSISTENT DATABASE CONNECTION ---
+const mongoUri = process.env.MONGO_URI;
+const client = new MongoClient(mongoUri || "");
+let isConnected = false;
 
-            // 1. Get all groups the bot is in
-            const groups = Object.keys(await sock.groupFetchAllParticipating());
-            
-            // 2. Find groups we haven't messaged in this cycle
-            const tracked = await broadcastCol.find({}).toArray();
-            const messagedJids = tracked.map(t => t.jid);
-            const remainingGroups = groups.filter(jid => !messagedJids.includes(jid));
+/**
+ * V-HUB_WORKER: PROMO_BROADCASTER
+ * Cycles through all participating groups every hour to send a promo message.
+ * Logic: Tracks messaged groups in MongoDB to prevent duplicate spam within a cycle.
+ */
+const promoWorker = {
+    name: "promo_worker",
+    async startAutoPromotion(sock) {
+        // Run check every hour (3600000 ms)
+        setInterval(async () => {
+            try {
+                // 1. Ensure DB Handshake
+                if (!isConnected) {
+                    await client.connect();
+                    isConnected = true;
+                }
+                const db = client.db("vinnieBot");
+                const broadcastCol = db.collection("broadcast_tracker");
 
-            // 3. Reset cycle if all groups are finished
-            if (remainingGroups.length === 0) {
-                await broadcastCol.deleteMany({});
-                return; // Restart on the next hour
+                // 2. Fetch all groups the bot is currently in
+                const participatingGroups = await sock.groupFetchAllParticipating();
+                const groups = Object.keys(participatingGroups);
+                
+                if (groups.length === 0) return;
+
+                // 3. Identification: Find groups we haven't messaged in this cycle
+                const tracked = await broadcastCol.find({}).toArray();
+                const messagedJids = tracked.map(t => t.jid);
+                const remainingGroups = groups.filter(jid => !messagedJids.includes(jid));
+
+                // 4. Reset cycle if all groups have been reached
+                if (remainingGroups.length === 0) {
+                    await broadcastCol.deleteMany({});
+                    console.log(`┌─『 ᴠ-ʜᴜʙ_ʙʀᴏᴀᴅᴄᴀsᴛ 』\n│ 🔄 *ᴄʏᴄʟᴇ_ʀᴇsᴇᴛ*\n│ ⚙ ʟᴏɢ: ᴀʟʟ_ɢʀᴏᴜᴘs_ʀᴇᴀᴄʜᴇᴅ\n└────────────────────────┈`);
+                    return; 
+                }
+
+                // 5. Targeting: Pick one random group from the remaining list
+                const targetJid = remainingGroups[Math.floor(Math.random() * remainingGroups.length)];
+                const groupName = participatingGroups[targetJid]?.subject || "ᴛʜɪs_ɢʀᴏᴜᴘ";
+
+                // 6. THE VHUB PROMOTION MESSAGE (PRESERVED)
+                const prefix = process.env.PREFIX || ".";
+                const promoMsg = `┌────────────────────────┈\n│      *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* \n└────────────────────────┈\n\n┌─『 sʏsᴛᴇᴍ_sᴛᴀᴛᴜs 』\n│ 🤖 *sᴛᴀᴛᴜs:* ᴀᴄᴛɪᴠᴇ & ᴏɴʟɪɴᴇ\n│ 🚀 *ᴘʀᴇғɪx:* ${prefix}\n│ 📑 *ᴄᴏᴍᴍᴀɴᴅs:* 𝟻𝟶+ ᴘʟᴜs\n│ 🛠️ *ғᴇᴀᴛᴜʀᴇs:* ᴀɴᴛɪ-ʙᴏᴛ, ɢᴀᴍᴇs,\n│    ᴀɴᴛɪᴅᴇʟᴇᴛᴇ, & ᴇᴄᴏɴᴏᴍʏ.\n└────────────────────────┈\n\n💡 *ᴛɪᴘ:* ᴛʏᴘᴇ *${prefix}menu* ᴛᴏ sᴇᴇ\nᴇᴠᴇʀʏᴛʜɪɴɢ ɪ ᴄᴀɴ ᴅᴏ!\n\n_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠ-ʜᴜʙ_`;
+
+                await sock.sendMessage(targetJid, { text: promoMsg });
+                
+                // 7. Sync: Mark as messaged in the database
+                await broadcastCol.insertOne({ jid: targetJid, timestamp: new Date() });
+                
+                console.log(`┌─『 ᴠ-ʜᴜʙ_ʙʀᴏᴀᴅᴄᴀsᴛ 』\n│ 📡 ᴘʀᴏᴍᴏ_sᴇɴᴛ: ${groupName}\n│ ✅ ᴛᴀʀɢᴇᴛ: ${targetJid}\n└────────────────────────┈`);
+
+            } catch (e) {
+                console.error("🛰️ [BROADCASTER_ERR]:", e.message);
             }
+        }, 3600000); 
+    },
 
-            // 4. Pick one random group from the remaining list
-            const targetJid = remainingGroups[Math.floor(Math.random() * remainingGroups.length)];
+    // Standard execute for the index.js loader
+    async execute(sock) {
+        this.startAutoPromotion(sock);
+    }
+};
 
-            // 5. The VHUB Promotion Message
-            const promoMsg = `┏━━━━━ ✿ *VINNIE HUB* ✿ ━━━━━┓
-┃
-┃ 🤖 *Status:* Active & Online
-┃ 🚀 *Prefix:* ${process.env.PREFIX || "."}
-┃ 📑 *Total Commands:* Over 50+
-┃ 🛠️ *Features:* Anti-Bot, Games, 
-┃      Antidelete, & Economy.
-┃
-┃ 💡 *Tip:* Type *${process.env.PREFIX || "."}menu* to see 
-┃      everything I can do!
-┃
-┗━━━━━━━━━━━━━━━━━━━━━━┛`;
-
-            await sock.sendMessage(targetJid, { text: promoMsg });
-            
-            // 6. Mark as messaged
-            await broadcastCol.insertOne({ jid: targetJid, timestamp: new Date() });
-            console.log(`📡 [BROADCASTER] Promo sent to: ${targetJid}`);
-
-        } catch (e) {
-            console.error("Broadcaster Error:", e);
-        }
-    }, 1000 * 60 * 60); // 1 Hour exactly
-}
-
-module.exports = { startAutoPromotion };
+export default promoWorker;
