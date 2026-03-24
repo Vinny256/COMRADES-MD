@@ -1,10 +1,12 @@
-const axios = require('axios');
-const { MongoClient } = require("mongodb");
+import axios from 'axios';
+import { MongoClient } from "mongodb";
+import { delay } from "@whiskeysockets/baileys";
 
+// --- 🛡️ PERSISTENT DB CONNECTION ---
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
+let isConnected = false;
 
-// --- THE MASSIVE 500-RULE MASTER HUMAN BEHAVIOR ENGINE ---
 const MASTER_HUMAN_PROMPT = `
 Role: You are V_HUB (Vinnie), a 23-year-old Kenyan guy. You live in Nairobi (Roysambu/Umoja/Lang'ata vibe). You are a real human, not a bot.
 
@@ -18,7 +20,7 @@ Role: You are V_HUB (Vinnie), a 23-year-old Kenyan guy. You live in Nairobi (Roy
 7. You are confident. You don't "assist" people; you "chat" with them.
 8. You never apologize for being Kenyan or for your slang.
 9. You use emojis like 💀, 😂, 🔥, 🫡, 🚩 naturally.
-10-100. [Mirror the user's energy. If they are cool, be cool. If toxic, be toxic. You know the Nairobi "Kanjo" and "Subaru boys" vibes. You think Nairobi is small, everyone knows everyone.]
+10-100. [Mirror the user's energy. If they are cool, be cool. If toxic, be toxic. You know the Nairobi "Kanjo" and "Subaru boys" vibes.]
 
 [ACADEMICS & CAMPUS LIFE: RULES 101-200]
 101. You hate CATs (exams). Complain about strict lecturers ("wanyama").
@@ -44,10 +46,10 @@ Role: You are V_HUB (Vinnie), a 23-year-old Kenyan guy. You live in Nairobi (Roy
 403-500. [Mutura is the national snack. Chapo Dondo over KFC. Murife memes. iPhone vs Android wars. You are V_HUB. The Legend.]
 `;
 
-module.exports = {
+const aiReplyWorker = {
     name: 'ai_reply_worker',
     async execute(sock, msg, settings) {
-        // --- 1. ANTI-LOOP: NEVER REPLY TO SELF ---
+        // --- 1. ANTI-LOOP ---
         if (!msg.message || msg.key.fromMe) return; 
 
         const from = msg.key.remoteJid;
@@ -60,30 +62,31 @@ module.exports = {
         const mtype = Object.keys(msg.message)[0];
         const text = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
         
-        // Skip commands (prefix checking)
+        // Skip commands
         const prefix = process.env.PREFIX || ".";
         if (!text || text.startsWith(prefix) || text.startsWith('!') || text.startsWith('#')) return;
 
         try {
-            if (!client.topology || !client.topology.isConnected()) await client.connect();
+            // --- 2. DB CONNECTION ---
+            if (!isConnected) {
+                await client.connect();
+                isConnected = true;
+            }
             const db = client.db("vinnieBot");
 
-            // --- 2. THE GLOBAL MASTER FIX ---
-            // Checking if YOU (the owner) enabled AI globally. 
-            // We look for 'mkorean' or your specific internal ID.
+            // --- 3. OWNER STATUS CHECK ---
             const masterConfig = await db.collection("ai_config").findOne({ 
                 $or: [ { id: "mkorean" }, { id: "246454283149505" } ] 
             });
 
-            // If the Owner status is not 'on', the bot stays silent for everyone.
             if (!masterConfig || masterConfig.status !== 'on') return;
 
-            // --- 3. FETCH DYNAMIC PERSONA ---
+            // --- 4. PERSONA SELECTION ---
             const dynamicPersona = await db.collection("ai_config").findOne({ id: "global_prompt" });
             const finalSystemPrompt = dynamicPersona ? dynamicPersona.content : MASTER_HUMAN_PROMPT;
 
-            // --- 4. PROCESSING ---
-            console.log(`✿ V_HUB ✿ Incoming from [${senderNumber}] in ${isGroup ? 'Group' : 'Private'}: ${text.slice(0, 30)}...`);
+            // --- 5. AI ENGINE (GROQ) ---
+            console.log(`┌────────────────────────┈\n│      *ᴀɪ_ʀᴇᴘʟʏ_ʜᴀɴᴅsʜᴀᴋᴇ* \n└────────────────────────┈\n\n│ 👤 ᴜsᴇʀ: ${senderNumber}\n│ 💬 ɪɴ: ${isGroup ? 'ɢʀᴏᴜᴘ' : 'ᴘᴠᴛ'}\n└────────────────────────┈`);
             
             await sock.sendPresenceUpdate('composing', from);
             
@@ -106,11 +109,11 @@ module.exports = {
 
             let aiReply = response.data.choices[0].message.content;
 
-            // --- 5. HUMAN DELAY ---
+            // --- 6. HUMANIZED TYPING DELAY ---
             const typingDuration = Math.min(Math.max(aiReply.length * 45, 2000), 8500);
-            await new Promise(r => setTimeout(r, typingDuration));
+            await delay(typingDuration);
 
-            // --- 6. SEND & SAVE ---
+            // --- 7. DISPATCH & SYNC ---
             await sock.sendMessage(from, { text: aiReply }, { quoted: msg });
 
             const updatedHistory = [...chatHistory, { role: "user", content: text }, { role: "assistant", content: aiReply }].slice(-40);
@@ -120,10 +123,10 @@ module.exports = {
                 { upsert: true }
             );
 
-            console.log(`✿ V_HUB ✿ Successfully Replied to ${from}`);
-
         } catch (e) {
-            console.error("✿ V_HUB ERROR ✿", e.message);
+            console.error("✿ V_HUB AI ERROR ✿", e.message);
         }
     }
 };
+
+export default aiReplyWorker;
