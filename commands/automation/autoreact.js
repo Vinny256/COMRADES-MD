@@ -7,29 +7,28 @@ const autoreactCommand = {
     category: "automation",
     description: "Manage Status Auto-Reaction",
     async execute(sock, msg, args, { from, prefix }) {
-        // Load settings safely
+        // 1. Load settings safely
         let settings = {};
         if (fs.existsSync(settingsFile)) {
             settings = fs.readJsonSync(settingsFile);
         }
         
-        // Ensure the structure exists
-        if (!settings.status) settings.status = { autoReact: false, emoji: "✨" };
-
         const param = args[0]?.toLowerCase();
 
-        // --- ⚡ UNICODE SLEEK STYLING ---
+        // --- ⚡ SYNCED WITH INDEX.JS LOGIC ---
+        
         // Case: .autoreact on
         if (param === "on") {
-            settings.status.autoReact = true;
+            settings.autoreact = true; // Match index.js key
             fs.writeJsonSync(settingsFile, settings);
+            if (global.saveSettings) await global.saveSettings(); // Sync to Cloud
             
             let onMsg = `┌────────────────────────┈\n`;
             onMsg += `│      *ᴀᴜᴛᴏʀᴇᴀᴄᴛ_ᴇɴᴀʙʟᴇᴅ* \n`;
             onMsg += `└────────────────────────┈\n\n`;
             onMsg += `┌─『 sʏsᴛᴇᴍ sᴛᴀᴛᴜs 』\n`;
             onMsg += `│ ⚙ *ᴀᴜᴛᴏ-ʀᴇᴀᴄᴛ:* ᴀᴄᴛɪᴠᴇ ✦\n`;
-            onMsg += `│ ⚙ *ᴇᴍᴏᴊɪ:* ${settings.status.emoji}\n`;
+            onMsg += `│ ⚙ *ᴇᴍᴏᴊɪ:* ${settings.statusEmoji || "✨"}\n`;
             onMsg += `└────────────────────────┈\n\n`;
             onMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
             
@@ -38,8 +37,9 @@ const autoreactCommand = {
 
         // Case: .autoreact off
         if (param === "off") {
-            settings.status.autoReact = false;
+            settings.autoreact = false;
             fs.writeJsonSync(settingsFile, settings);
+            if (global.saveSettings) await global.saveSettings();
             
             let offMsg = `┌────────────────────────┈\n`;
             offMsg += `│      *ᴀᴜᴛᴏʀᴇᴀᴄᴛ_ᴅɪsᴀʙʟᴇᴅ* \n`;
@@ -53,9 +53,10 @@ const autoreactCommand = {
 
         // Case: .autoreact emoji [target_emoji]
         if (param === "emoji" && args[1]) {
-            settings.status.autoReact = true; // Auto-enable when setting emoji
-            settings.status.emoji = args[1];
+            settings.autoreact = true; 
+            settings.statusEmoji = args[1]; // Match index.js key
             fs.writeJsonSync(settingsFile, settings);
+            if (global.saveSettings) await global.saveSettings();
             
             let emoMsg = `┌────────────────────────┈\n`;
             emoMsg += `│      *ᴇᴍᴏᴊɪ_ᴜᴘᴅᴀᴛᴇᴅ* \n`;
@@ -79,8 +80,8 @@ const autoreactCommand = {
         usage += `└────────────────────────┈\n\n`;
         
         usage += `┌─『 ᴄᴜʀʀᴇɴᴛ sᴛᴀᴛᴇ 』\n`;
-        usage += `│ ⚙ *ᴍᴏᴅᴇ:* ${settings.status.autoReact ? 'ᴏɴ ✦' : 'ᴏғғ ✧'}\n`;
-        usage += `│ ⚙ *ᴇᴍᴏᴊɪ:* ${settings.status.emoji}\n`;
+        usage += `│ ⚙ *ᴍᴏᴅᴇ:* ${settings.autoreact ? 'ᴏɴ ✦' : 'ᴏғғ ✧'}\n`;
+        usage += `│ ⚙ *ᴇᴍᴏᴊɪ:* ${settings.statusEmoji || "✨"}\n`;
         usage += `└────────────────────────┈`;
         
         return sock.sendMessage(from, { text: usage });
