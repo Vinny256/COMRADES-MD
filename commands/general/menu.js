@@ -64,7 +64,8 @@ const menuCommand = {
             caption: menu,
             mimetype: 'video/mp4',
             contextInfo: {
-                participant: '0@s.whatsapp.net', 
+                // Using the actual sender JID or a real formatted JID for stability
+                participant: '254768666068@s.whatsapp.net', 
                 verifiedBadge: true, 
                 forwardingScore: 999,
                 isForwarded: true,
@@ -76,7 +77,7 @@ const menuCommand = {
                 externalAdReply: {
                     title: hubName,
                     body: `${greeting} | sʏsᴛᴇᴍ ᴏɴʟɪɴᴇ`,
-                    mediaType: 2,
+                    mediaType: 1, // Changed to 1 for universal rendering stability
                     thumbnailUrl: vinnieThumb,
                     sourceUrl: channelLink, 
                     showAdAttribution: true,
