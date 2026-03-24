@@ -15,15 +15,8 @@ app.use(express.json());
 
 // --- 🛡️ THE CRITICAL NODE v24 HYBRID FIX ---
 import pkg from "@whiskeysockets/baileys";
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason, 
-    makeCacheableSignalKeyStore, 
-    Browsers, 
-    fetchLatestBaileysVersion, 
-    jidDecode 
-} = (pkg.default || pkg); // This ensures useMultiFileAuthState is NEVER a function error
+// We access the package source directly to prevent "Not a function" errors
+const baileys = (pkg.default || pkg); 
 
 import fs from 'fs-extra';
 import path from 'path';
@@ -49,7 +42,7 @@ if (!global.gamestate) global.gamestate = new Map();
 const decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
-        let decode = jidDecode(jid) || {};
+        let decode = baileys.jidDecode(jid) || {};
         return decode.user && decode.server && decode.user + '@' + decode.server || jid;
     }
     return jid;
@@ -136,12 +129,13 @@ async function startVinnieHub() {
         }
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-    const { version } = await fetchLatestBaileysVersion();
+    // --- 🚀 DIRECT FUNCTION CALLS (UNTOUCHED LOGIC) ---
+    const { state, saveCreds } = await baileys.useMultiFileAuthState(authFolder);
+    const { version } = await baileys.fetchLatestBaileysVersion();
     
-    sock = makeWASocket({
-        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
-        version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
+    sock = (baileys.default || baileys)({
+        auth: { creds: state.creds, keys: baileys.makeCacheableSignalKeyStore(state.keys, silentLogger) },
+        version, logger: silentLogger, browser: baileys.Browsers.ubuntu("Chrome"),
         markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
         shouldSyncLidPnMappings: true 
     });
@@ -197,7 +191,7 @@ async function startVinnieHub() {
         }
         if (u.connection === 'close') {
             const statusCode = u.lastDisconnect?.error?.output?.statusCode;
-            if (statusCode !== DisconnectReason.loggedOut) {
+            if (statusCode !== baileys.DisconnectReason.loggedOut) {
                 console.log("Connection Lost: Auto-Heal Triggered...");
                 setTimeout(() => startVinnieHub(), 3000);
             }
