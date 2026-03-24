@@ -1,4 +1,4 @@
-const axios = require('axios');
+import axios from 'axios';
 
 // Hardcoded for Vinnie Digital Hub - Ease of Access
 const PROXY_URL = "https://vhubg-27494ea43fc4.herokuapp.com/api";
@@ -101,4 +101,4 @@ const hubClient = {
     }
 };
 
-module.exports = hubClient;
+export default hubClient;
