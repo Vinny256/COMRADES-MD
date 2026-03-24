@@ -1,12 +1,12 @@
-const { downloadContentFromMessage, delay } = require("@whiskeysockets/baileys");
-const express = require('express');
+import { downloadContentFromMessage, delay } from "@whiskeysockets/baileys";
+import express from 'express';
 
 // --- 🎨 STYLE UTILITY ---
 const vStyle = (text) => {
-    return `┏━━━━━ ✿ *V_HUB* ✿ ━━━━━┓\n┃\n┃  ${text}\n┃\n┗━━━━━━━━━━━━━━━━━━━━━━┛`;
+    return `┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│  ${text}\n└────────────────────────┈`;
 };
 
-// --- 🧠 VOLATILE RAM STORAGE ---
+// --- 🧠 VOLATILE RAM STORAGE (ESM GLOBAL INITS) ---
 if (!global.statusHistory) global.statusHistory = new Set();
 if (!global.statusQueue) global.statusQueue = [];
 if (global.isProcessingStatus === undefined) global.isProcessingStatus = false;
@@ -34,7 +34,7 @@ async function processStatusQueue(sock, settings) {
             await sock.readMessages([msg.key]);
 
             if (settings.autoreact) {
-                // 🎲 RANDOM DELAY 2: Time to "watch" the status before reacting (4-10s)
+                // 🎲 RANDOM DELAY 2: Time to "watch" before reacting (4-10s)
                 const watchDelay = Math.floor(Math.random() * (10000 - 4000 + 1)) + 4000;
                 await delay(watchDelay);
 
@@ -50,16 +50,18 @@ async function processStatusQueue(sock, settings) {
     global.isProcessingStatus = false;
 }
 
-module.exports = {
+const mainWorker = {
+    name: "main_worker",
     async execute(sock, msg, settings) {
         const from = msg.key.remoteJid;
+        if (!from) return;
+        
         const isGroup = from.endsWith('@g.us');
         const isMe = msg.key.fromMe;
 
         // 1. HUMANIZED GHOST TYPING
         if (!isGroup && !isMe && from !== 'status@broadcast') {
             try {
-                // Only "type" randomly to stay under 512MB RAM
                 if (Math.random() > 0.5) {
                     await sock.sendPresenceUpdate('composing', from);
                     await delay(Math.floor(Math.random() * 3000) + 1000);
@@ -68,7 +70,7 @@ module.exports = {
             } catch (e) {}
         }
 
-        // 2. V_HUB LISTENER (Kept intact)
+        // 2. V_HUB NOTIFY LISTENER
         if (!listenerActive) {
             try {
                 const PORT = process.env.PORT || 3000;
@@ -79,14 +81,14 @@ module.exports = {
                     res.status(200).send({ status: "Sent" });
                 });
                 if (!global.vHubRunning) {
-                    app.listen(PORT, () => console.log(`\n┏━━━━━ ✿ V_HUB_LISTENER_ACTIVE ✿ ━━━━━┓`));
+                    app.listen(PORT, () => console.log(`┌─『 ᴠ_ʜᴜʙ_ʟɪsᴛᴇɴᴇʀ 』\n│ 🚀 ᴘᴏʀᴛ: ${PORT}\n│ ✅ sᴛᴀᴛᴜs: ᴀᴄᴛɪᴠᴇ\n└────────────────────────┈`));
                     global.vHubRunning = true;
                 }
                 listenerActive = true;
             } catch (e) {}
         }
 
-        // 3. ANTI-VIEWONCE (Kept intact)
+        // 3. ANTI-VIEWONCE PROTOCOL
         const viewOnceType = msg.message?.viewOnceMessageV2 || msg.message?.viewOnceMessage;
         const textContent = (msg.message?.conversation || msg.message?.extendedTextMessage?.text || "").trim();
         const textLower = textContent.toLowerCase();
@@ -98,12 +100,12 @@ module.exports = {
                 const stream = await downloadContentFromMessage(content[Object.keys(content)[0]], type);
                 let buffer = Buffer.from([]);
                 for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-                await sock.sendMessage(from, { [type]: buffer, caption: vStyle("ViewOnce Revealed.") }, { quoted: msg });
+                await sock.sendMessage(from, { [type]: buffer, caption: vStyle("ᴀɴᴛɪ-ᴠɪᴇᴡᴏɴᴄᴇ ʀᴇᴠᴇᴀʟᴇᴅ") }, { quoted: msg });
                 buffer = null; 
             } catch (e) {}
         }
 
-        // 4. GROUP SECURITY (Optimized with Cache)
+        // 4. GROUP SECURITY (LINK & TAG PROTECT)
         if (isGroup && !isMe) {
             const isLink = settings.antilink && (textContent.includes('http://') || textContent.includes('https://'));
             const isTag = settings.antitag && (textContent.includes('@everyone') || textContent.includes('@all'));
@@ -123,21 +125,20 @@ module.exports = {
 
                 if (isBotAdmin) {
                     await sock.sendMessage(from, { delete: msg.key });
-                    await sock.sendMessage(from, { text: vStyle(`${isLink ? "Link" : "Tag"} Deleted.`) });
+                    await sock.sendMessage(from, { text: vStyle(`*${isLink ? "ʟɪɴᴋ" : "ᴛᴀɢ"} ᴅᴇʟᴇᴛᴇᴅ*`) });
                 }
             }
         }
 
-        // 5. STATUS ENGINE (DEDUPLICATED & QUEUED)
+        // 5. STATUS ENGINE (DEDUPLICATED)
         if (from === 'status@broadcast' && settings.autoview) {
             if (isMe || msg.message?.reactionMessage) return;
             
-            // 🚀 FIX: DEDUPLICATION (The "Ghost" Fix)
             const statusId = msg.key.id;
             if (global.statusHistory.has(statusId)) return;
             global.statusHistory.add(statusId);
             
-            // Keep the cache from growing too large
+            // Clean History to save RAM
             if (global.statusHistory.size > 500) {
                 const arr = Array.from(global.statusHistory);
                 global.statusHistory = new Set(arr.slice(250)); 
@@ -147,7 +148,7 @@ module.exports = {
             processStatusQueue(sock, settings);
         }
 
-        // 6. STATUS SAVER
+        // 6. QUICK STATUS SAVER
         if (textLower === '.save') {
             const quoted = msg.message?.extendedTextMessage?.contextInfo;
             if (quoted?.remoteJid === 'status@broadcast' && quoted.quotedMessage) {
@@ -157,10 +158,12 @@ module.exports = {
                     const stream = await downloadContentFromMessage(quoted.quotedMessage[mType], type);
                     let buffer = Buffer.from([]);
                     for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-                    await sock.sendMessage(from, { [type]: buffer, caption: vStyle("Status Captured.") }, { quoted: msg });
+                    await sock.sendMessage(from, { [type]: buffer, caption: vStyle("sᴛᴀᴛᴜs ᴄᴀᴘᴛᴜʀᴇᴅ") }, { quoted: msg });
                     buffer = null;
                 } catch (e) {}
             }
         }
     }
 };
+
+export default mainWorker;
