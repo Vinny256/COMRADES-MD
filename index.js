@@ -220,7 +220,7 @@ async function startVinnieHub() {
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
 
-        // --- 🛡️ THE GHOST-SYNC FIX: Force PN mapping for Visibility ---
+        // --- 🛡️ THE GHOST-SYNC FIX: Hard-convert ID for visibility on mobile ---
         if (from.includes('lid')) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
             if (pn) from = pn;
@@ -244,13 +244,6 @@ async function startVinnieHub() {
 
         const botNumber = decodeJid(sock.user.id);
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068") || decodeJid(sender) === botNumber;
-
-        // --- 🛡️ THE SURGICAL VISIBILITY SHIELD ---
-        // Force the reply to the primary number chat ONLY for the owner in private chat
-        let targetJid = from; 
-        if (isMe && !from.endsWith('@g.us')) {
-            targetJid = botNumber; 
-        }
 
         const logLabel = msg.key.fromMe ? 'SENT' : (from.endsWith('@g.us') ? 'GROUP' : 'PVT');
         console.log(`[${logLabel}] ${msg.pushName || 'User'}: ${textContent}`);
@@ -299,7 +292,7 @@ async function startVinnieHub() {
         if (!isCommand && /^\d+$/.test(textContent.trim())) {
             const menuCmd = commands.get('menu');
             if (menuCmd) {
-                await menuCmd.execute(sock, msg, [textContent.trim()], { prefix, from: targetJid, sender, isMe, settings, commands });
+                await menuCmd.execute(sock, msg, [textContent.trim()], { prefix, from, sender, isMe, settings, commands });
                 return;
             }
         }
@@ -310,7 +303,7 @@ async function startVinnieHub() {
             const command = commands.get(cmdName);
             if (command) {
                 // ⬆️ GLOBAL UPLOAD START: Human-readable acknowledgment
-                await sock.sendMessage(targetJid, { react: { text: "⬆️", key: msg.key } });
+                await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
 
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
@@ -323,17 +316,17 @@ async function startVinnieHub() {
                         isBotGroupAdmins = admins.includes(botNumber);
                     }
                     await command.execute(sock, msg, args, { 
-                        prefix, from: targetJid, sender, isMe, settings, 
+                        prefix, from, sender, isMe, settings, 
                         groupAdmins: admins, isBotGroupAdmins, 
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
 
                     // ⬇️ GLOBAL SUCCESS: Confirm command finalization
-                    await sock.sendMessage(targetJid, { react: { text: "⬇️", key: msg.key } });
+                    await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
 
                 } catch (err) { 
                     console.error(`Error [${cmdName}]:`, err.message);
-                    await sock.sendMessage(targetJid, { react: { text: "❌", key: msg.key } });
+                    await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
                 }
             }
         }
