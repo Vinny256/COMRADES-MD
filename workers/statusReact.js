@@ -1,25 +1,44 @@
-const fs = require('fs-extra');
+import fs from 'fs-extra';
+
 const settingsFile = './settings.json';
 
-module.exports = async (sock, msg) => {
-    try {
-        const settings = fs.readJsonSync(settingsFile);
-        if (!settings.status || !settings.status.autoReact) return;
-
-        const from = msg.key.remoteJid;
-
-        if (from === 'status@broadcast') {
-            const finalEmoji = settings.status.emoji || "✨";
-
-            await sock.sendMessage(
-                from, 
-                { react: { text: finalEmoji, key: msg.key } }, 
-                { statusJidList: [msg.key.participant] }
-            );
+/**
+ * V-HUB_WORKER: STATUS_REACTION_ENGINE
+ * Filename: statusReact.js
+ * Logic: Auto-React to Status/Broadcast with customizable emoji.
+ */
+const statusReactWorker = {
+    name: "status_react_worker",
+    async execute(sock, msg) {
+        try {
+            // 1. Settings Validation
+            if (!fs.existsSync(settingsFile)) return;
+            const settings = fs.readJsonSync(settingsFile);
             
-            console.log(`✿ HUB_SYNC ✿ Status React: ${finalEmoji} | User: ${msg.key.participant.split('@')[0]}`);
+            // Logic: Only run if status autoReact is ENABLED
+            if (!settings.status || !settings.status.autoReact) return;
+
+            const from = msg.key.remoteJid;
+
+            // 2. 📱 STATUS DETECTION
+            if (from === 'status@broadcast') {
+                const finalEmoji = settings.status.emoji || "✨";
+                const participant = msg.key.participant || "";
+
+                // --- 🚀 DISPATCH REACTION ---
+                await sock.sendMessage(
+                    from, 
+                    { react: { text: finalEmoji, key: msg.key } }, 
+                    { statusJidList: [participant] }
+                );
+                
+                // Custom Vinnie Hub Logging Style
+                console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sᴛᴀᴛᴜs_ʀᴇᴀᴄᴛ* \n└────────────────────────┈\n\n│ ✨ ᴇᴍᴏᴊɪ: ${finalEmoji}\n│ 👤 ᴜsᴇʀ: ${participant.split('@')[0]}\n│ ✅ sᴛᴀᴛ: ᴅᴇʟɪᴠᴇʀᴇᴅ\n└────────────────────────┈`);
+            }
+        } catch (e) {
+            // Silent catch to keep the message processing loop alive
         }
-    } catch (e) {
-        // Keeps the loop running even if status data is corrupted
     }
 };
+
+export default statusReactWorker;
