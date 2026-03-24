@@ -1,4 +1,10 @@
 import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// ESM fix for __dirname to ensure local assets load correctly
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const menuCommand = {
     name: "menu",
@@ -13,6 +19,8 @@ const menuCommand = {
 
         const hubName = "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ";
         
+        // --- 📂 LOCAL ASSET PATHING ---
+        const localVideoPath = path.join(__dirname, '../../assets/menu.mp4');
         const vinnieVideo = "https://raw.githubusercontent.com/Vinny256/COMRADES-MD/main/assets/menu.mp4"; 
         const vinnieThumb = "https://i.imgur.com/XHUY4VI.jpeg";
         const channelLink = "https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h";
@@ -56,8 +64,10 @@ const menuCommand = {
 
         menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
-        // --- 🚀 NUCLEAR AUDIO-VIDEO ENGINE ---
-        let videoContent = global.vinnieMenuCache ? global.vinnieMenuCache : { url: vinnieVideo };
+        // --- 🚀 NUCLEAR AUDIO-VIDEO ENGINE (STABLE LOCAL) ---
+        // Checks if the video exists locally first, otherwise falls back to URL
+        let videoSource = fs.existsSync(localVideoPath) ? { url: localVideoPath } : { url: vinnieVideo };
+        let videoContent = global.vinnieMenuCache ? global.vinnieMenuCache : videoSource;
 
         const sentMsg = await sock.sendMessage(from, { 
             video: videoContent,
