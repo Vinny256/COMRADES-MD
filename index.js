@@ -13,6 +13,7 @@ import express from 'express';
 const app = express();
 app.use(express.json());
 
+// --- 🛡️ THE CRITICAL NODE v24 HYBRID FIX ---
 import pkg from "@whiskeysockets/baileys";
 const { 
     default: makeWASocket, 
@@ -22,7 +23,7 @@ const {
     Browsers, 
     fetchLatestBaileysVersion, 
     jidDecode 
-} = pkg;
+} = (pkg.default || pkg); // This ensures useMultiFileAuthState is NEVER a function error
 
 import fs from 'fs-extra';
 import path from 'path';
