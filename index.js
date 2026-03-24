@@ -63,6 +63,9 @@ const decodeJid = (jid) => {
 
 const loadedWorkers = [];
 const loadResources = async () => {
+    // --- 🧹 THE CRITICAL CLEANUP: Prevents worker count from exploding (15, 30, 45...) ---
+    loadedWorkers.length = 0; 
+    
     if (fs.existsSync('./workers')) {
         const workerFiles = fs.readdirSync('./workers').filter(f => f.endsWith('.js'));
         for (const file of workerFiles) {
