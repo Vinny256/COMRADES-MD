@@ -220,6 +220,7 @@ async function startVinnieHub() {
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
 
+        // --- 🛡️ THE GHOST-SYNC FIX: Force PN mapping for Visibility ---
         if (from.includes('lid')) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
             if (pn) from = pn;
@@ -234,6 +235,7 @@ async function startVinnieHub() {
             settings = { ...settings, ...savedSettings };
         } catch(e) { }
 
+        // --- 🛡️ ENHANCED SENDER DETECTION ---
         let sender = msg.key.participant || from;
         if (sender.includes('lid')) {
             const senderPn = await sock.signalRepository.lidMapping.getPNForLID(sender);
@@ -241,7 +243,7 @@ async function startVinnieHub() {
         }
 
         const botNumber = decodeJid(sock.user.id);
-        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068");
+        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068") || decodeJid(sender) === botNumber;
 
         const logLabel = msg.key.fromMe ? 'SENT' : (from.endsWith('@g.us') ? 'GROUP' : 'PVT');
         console.log(`[${logLabel}] ${msg.pushName || 'User'}: ${textContent}`);
