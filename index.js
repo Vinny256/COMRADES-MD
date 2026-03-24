@@ -264,10 +264,14 @@ async function startVinnieHub() {
             } catch (e) { }
         }
 
-        if (!msg.key.fromMe && settings.typingMode !== 'off') {
+        const prefix = process.env.PREFIX || ".";
+        const isCommand = textContent.startsWith(prefix);
+
+        // --- 🛡️ THE VIP STABILITY PATCH: Clear the path for commands ---
+        if (!msg.key.fromMe && settings.typingMode !== 'off' && !isCommand) {
             const action = settings.alwaysRecording ? 'recording' : 'composing';
             sock.sendPresenceUpdate(action, from); 
-            setTimeout(() => sock.sendPresenceUpdate('paused', from), 60000);
+            setTimeout(() => sock.sendPresenceUpdate('paused', from), 5000);
         }
 
         if (settings.bluetick) {
@@ -275,9 +279,6 @@ async function startVinnieHub() {
         }
 
         if (settings.mode === 'private' && !isMe) return;
-
-        const prefix = process.env.PREFIX || ".";
-        const isCommand = textContent.startsWith(prefix);
 
         const currentGame = global.gamestate.get(from);
         if (currentGame && !isCommand) {
@@ -301,6 +302,9 @@ async function startVinnieHub() {
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
+                // ⬆️ GLOBAL UPLOAD START: Human-readable acknowledgment
+                await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
+
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
                     let admins = [];
@@ -316,7 +320,14 @@ async function startVinnieHub() {
                         groupAdmins: admins, isBotGroupAdmins, 
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
-                } catch (err) { console.error(`Error [${cmdName}]:`, err.message); }
+
+                    // ⬇️ GLOBAL SUCCESS: Confirm command finalization
+                    await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
+
+                } catch (err) { 
+                    console.error(`Error [${cmdName}]:`, err.message);
+                    await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
+                }
             }
         }
 
