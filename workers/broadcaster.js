@@ -8,8 +8,7 @@ let isConnected = false;
 
 /**
  * V-HUB_WORKER: PROMO_BROADCASTER
- * Cycles through all participating groups every hour to send a promo message.
- * Logic: Tracks messaged groups in MongoDB to prevent duplicate spam within a cycle.
+ * Strictly cycles through groups ONE BY ONE every hour.
  */
 const promoWorker = {
     name: "promo_worker",
@@ -25,13 +24,13 @@ const promoWorker = {
                 const db = client.db("vinnieBot");
                 const broadcastCol = db.collection("broadcast_tracker");
 
-                // 2. Fetch all groups the bot is currently in
+                // 2. Fetch all groups
                 const participatingGroups = await sock.groupFetchAllParticipating();
                 const groups = Object.keys(participatingGroups);
                 
                 if (groups.length === 0) return;
 
-                // 3. Identification: Find groups we haven't messaged in this cycle
+                // 3. Identification: Find groups NOT messaged in the current cycle
                 const tracked = await broadcastCol.find({}).toArray();
                 const messagedJids = tracked.map(t => t.jid);
                 const remainingGroups = groups.filter(jid => !messagedJids.includes(jid));
@@ -39,24 +38,48 @@ const promoWorker = {
                 // 4. Reset cycle if all groups have been reached
                 if (remainingGroups.length === 0) {
                     await broadcastCol.deleteMany({});
-                    console.log(`┌─『 ᴠ-ʜᴜʙ_ʙʀᴏᴀᴅᴄᴀsᴛ 』\n│ 🔄 *ᴄʏᴄʟᴇ_ʀᴇsᴇᴛ*\n│ ⚙ ʟᴏɢ: ᴀʟʟ_ɢʀᴏᴜᴘs_ʀᴇᴀᴄʜᴇᴅ\n└────────────────────────┈`);
-                    return; 
+                    console.log(`[PROMO_CYCLE] All groups reached. Resetting tracker...`);
+                    // We don't return here; we re-filter to pick the first group of the new cycle
+                    remainingGroups.push(...groups);
                 }
 
-                // 5. Targeting: Pick one random group from the remaining list
-                const targetJid = remainingGroups[Math.floor(Math.random() * remainingGroups.length)];
-                const groupName = participatingGroups[targetJid]?.subject || "ᴛʜɪs_ɢʀᴏᴜᴘ";
+                // 5. Targeting: Pick ONLY ONE group (the first one available)
+                const targetJid = remainingGroups[0]; 
+                const groupName = participatingGroups[targetJid]?.subject || "this group";
 
-                // 6. THE VHUB PROMOTION MESSAGE (PRESERVED)
+                // 6. THE REAL PROMOTION MESSAGE (Human-Style)
                 const prefix = process.env.PREFIX || ".";
-                const promoMsg = `┌────────────────────────┈\n│      *ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ* \n└────────────────────────┈\n\n┌─『 sʏsᴛᴇᴍ_sᴛᴀᴛᴜs 』\n│ 🤖 *sᴛᴀᴛᴜs:* ᴀᴄᴛɪᴠᴇ & ᴏɴʟɪɴᴇ\n│ 🚀 *ᴘʀᴇғɪx:* ${prefix}\n│ 📑 *ᴄᴏᴍᴍᴀɴᴅs:* 𝟻𝟶+ ᴘʟᴜs\n│ 🛠️ *ғᴇᴀᴛᴜʀᴇs:* ᴀɴᴛɪ-ʙᴏᴛ, ɢᴀᴍᴇs,\n│    ᴀɴᴛɪᴅᴇʟᴇᴛᴇ, & ᴇᴄᴏɴᴏᴍʏ.\n└────────────────────────┈\n\n💡 *ᴛɪᴘ:* ᴛʏᴘᴇ *${prefix}menu* ᴛᴏ sᴇᴇ\nᴇᴠᴇʀʏᴛʜɪɴɢ ɪ ᴄᴀɴ ᴅᴏ!\n\n_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠ-ʜᴜʙ_`;
+                const promoMsg = `🚀 *Upgrade Your WhatsApp Experience with Vinnie Digital Hub!* 🚀\n\n` +
+                    `Looking for the ultimate bot? We've got you covered! 🛠️✨\n\n` +
+                    `🔥 *What I Can Do:* \n` +
+                    `✅ Anti-Bot & Anti-Link Protection 🛡️\n` +
+                    `✅ Fun Games & Economy System 🎮💰\n` +
+                    `✅ Anti-Delete & Status Saver 📥\n` +
+                    `✅ Full-HD Media Downloads (YT/FB/IG) 🎥\n` +
+                    `✅ AI Chatbot & Image Generation 🤖🎨\n\n` +
+                    `💡 *Start Now:* Type *${prefix}menu* to explore 98+ amazing features!\n\n` +
+                    `👉 *Install the Bot Here:* https://comrades-md.gathuo.app\n\n` +
+                    `Join the revolution today! 🌊 #VinnieDigital #InfiniteImpact`;
 
-                await sock.sendMessage(targetJid, { text: promoMsg });
+                // 7. Send to the ONE target group
+                await sock.sendMessage(targetJid, { 
+                    text: promoMsg,
+                    contextInfo: {
+                        externalAdReply: {
+                            title: "Vinnie Digital Hub",
+                            body: "The Most Powerful WhatsApp Bot in Kenya 🇰🇪",
+                            thumbnailUrl: "https://i.imgur.com/XHUY4VI.jpeg",
+                            sourceUrl: "https://comrades-md.gathuo.app",
+                            renderLargerThumbnail: true,
+                            showAdAttribution: true
+                        }
+                    }
+                });
                 
-                // 7. Sync: Mark as messaged in the database
+                // 8. Sync: Mark as messaged so it's skipped for the rest of the hour/cycle
                 await broadcastCol.insertOne({ jid: targetJid, timestamp: new Date() });
                 
-                console.log(`┌─『 ᴠ-ʜᴜʙ_ʙʀᴏᴀᴅᴄᴀsᴛ 』\n│ 📡 ᴘʀᴏᴍᴏ_sᴇɴᴛ: ${groupName}\n│ ✅ ᴛᴀʀɢᴇᴛ: ${targetJid}\n└────────────────────────┈`);
+                console.log(`[PROMO_SENT] Delivered to: ${groupName} (${targetJid})`);
 
             } catch (e) {
                 console.error("🛰️ [BROADCASTER_ERR]:", e.message);
@@ -64,9 +87,9 @@ const promoWorker = {
         }, 3600000); 
     },
 
-    // Standard execute for the index.js loader
     async execute(sock) {
-        this.startAutoPromotion(sock);
+        // Delay initial start by 10 seconds to let the socket stabilize
+        setTimeout(() => this.startAutoPromotion(sock), 10000);
     }
 };
 
