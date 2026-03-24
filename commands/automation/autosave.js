@@ -32,7 +32,7 @@ const autosaveCommand = {
             onMsg += `└────────────────────────┈\n\n`;
             onMsg += `┌─『 sʏsᴛᴇᴍ sᴛᴀᴛᴜs 』\n`;
             onMsg += `│ ⚙ *ᴍᴏᴅᴇ:* ᴀᴄᴛɪᴠᴇ ✦\n`;
-            offMsg += `│ ⚙ *ɪɴғᴏ:* sᴛᴀᴛᴜs sᴀᴠɪɴɢ ʀᴇsᴜᴍᴇᴅ\n`;
+            onMsg += `│ ⚙ *ɪɴғᴏ:* sᴛᴀᴛᴜs sᴀᴠɪɴɢ ʀᴇsᴜᴍᴇᴅ\n`; // Fixed: changed offMsg to onMsg
             onMsg += `└────────────────────────┈\n\n`;
             onMsg += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
             
