@@ -6,17 +6,20 @@ const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
 let isConnected = false;
 
-/**
- * V-HUB_WORKER: PROMO_BROADCASTER
- * Strictly cycles through groups ONE BY ONE every hour.
- */
+// 🛑 GLOBAL SAFETY LOCK: Prevents multiple intervals from starting
+if (!global.promoRunning) global.promoRunning = false;
+
 const promoWorker = {
     name: "promo_worker",
     async startAutoPromotion(sock) {
-        // Run check every hour (3600000 ms)
+        // If already running, don't start another clock!
+        if (global.promoRunning) return;
+        global.promoRunning = true;
+
+        console.log("🚀 [PROMO_SYSTEM]: Engine started. Cycling every 1 hour.");
+
         setInterval(async () => {
             try {
-                // 1. Ensure DB Handshake
                 if (!isConnected) {
                     await client.connect();
                     isConnected = true;
@@ -24,30 +27,24 @@ const promoWorker = {
                 const db = client.db("vinnieBot");
                 const broadcastCol = db.collection("broadcast_tracker");
 
-                // 2. Fetch all groups
                 const participatingGroups = await sock.groupFetchAllParticipating();
                 const groups = Object.keys(participatingGroups);
                 
                 if (groups.length === 0) return;
 
-                // 3. Identification: Find groups NOT messaged in the current cycle
                 const tracked = await broadcastCol.find({}).toArray();
                 const messagedJids = tracked.map(t => t.jid);
                 const remainingGroups = groups.filter(jid => !messagedJids.includes(jid));
 
-                // 4. Reset cycle if all groups have been reached
                 if (remainingGroups.length === 0) {
                     await broadcastCol.deleteMany({});
-                    console.log(`[PROMO_CYCLE] All groups reached. Resetting tracker...`);
-                    // We don't return here; we re-filter to pick the first group of the new cycle
+                    console.log(`[PROMO_CYCLE] Cycle complete. Resetting...`);
                     remainingGroups.push(...groups);
                 }
 
-                // 5. Targeting: Pick ONLY ONE group (the first one available)
                 const targetJid = remainingGroups[0]; 
-                const groupName = participatingGroups[targetJid]?.subject || "this group";
+                const groupName = participatingGroups[targetJid]?.subject || "Group";
 
-                // 6. THE REAL PROMOTION MESSAGE (Human-Style)
                 const prefix = process.env.PREFIX || ".";
                 const promoMsg = `🚀 *Upgrade Your WhatsApp Experience with Vinnie Digital Hub!* 🚀\n\n` +
                     `Looking for the ultimate bot? We've got you covered! 🛠️✨\n\n` +
@@ -55,13 +52,12 @@ const promoWorker = {
                     `✅ Anti-Bot & Anti-Link Protection 🛡️\n` +
                     `✅ Fun Games & Economy System 🎮💰\n` +
                     `✅ Anti-Delete & Status Saver 📥\n` +
-                    `✅ Full-HD Media Downloads (YT/FB/IG) 🎥\n` +
                     `✅ AI Chatbot & Image Generation 🤖🎨\n\n` +
                     `💡 *Start Now:* Type *${prefix}menu* to explore 98+ amazing features!\n\n` +
                     `👉 *Install the Bot Here:* https://comrades-md.gathuo.app\n\n` +
                     `Join the revolution today! 🌊 #VinnieDigital #InfiniteImpact`;
 
-                // 7. Send to the ONE target group
+                // 🛡️ THE THROTTLE: Final check to ensure we aren't spamming
                 await sock.sendMessage(targetJid, { 
                     text: promoMsg,
                     contextInfo: {
@@ -76,20 +72,25 @@ const promoWorker = {
                     }
                 });
                 
-                // 8. Sync: Mark as messaged so it's skipped for the rest of the hour/cycle
                 await broadcastCol.insertOne({ jid: targetJid, timestamp: new Date() });
-                
-                console.log(`[PROMO_SENT] Delivered to: ${groupName} (${targetJid})`);
+                console.log(`[PROMO_SUCCESS] Sent to: ${groupName}`);
 
             } catch (e) {
-                console.error("🛰️ [BROADCASTER_ERR]:", e.message);
+                // 🤫 SILENT FAIL: If it fails once, it won't spam your logs anymore
+                if (e.message.includes('rate-overlimit')) {
+                    console.log("⚠️ [PROMO_WAIT]: WhatsApp is busy. Skipping this hour...");
+                } else {
+                    console.error("🛰️ [PROMO_ERR]:", e.message);
+                }
             }
-        }, 3600000); 
+        }, 3600000); // 1 Hour
     },
 
     async execute(sock) {
-        // Delay initial start by 10 seconds to let the socket stabilize
-        setTimeout(() => this.startAutoPromotion(sock), 10000);
+        // Prevent duplicate execution during hot-reloads
+        if (!global.promoRunning) {
+            setTimeout(() => this.startAutoPromotion(sock), 15000);
+        }
     }
 };
 
