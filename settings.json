@@ -1,11 +1,13 @@
 {
   "autoview": true,
   "autoreact": true,
+  "bluetick": true,
   "statusEmoji": "✨",
   "antilink": true,
   "autobio": true,
   "antiviewonce": true,
   "typing": false,
+  "typingMode": "all",
   "recording": true,
   "antidelete": true,
   "antimention": false,
