@@ -1,12 +1,11 @@
 import fs from 'fs-extra';
-import { delay } from "@whiskeysockets/baileys";
 
 const settingsFile = './settings.json';
 
 /**
  * V-HUB_WORKER: TYPING_ENGINE (PRO)
  * Filename: typing.js
- * Features: 30s Immersive Typing | Command Bypass | Scope Filtering.
+ * Features: 30s Immersive Typing | Command Bypass | Non-Blocking logic.
  */
 const typingWorker = {
     name: "typing_worker",
@@ -18,15 +17,13 @@ const typingWorker = {
             // 1. 🛡️ BASIC FILTERS
             if (!from || isMe || from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-            // 2. ⚡ THE COMMAND BYPASS (CRITICAL)
-            // If the message starts with your prefix, we exit NOW so the command can run.
+            // 2. ⚡ THE COMMAND BYPASS
             const mtype = Object.keys(msg.message)[0];
             const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
             const prefix = process.env.PREFIX || ".";
-            
             if (textContent.startsWith(prefix)) return;
 
-            // 3. SCOPE FILTERS (all, groups, inbox, or off)
+            // 3. SCOPE FILTERS
             const isGroup = from.endsWith('@g.us');
             const isInbox = from.endsWith('@s.whatsapp.net');
             const mode = settings.typingMode || 'off'; 
@@ -38,23 +35,25 @@ const typingWorker = {
 
             if (!shouldType) return;
 
-            // --- 🚥 30-SECOND IMMERSIVE ENGINE ---
+            // --- 🚥 30-SECOND NON-BLOCKING ENGINE ---
             
-            // A. Start "composing" (Ghost Typing)
+            // A. Start typing status IMMEDIATELY
             await sock.sendPresenceUpdate('composing', from);
             
             console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│ ✍️ sᴛᴀᴛᴜs: ᴛʏᴘɪɴɢ (30s)\n│ 👤 ᴛᴀʀɢᴇᴛ: ${from.split('@')[0]}\n│ ⚙ ᴍᴏᴅᴇ: ɪᴍᴍᴇʀsɪᴠᴇ\n└────────────────────────┈`);
             
-            // B. THE 30-SECOND WAIT
-            // This happens in the background while your AI worker prepares the reply.
-            await delay(30000);
-            
-            // C. Reset to Paused
-            await sock.sendPresenceUpdate('paused', from);
+            // B. THE 30-SECOND WAIT (Non-Blocking)
+            // By NOT using 'await' here, this worker finishes NOW.
+            // The 'paused' update will happen 30s later in the background.
+            setTimeout(async () => {
+                try {
+                    await sock.sendPresenceUpdate('paused', from);
+                } catch (e) { }
+            }, 30000);
 
-        } catch (e) {
-            // Safe catch
-        }
+
+
+        } catch (e) { }
     }
 };
 
