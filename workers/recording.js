@@ -1,12 +1,10 @@
 import fs from 'fs-extra';
-import { delay } from "@whiskeysockets/baileys";
 
 const settingsFile = './settings.json';
 
 /**
  * V-HUB_WORKER: RECORDING_ENGINE (PRO)
  * Filename: recording.js
- * Logic: Immersive Recording | Command Bypass | Conflict Shield.
  */
 const recordingWorker = {
     name: "recording_worker",
@@ -15,16 +13,16 @@ const recordingWorker = {
             const from = msg.key.remoteJid;
             const isMe = msg.key.fromMe;
 
-            // 1. 🛡️ BASIC FILTERS
+            // 1. 🛡️ FILTERS
             if (!from || isMe || from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-            // 2. ⚡ THE COMMAND BYPASS
+            // 2. ⚡ COMMAND BYPASS
             const mtype = Object.keys(msg.message)[0];
             const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
             const prefix = process.env.PREFIX || ".";
             if (textContent.startsWith(prefix)) return;
 
-            // 3. ⚙️ SETTINGS CHECK
+            // 3. ⚙️ SETTINGS & SCOPE
             if (!settings.alwaysRecording) return;
 
             const isGroup = from.endsWith('@g.us');
@@ -38,25 +36,24 @@ const recordingWorker = {
 
             if (!shouldProceed) return;
 
-            // --- 🚥 30-SECOND RECORDING ENGINE ---
+            // --- 🚥 30-SECOND NON-BLOCKING ENGINE ---
             
-            // A. Subscribe to presence to ensure the update hits the target
+            // A. Subscribe & Start Recording status
             await sock.presenceSubscribe(from);
-            
-            // B. Start "recording" status
             await sock.sendPresenceUpdate('recording', from);
             
             console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│ 🎙️ sᴛᴀᴛᴜs: ʀᴇᴄᴏʀᴅɪɴɢ (30s)\n│ 👤 ᴛᴀʀɢᴇᴛ: ${from.split('@')[0]}\n│ ⚙ ᴍᴏᴅᴇ: ${recordMode.toUpperCase()}\n└────────────────────────┈`);
             
-            // C. IMMERSIVE DELAY (Matched to your typing duration)
-            await delay(30000);
-            
-            // D. Reset to Paused
-            await sock.sendPresenceUpdate('paused', from);
+            // B. THE 30-SECOND "GHOST" TIMER
+            // By NOT using 'await', the worker finishes in 0.1s.
+            // The blue tick can now fire instantly!
+            setTimeout(async () => {
+                try {
+                    await sock.sendPresenceUpdate('paused', from);
+                } catch (e) { }
+            }, 30000);
 
-        } catch (e) {
-            // Safe catch for socket stability
-        }
+        } catch (e) { }
     }
 };
 
