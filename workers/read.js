@@ -3,45 +3,42 @@ import fs from 'fs-extra';
 const settingsFile = './settings.json';
 
 /**
- * V-HUB_WORKER: READ_ENGINE
+ * V-HUB_WORKER: BLUE_TICK_ENGINE
  * Filename: read.js
- * Handles Startup Grace Protection & Auto-View.
+ * Logic: Marks regular messages as read (Blue Ticks).
  */
 const readWorker = {
     name: "read_worker",
     async execute(sock, msg, settings) {
         try {
-            // 1. Operational Check
-            if (!settings.autoview) return;
+            // 1. Only run if Blue Tick is enabled
+            if (!settings.bluetick) return;
 
             const from = msg.key.remoteJid;
-            if (!from) return;
+            
+            // 🛑 FILTER: Skip statuses and newsletters
+            // This ensures this worker stays out of the way of 'autoveiw.js'
+            if (!from || from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-            // 2. ⏳ STARTUP GRACE PROTECTION
-            // Logic: Ignore messages older than the current bot session to prevent Bad MAC loops.
+            // 2. ⏳ STARTUP GRACE (Bad MAC Shield)
             const messageTimestamp = (msg.messageTimestamp * 1000) || Date.now();
             const botStartTime = global.connectionOpenTime || Date.now();
-            
             if (messageTimestamp < botStartTime) return;
 
             // 3. 🛡️ LOCK CHECK
             if (global.lockedContacts && global.lockedContacts.has(from)) return;
 
-            // 4. 🚥 VIEW HANDSHAKE
+            // 4. 🔵 THE ACTION
             await sock.readMessages([msg.key]);
 
             // 5. 📱 LOGGING
             const participant = msg.key.participant || from;
             const name = msg.pushName || participant.split('@')[0];
-
-            if (from === 'status@broadcast') {
-                console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sᴛᴀᴛᴜs_ᴠɪᴇᴡ* \n└────────────────────────┈\n\n│ 👤 ғʀᴏᴍ: ${name}\n│ ✅ sᴛᴀᴛ: sᴜᴄᴄᴇssғᴜʟ\n└────────────────────────┈`);
-            } else {
-                console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_ᴍsɢ_ʀᴇᴀᴅ* \n└────────────────────────┈\n\n│ 👤 ғʀᴏᴍ: ${name}\n│ ✅ sᴛᴀᴛ: ᴀᴄᴛɪᴠᴇ\n└────────────────────────┈`);
-            }
+            
+            console.log(`[V-HUB] Blue Tick Sent: ${name} 🔵`);
 
         } catch (e) {
-            // Silent catch to prevent dyno crashes
+            // Silent catch to keep the engine stable
         }
     }
 };
