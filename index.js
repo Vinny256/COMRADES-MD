@@ -46,7 +46,6 @@ const silentLogger = pino({ level: 'silent' });
 const commands = new Map();
 const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
-const statusCache = new Set(); 
 
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.activeGames) global.activeGames = new Map(); 
@@ -63,7 +62,7 @@ const decodeJid = (jid) => {
 
 const loadedWorkers = [];
 const loadResources = async () => {
-    // --- 🧹 THE CRITICAL CLEANUP: Prevents worker count from exploding (15, 30, 45...) ---
+    // --- 🧹 THE CRITICAL CLEANUP ---
     loadedWorkers.length = 0; 
     
     if (fs.existsSync('./workers')) {
@@ -103,6 +102,7 @@ const loadResources = async () => {
 
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
+global.dbClient = client; // 🚀 Shared globally for all workers
 
 global.saveSettings = async () => {
     try {
@@ -145,7 +145,6 @@ async function startVinnieHub() {
         }
     }
 
-    // --- 🚀 THE LOGIC YOU PRESERVED ---
     const { state, saveCreds } = await useMultiFileAuthState(authFolder);
     const { version } = await fetchLatestBaileysVersion();
     
@@ -220,7 +219,6 @@ async function startVinnieHub() {
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
 
-        // --- 🛡️ THE GHOST-SYNC FIX: Hard-convert ID for visibility on mobile ---
         if (from.includes('lid')) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
             if (pn) from = pn;
@@ -235,7 +233,6 @@ async function startVinnieHub() {
             settings = { ...settings, ...savedSettings };
         } catch(e) { }
 
-        // --- 🛡️ ENHANCED SENDER DETECTION ---
         let sender = msg.key.participant || from;
         if (sender.includes('lid')) {
             const senderPn = await sock.signalRepository.lidMapping.getPNForLID(sender);
@@ -245,55 +242,8 @@ async function startVinnieHub() {
         const botNumber = decodeJid(sock.user.id);
         const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068") || decodeJid(sender) === botNumber;
 
-        const logLabel = msg.key.fromMe ? 'SENT' : (from.endsWith('@g.us') ? 'GROUP' : 'PVT');
-        console.log(`[${logLabel}] ${msg.pushName || 'User'}: ${textContent}`);
-
-        if (!msg.key.fromMe) {
-            client.db("vinnieBot").collection("logs").insertOne({
-                name: msg.pushName || "User", phone: sender.split('@')[0],
-                message: textContent, group: from.endsWith('@g.us') ? "Group" : "Private", timestamp: new Date()
-            }).catch(() => {});
-        }
-
-        if (from === 'status@broadcast') {
-            // UNIQUE KEY: ID + Participant ensures one reaction per specific status upload
-            const statusId = `${msg.key.id}_${msg.key.participant}`;
-            if (statusCache.has(statusId)) return;
-            statusCache.add(statusId);
-
-            // Auto-Clean cache to prevent RAM leakage
-            if (statusCache.size > 500) {
-                const first = statusCache.values().next().value;
-                statusCache.delete(first);
-            }
-
-            try {
-                // View Logic
-                if (settings.autoview) {
-                    await sock.readMessages([msg.key]);
-                }
-
-                // React Logic
-                if (settings.autoreact) {
-                    const reactionEmoji = settings.statusEmoji || '✨';
-                    await sock.sendMessage(from, { react: { text: reactionEmoji, key: msg.key } }, { statusJidList: [msg.key.participant] });
-                }
-            } catch (e) { }
-        }
-
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
-
-        // --- 🛡️ THE VIP STABILITY PATCH: Clear the path for commands ---
-        if (!msg.key.fromMe && settings.typingMode !== 'off' && !isCommand) {
-            const action = settings.alwaysRecording ? 'recording' : 'composing';
-            sock.sendPresenceUpdate(action, from); 
-            setTimeout(() => sock.sendPresenceUpdate('paused', from), 5000);
-        }
-
-        if (settings.bluetick) {
-            sock.readMessages([msg.key]);
-        }
 
         if (settings.mode === 'private' && !isMe) return;
 
@@ -319,9 +269,7 @@ async function startVinnieHub() {
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
-                // ⬆️ GLOBAL UPLOAD START: Human-readable acknowledgment
                 await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
-
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
                     let admins = [];
@@ -337,10 +285,7 @@ async function startVinnieHub() {
                         groupAdmins: admins, isBotGroupAdmins, 
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
-
-                    // ⬇️ GLOBAL SUCCESS: Confirm command finalization
                     await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
-
                 } catch (err) { 
                     console.error(`Error [${cmdName}]:`, err.message);
                     await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
@@ -348,12 +293,10 @@ async function startVinnieHub() {
             }
         }
 
+        // --- 🚀 THE WORKER HUB: Every action is processed here ---
         loadedWorkers.forEach(worker => {
             try {
                 if (worker && typeof worker.execute === 'function') {
-                    if (worker.name === 'ai_reply_worker' && !msg.key.fromMe && !isCommand) {
-                        console.log(`✿ HUB_SYNC ✿ Processing AI Reply for: ${from.split('@')[0]}`);
-                    }
                     worker.execute(sock, msg, settings).catch(() => {});
                 } 
                 else if (typeof worker === 'function') {
