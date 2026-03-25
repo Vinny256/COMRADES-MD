@@ -4,50 +4,58 @@ import { delay } from "@whiskeysockets/baileys";
 const settingsFile = './settings.json';
 
 /**
- * V-HUB_WORKER: RECORDING_ENGINE
+ * V-HUB_WORKER: RECORDING_ENGINE (PRO)
  * Filename: recording.js
- * Logic: Always Recording | Target Filters | 10s Timer.
+ * Logic: Immersive Recording | Command Bypass | Conflict Shield.
  */
 const recordingWorker = {
     name: "recording_worker",
     async execute(sock, msg, settings) {
         try {
-            // --- 🛡️ YOUR LOGIC PRESERVED ---
-            // Only run if recording is ENABLED in your settings
-            if (!settings.alwaysRecording) return;
-
             const from = msg.key.remoteJid;
             const isMe = msg.key.fromMe;
+
+            // 1. 🛡️ BASIC FILTERS
+            if (!from || isMe || from === 'status@broadcast' || from.endsWith('@newsletter')) return;
+
+            // 2. ⚡ THE COMMAND BYPASS
+            const mtype = Object.keys(msg.message)[0];
+            const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
+            const prefix = process.env.PREFIX || ".";
+            if (textContent.startsWith(prefix)) return;
+
+            // 3. ⚙️ SETTINGS CHECK
+            if (!settings.alwaysRecording) return;
+
             const isGroup = from.endsWith('@g.us');
             const isInbox = from.endsWith('@s.whatsapp.net');
-
-            // Don't show "Recording" to yourself or on status
-            if (isMe || from === 'status@broadcast') return;
-
-            // --- 🎯 TARGET FILTERS ---
             const recordMode = settings.recordMode || 'all'; 
+            
             let shouldProceed = false;
-
             if (recordMode === 'all') shouldProceed = true;
-            if (recordMode === 'groups' && isGroup) shouldProceed = true;
-            if (recordMode === 'inbox' && isInbox) shouldProceed = true;
+            else if (recordMode === 'groups' && isGroup) shouldProceed = true;
+            else if (recordMode === 'inbox' && isInbox) shouldProceed = true;
 
             if (!shouldProceed) return;
 
-            // --- 🚥 QUEUED PRESENCE ENGINE ---
+            // --- 🚥 30-SECOND RECORDING ENGINE ---
+            
+            // A. Subscribe to presence to ensure the update hits the target
             await sock.presenceSubscribe(from);
+            
+            // B. Start "recording" status
             await sock.sendPresenceUpdate('recording', from);
             
-            // Custom Vinnie Logging Style
-            console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│ 🎙️ sᴛᴀᴛᴜs: ʀᴇᴄᴏʀᴅɪɴɢ\n│ 👤 ᴛᴀʀɢᴇᴛ: ${from.split('@')[0]}\n│ ⚙ ᴍᴏᴅᴇ: ${recordMode}\n└────────────────────────┈`);
+            console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│ 🎙️ sᴛᴀᴛᴜs: ʀᴇᴄᴏʀᴅɪɴɢ (30s)\n│ 👤 ᴛᴀʀɢᴇᴛ: ${from.split('@')[0]}\n│ ⚙ ᴍᴏᴅᴇ: ${recordMode.toUpperCase()}\n└────────────────────────┈`);
             
-            // Updated to 10 seconds per your request
-            // Using Baileys native delay for memory safety on Heroku
-            await delay(10000);
+            // C. IMMERSIVE DELAY (Matched to your typing duration)
+            await delay(30000);
+            
+            // D. Reset to Paused
             await sock.sendPresenceUpdate('paused', from);
 
         } catch (e) {
-            // Keeps the queue moving even if network drops
+            // Safe catch for socket stability
         }
     }
 };
