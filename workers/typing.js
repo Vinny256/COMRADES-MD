@@ -4,9 +4,9 @@ import { delay } from "@whiskeysockets/baileys";
 const settingsFile = './settings.json';
 
 /**
- * V-HUB_WORKER: TYPING_ENGINE
+ * V-HUB_WORKER: TYPING_ENGINE (PRO)
  * Filename: typing.js
- * Logic: Ghost Typing | Scope Filters | 10s Human Jitter.
+ * Features: 30s Immersive Typing | Command Bypass | Scope Filtering.
  */
 const typingWorker = {
     name: "typing_worker",
@@ -15,40 +15,45 @@ const typingWorker = {
             const from = msg.key.remoteJid;
             const isMe = msg.key.fromMe;
 
-            // 1. Basic Filters: Skip self, status updates, and newsletters
+            // 1. 🛡️ BASIC FILTERS
             if (!from || isMe || from === 'status@broadcast' || from.endsWith('@newsletter')) return;
 
-            // 2. Determine Message Source
+            // 2. ⚡ THE COMMAND BYPASS (CRITICAL)
+            // If the message starts with your prefix, we exit NOW so the command can run.
+            const mtype = Object.keys(msg.message)[0];
+            const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
+            const prefix = process.env.PREFIX || ".";
+            
+            if (textContent.startsWith(prefix)) return;
+
+            // 3. SCOPE FILTERS (all, groups, inbox, or off)
             const isGroup = from.endsWith('@g.us');
             const isInbox = from.endsWith('@s.whatsapp.net');
-
-            // 3. Check Custom Scope (all, groups, inbox, or off)
             const mode = settings.typingMode || 'off'; 
+            
             let shouldType = false;
-
             if (mode === 'all') shouldType = true;
             else if (mode === 'groups' && isGroup) shouldType = true;
             else if (mode === 'inbox' && isInbox) shouldType = true;
 
             if (!shouldType) return;
 
-            // --- 🚥 10-SECOND TYPING ENGINE ---
+            // --- 🚥 30-SECOND IMMERSIVE ENGINE ---
             
-            // A. Start the "composing" status (Ghost Typing)
+            // A. Start "composing" (Ghost Typing)
             await sock.sendPresenceUpdate('composing', from);
             
-            // Custom Vinnie Hub Logging Style
-            console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│ ✍️ sᴛᴀᴛᴜs: ᴛʏᴘɪɴɢ\n│ 👤 ᴛᴀʀɢᴇᴛ: ${from.split('@')[0]}\n│ ⚙ sᴄᴏᴘᴇ: ${mode.toUpperCase()}\n└────────────────────────┈`);
+            console.log(`┌────────────────────────┈\n│      *ᴠ-ʜᴜʙ_sʏsᴛᴇᴍ* \n└────────────────────────┈\n\n│ ✍️ sᴛᴀᴛᴜs: ᴛʏᴘɪɴɢ (30s)\n│ 👤 ᴛᴀʀɢᴇᴛ: ${from.split('@')[0]}\n│ ⚙ ᴍᴏᴅᴇ: ɪᴍᴍᴇʀsɪᴠᴇ\n└────────────────────────┈`);
             
-            // B. THE 10-SECOND WAIT (The "Human Effect")
-            // Using Baileys native delay for better event-loop handling
-            await delay(10000);
+            // B. THE 30-SECOND WAIT
+            // This happens in the background while your AI worker prepares the reply.
+            await delay(30000);
             
             // C. Reset to Paused
             await sock.sendPresenceUpdate('paused', from);
 
         } catch (e) {
-            // Silently catch errors to keep the message queue flowing
+            // Safe catch
         }
     }
 };
