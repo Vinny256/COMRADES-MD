@@ -264,7 +264,7 @@ async function startVinnieHub() {
     sock.ev.on('presence.update', (p) => console.log("PRESENCE UPDATE:", p));
     sock.ev.on('chats.update', (c) => console.log("CHATS UPDATE:", c));
     sock.ev.on('contacts.update', (c) => console.log("CONTACTS UPDATE:", c));
-});
+}
 
 app.post('/v_hub_notify', async (req, res) => {
     console.log("VHUB_NOTIFY HIT:", req.body);
