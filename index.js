@@ -45,6 +45,9 @@ const commands = new Map();
 const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 
+// ✅ FIX 1: In-memory message store for getMessage handler
+const messageStore = new Map();
+
 if (!global.healingRetries) global.healingRetries = new Map(); 
 if (!global.activeGames) global.activeGames = new Map(); 
 if (!global.gamestate) global.gamestate = new Map(); 
@@ -151,7 +154,13 @@ async function startVinnieHub() {
         logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
         markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
         syncFullHistory: true, // 🔄 Forced sync with primary phone
-        shouldSyncLidPnMappings: true 
+        shouldSyncLidPnMappings: true,
+        // ✅ FIX 2: getMessage handler — critical for linked device message visibility
+        getMessage: async (key) => {
+            const stored = messageStore.get(`${key.remoteJid}-${key.id}`);
+            if (stored) return stored;
+            return { conversation: '' };
+        }
     });
 
     sock.ev.on('creds.update', async () => {
@@ -224,6 +233,13 @@ async function startVinnieHub() {
         let msg = messages[0];
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
+
+        // ✅ FIX 3: Cache every message for getMessage handler (fixes linked device visibility)
+        for (const m of messages) {
+            if (m.message) {
+                messageStore.set(`${m.key.remoteJid}-${m.key.id}`, m.message);
+            }
+        }
 
         if (from.includes('lid')) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
@@ -298,6 +314,9 @@ async function startVinnieHub() {
                     
                     // 🔄 Sync Poke: Forces phone app to re-fetch and show the bot's message
                     await sock.sendPresenceUpdate('available', from);
+
+                    // ✅ FIX 4: Mark messages as read so they show properly on both devices
+                    await sock.readMessages([msg.key]);
 
                     await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
                 } catch (err) { 
