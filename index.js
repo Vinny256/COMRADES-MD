@@ -148,12 +148,9 @@ async function startVinnieHub() {
     sock = makeWASocket({
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, 
-        logger: silentLogger, 
-        browser: Browsers.ubuntu("Chrome"),
-        markOnlineOnConnect: true, 
-        msgRetryCounterCache, 
-        keepAliveIntervalMs: 30000,
-        syncFullHistory: true, // 🔄 Forces full sync with primary phone
+        logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
+        markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
+        syncFullHistory: true, // 🔄 Forced sync
         shouldSyncLidPnMappings: true 
     });
 
@@ -174,7 +171,7 @@ async function startVinnieHub() {
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
             
-            // 🛡️ FIXED: Safe Sync Poke to avoid the remoteJid error
+            // 🛡️ Safe sync poke to trigger phone download
             if (sock.user?.id) {
                 sock.ev.emit('presence.update', { id: sock.user.id, presences: { [sock.user.id]: { lastKnownPresence: 'available' } } });
             }
@@ -221,7 +218,7 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        // 🛠️ ALLOW 'append' to see your own messages sent by bot
+        // 🛠️ ALLOW 'append' for internal device syncing
         if (type !== 'notify' && type !== 'append') return;
         
         let msg = messages[0];
@@ -278,7 +275,6 @@ async function startVinnieHub() {
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
-                // Force reactions to show up by letting 'append' process them
                 await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
                 
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
@@ -297,6 +293,9 @@ async function startVinnieHub() {
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
                     
+                    // 🔄 Sync Poke: Forces the phone app to re-fetch the chat thread
+                    await sock.sendPresenceUpdate('available', from);
+
                     await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
                 } catch (err) { 
                     console.error(`Error [${cmdName}]:`, err.message);
