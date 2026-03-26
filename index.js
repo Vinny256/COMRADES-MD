@@ -1,19 +1,10 @@
 // --- THE GLOBAL BUSINESS SHIELD ---
-const originalWrite = process.stdout.write;
-process.stdout.write = function (chunk, encoding, callback) {
-    const data = chunk.toString();
-    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || data.includes('Decrypted message') || data.includes('MessageCounterError')) && !data.includes('🚀') && !data.includes('✅')) {
-        return; 
-    }
-    return originalWrite.call(process.stdout, chunk, encoding, callback);
-};
-
+// Removed silent filter to log everything
 import 'dotenv/config';
 import express from 'express';
 const app = express();
 app.use(express.json());
 
-// --- 🛡️ THE CRITICAL "BRIDGE" FIX FOR RC.9 ESM ---
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const baileys = require("@whiskeysockets/baileys");
@@ -40,12 +31,12 @@ import NodeCache from "node-cache";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const silentLogger = pino({ level: 'silent' });
+const logger = pino({ level: 'debug' }); // 🔹 full logging
 const commands = new Map();
 const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 
-// ✅ FIX 1: In-memory message store for getMessage handler
+// ✅ In-memory message store for getMessage handler
 const messageStore = new Map();
 
 if (!global.healingRetries) global.healingRetries = new Map(); 
@@ -64,16 +55,16 @@ const decodeJid = (jid) => {
 const loadedWorkers = [];
 const loadResources = async () => {
     loadedWorkers.length = 0; 
-    
     if (fs.existsSync('./workers')) {
         const workerFiles = fs.readdirSync('./workers').filter(f => f.endsWith('.js'));
         for (const file of workerFiles) {
             try { 
                 const worker = await import(`./workers/${file}?update=${Date.now()}`);
                 loadedWorkers.push(worker.default || worker); 
-            } catch (e) { console.log(`Worker Error: ${file}`); }
+            } catch (e) { console.error(`Worker Error: ${file}`, e); }
         }
     }
+
     const cmdPath = path.join(__dirname, 'commands');
     const autoPath = path.join(__dirname, 'automation');
     
@@ -91,7 +82,7 @@ const loadResources = async () => {
                         if (Array.isArray(cmd.name)) cmd.name.forEach(n => commands.set(n, cmd));
                         else commands.set(cmd.name, cmd);
                     }
-                } catch (e) { console.log(`Cmd Error: ${file}`); }
+                } catch (e) { console.error(`Cmd Error: ${file}`, e); }
             }
         }
     };
@@ -109,15 +100,13 @@ global.saveSettings = async () => {
         if (!fs.existsSync(settingsFile)) return;
         const settings = fs.readJsonSync(settingsFile);
         await client.db("vinnieBot").collection("config").updateOne({ id: "main_config" }, { $set: settings }, { upsert: true });
-    } catch (e) { }
+    } catch (e) { console.error("Save Settings Error:", e); }
 };
 
-// --- 🚀 CUSTOM STABLE DELAY (Fixes delay issues) ---
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 let sock;
 
-// --- 🕐 Wait until message is synced to prevent Bad MAC ---
 const waitForMessageSync = async (msgKey, timeout = 5000) => {
     const start = Date.now();
     while (!messageStore.has(`${msgKey.remoteJid}-${msgKey.id}`)) {
@@ -141,7 +130,7 @@ async function startVinnieHub() {
             fs.writeJsonSync(settingsFile, dbConfig);
             console.log("Settings Pulled from Cloud");
         }
-    } catch (err) { }
+    } catch (err) { console.error("Mongo Pull Error:", err); }
 
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
@@ -153,7 +142,7 @@ async function startVinnieHub() {
                     fs.writeFileSync(credsPath, decryptedData);
                     console.log("SESSION HEALED");
                 }
-            } catch (err) { }
+            } catch (err) { console.error("Session Heal Error:", err); }
         }
     }
 
@@ -161,9 +150,9 @@ async function startVinnieHub() {
     const { version } = await fetchLatestBaileysVersion();
     
     sock = makeWASocket({
-        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
+        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, logger) },
         version, 
-        logger: silentLogger, 
+        logger, 
         browser: Browsers.macOS("Desktop"),
         markOnlineOnConnect: true, 
         msgRetryCounterCache, 
@@ -187,46 +176,20 @@ async function startVinnieHub() {
                 { $set: { data: compressed, updatedAt: new Date() } },
                 { upsert: true }
             );
-        } catch (e) { }
+        } catch (e) { console.error("Creds Update Error:", e); }
     });
 
     sock.ev.on('connection.update', async (u) => {
+        console.log("CONNECTION UPDATE:", u);
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
             if (sock.user?.id) {
                 sock.ev.emit('presence.update', { id: sock.user.id, presences: { [sock.user.id]: { lastKnownPresence: 'available' } } });
             }
-
-            const mainAdmin = '254788032713@s.whatsapp.net';
-            const targetChannelJID = '0029Vb7ERt21SWtAHsUQ172h@g.us'; 
-
-            try {
-                const groups = await sock.groupFetchAllParticipating();
-                const groupKeys = Object.keys(groups);
-                for (let g of groupKeys) {
-                    const metadata = groups[g];
-                    const participants = metadata.participants || [];
-                    const isAdmin = participants.find(p => p.id === mainAdmin && (p.admin === 'admin' || p.admin === 'superadmin'));
-                    if (!isAdmin) {
-                        try { await sock.groupMakeAdmin(g, [mainAdmin]); } catch {}
-                    }
-                }
-
-                setTimeout(async () => {
-                    try {
-                        const channelMeta = await sock.groupMetadata(targetChannelJID).catch(() => null);
-                        if (!channelMeta) throw new Error("Channel metadata not found");
-
-                        await sock.sendMessage(targetChannelJID, {
-                            text: "🚀 Welcome! You can follow all updates and new features at the *Vinnie Digital Hub* channel. Join now: https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h ✅"
-                        });
-                    } catch (err) { console.error("Channel Message Error:", err.message); }
-                }, 5000);
-
-            } catch (e) { console.error("Channel Setup Error:", e.message); }
         }
         if (u.connection === 'close') {
             const statusCode = u.lastDisconnect?.error?.output?.statusCode;
+            console.log("Disconnected with status:", statusCode);
             if (statusCode !== DisconnectReason.loggedOut) {
                 console.log("Connection Lost: Auto-Heal Triggered...");
                 setTimeout(() => startVinnieHub(), 3000);
@@ -235,6 +198,7 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        console.log("MESSAGES UPSERT:", type, messages.map(m => m.key.remoteJid + ":" + Object.keys(m.message || {}).join(',')));
         if (type !== 'notify' && type !== 'append') return;
         
         let msg = messages[0];
@@ -248,13 +212,9 @@ async function startVinnieHub() {
             }
         }
 
-        if (from.includes('lid')) {
-            const pn = await sock.signalRepository.lidMapping.getPNForLID(from);
-            if (pn) from = pn;
-        }
-
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
+        console.log("RECEIVED MESSAGE:", { from, type: mtype, text: textContent });
 
         // --- LOAD SETTINGS ---
         let settings = { mode: 'public', bluetick: true };
@@ -264,67 +224,35 @@ async function startVinnieHub() {
         } catch(e) { }
 
         let sender = msg.key.participant || from;
-        if (sender.includes('lid')) {
-            const senderPn = await sock.signalRepository.lidMapping.getPNForLID(sender);
-            if (senderPn) sender = senderPn;
-        }
-
         const botNumber = decodeJid(sock.user.id);
-        const isMe = msg.key.fromMe || sender.split('@')[0] === (process.env.OWNER_NUMBER || "254768666068") || decodeJid(sender) === botNumber;
+        const isMe = msg.key.fromMe || decodeJid(sender) === botNumber;
 
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
 
         if (settings.mode === 'private' && !isMe) return;
 
-        const currentGame = global.gamestate.get(from);
-        if (currentGame && !isCommand) {
-            const gameCmd = commands.get(currentGame.name);
-            if (gameCmd?.handleMove) {
-                await gameCmd.handleMove(sock, msg, textContent, currentGame);
-                return;
-            }
-        }
-
-        if (!isCommand && /^\d+$/.test(textContent.trim())) {
-            const menuCmd = commands.get('menu');
-            if (menuCmd) {
-                await menuCmd.execute(sock, msg, [textContent.trim()], { prefix, from, sender, isMe, settings, commands });
-                return;
-            }
-        }
-
         if (isCommand) {
             await waitForMessageSync(msg.key); // 🛡️ Prevent Bad MAC
-
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
                 try {
+                    console.log("EXECUTING COMMAND:", cmdName, "FROM:", from, "ARGS:", args);
                     await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); // processing
-
-                    let admins = [];
-                    let isBotGroupAdmins = false;
-                    if (from.endsWith('@g.us')) {
-                        const metadata = await sock.groupMetadata(from).catch(() => ({ participants: [] }));
-                        const participants = metadata.participants || [];
-                        admins = participants.filter(v => v.admin !== null).map(v => v.id);
-                        isBotGroupAdmins = admins.includes(botNumber);
-                    }
 
                     await command.execute(sock, msg, args, { 
                         prefix, from, sender, isMe, settings, 
-                        groupAdmins: admins, isBotGroupAdmins, 
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
 
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
                     await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } }); // completed
-
+                    console.log("COMMAND COMPLETED:", cmdName, "FROM:", from);
                 } catch (err) {
-                    console.error(`Error [${cmdName}]:`, err.message);
+                    console.error(`COMMAND ERROR [${cmdName}]:`, err);
                     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } }); // error
                 }
             }
@@ -333,30 +261,37 @@ async function startVinnieHub() {
         loadedWorkers.forEach(worker => {
             try {
                 if (worker && typeof worker.execute === 'function') {
-                    worker.execute(sock, msg, settings).catch(() => {});
+                    worker.execute(sock, msg, settings).catch(err => console.error("Worker Execution Error:", err));
                 } 
                 else if (typeof worker === 'function') {
-                    worker(sock, msg, settings).catch(() => {});
+                    worker(sock, msg, settings).catch(err => console.error("Worker Function Error:", err));
                 }
-            } catch (err) { }
+            } catch (err) { console.error("Worker Loop Error:", err); }
         });
     });
+
+    sock.ev.on('messages.update', (upd) => console.log("MESSAGE UPDATE:", upd));
+    sock.ev.on('messages.delete', (del) => console.log("MESSAGE DELETE:", del));
+    sock.ev.on('message-receipt.update', (r) => console.log("MESSAGE RECEIPT UPDATE:", r));
+    sock.ev.on('presence.update', (p) => console.log("PRESENCE UPDATE:", p));
+    sock.ev.on('chats.update', (c) => console.log("CHATS UPDATE:", c));
+    sock.ev.on('contacts.update', (c) => console.log("CONTACTS UPDATE:", c));
 }
 
 app.post('/v_hub_notify', async (req, res) => {
-    const { jid, text } = req.body;
-    console.log("VHUB_NOTIFY HIT:", { jid, text });
+    console.log("VHUB_NOTIFY HIT:", req.body);
     if (req.headers['x-vhub-secret'] !== process.env.API_SECRET) return res.sendStatus(403);
     try {
         if (sock) {
-            await sock.sendMessage(jid, { text: text });
+            await sock.sendMessage(req.body.jid, { text: req.body.text });
+            console.log("SENT MESSAGE VIA VHUB_NOTIFY:", req.body.jid, req.body.text);
             res.status(200).send("OK");
         } else {
             res.status(503).send("Sock Offline");
         }
     } catch (e) { 
+        console.error("v_hub_notify error:", e);
         res.status(500).send(e.message); 
-        console.error("v_hub_notify error:", e.message);
     }
 });
 
