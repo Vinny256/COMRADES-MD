@@ -231,18 +231,15 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        // 🛠️ ALLOW 'append' for internal device syncing
         if (type !== 'notify' && type !== 'append') return;
         
         let msg = messages[0];
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
 
-        // ✅ FIX 3: Cache every message for getMessage handler (fixes linked device visibility)
         for (const m of messages) {
             if (m.message) {
                 messageStore.set(`${m.key.remoteJid}-${m.key.id}`, m.message);
-                // 🛡️ Cleanup cache to prevent memory bloat
                 if (messageStore.size > 500) messageStore.delete(messageStore.keys().next().value);
             }
         }
@@ -301,7 +298,6 @@ async function startVinnieHub() {
                 
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
-                    // ⏱️ THE GRACE PERIOD: 1.5s delay to prevent "Closed Session" errors
                     await new Promise(resolve => setTimeout(resolve, 1500));
 
                     let admins = [];
@@ -318,12 +314,8 @@ async function startVinnieHub() {
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
                     
-                    // 🔄 Sync Poke: Forces phone app to re-fetch and show the bot's message
                     await sock.sendPresenceUpdate('available', from);
-
-                    // ✅ FIX 4: Mark messages as read so they show properly on both devices
                     await sock.readMessages([msg.key]);
-
                     await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
                 } catch (err) { 
                     console.error(`Error [${cmdName}]:`, err.message);
@@ -347,15 +339,21 @@ async function startVinnieHub() {
 
 app.post('/v_hub_notify', async (req, res) => {
     const { jid, text } = req.body;
+    console.log("VHUB_NOTIFY HIT:", { jid, text });
     if (req.headers['x-vhub-secret'] !== process.env.API_SECRET) return res.sendStatus(403);
     try {
         if (sock) {
             await sock.sendMessage(jid, { text: text });
             res.status(200).send("OK");
+            console.log(`Message sent via v_hub_notify to ${jid}`);
         } else {
             res.status(503).send("Sock Offline");
+            console.log("v_hub_notify failed: Sock Offline");
         }
-    } catch (e) { res.status(500).send(e.message); }
+    } catch (e) { 
+        res.status(500).send(e.message); 
+        console.error("v_hub_notify error:", e.message);
+    }
 });
 
 const PORT = process.env.PORT || 8080;
