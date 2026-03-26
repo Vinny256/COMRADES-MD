@@ -187,7 +187,7 @@ async function startVinnieHub() {
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (!['notify','append'].includes(type)) return;
-        
+
         for (const m of messages) {
             if (!m.message) continue;
             const keyStr = `${m.key.remoteJid}-${m.key.id}`;
@@ -197,8 +197,21 @@ async function startVinnieHub() {
 
         const msg = messages[0];
         const from = msg.key.remoteJid;
-        const mtype = Object.keys(msg.message)[0];
-        const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
+
+        // ✅ Safe extraction to prevent crashes, logs stay intact
+        let mtype = "unknown";
+        let textContent = "";
+        try {
+            if (msg.message) {
+                mtype = Object.keys(msg.message)[0];
+                textContent = (mtype === 'conversation' ? msg.message.conversation 
+                    : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text 
+                    : msg.message[mtype]?.caption) || "";
+            }
+        } catch (err) {
+            console.log(`⚠️ MESSAGE PARSE ERROR from ${from}:`, err.message);
+        }
+
         console.log(`RECEIVED: ${from} | ${mtype} | "${textContent}"`);
 
         // --- LOAD SETTINGS ---
@@ -251,7 +264,7 @@ async function startVinnieHub() {
     sock.ev.on('presence.update', (p) => console.log("PRESENCE UPDATE:", p));
     sock.ev.on('chats.update', (c) => console.log("CHATS UPDATE:", c));
     sock.ev.on('contacts.update', (c) => console.log("CONTACTS UPDATE:", c));
-}
+});
 
 app.post('/v_hub_notify', async (req, res) => {
     console.log("VHUB_NOTIFY HIT:", req.body);
