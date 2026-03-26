@@ -64,6 +64,20 @@ const menuCommand = {
 
         menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
+        // --- 🛡️ THE GHOST QUOTE (META AI VERIFICATION) ---
+        // Creates a fake quote from Meta AI to show verification text
+        const metaAIQuote = {
+            key: { 
+                remoteJid: from, 
+                fromMe: false, 
+                id: 'V-HUB-VERIFY-' + Date.now(), 
+                participant: '0@s.whatsapp.net' 
+            },
+            message: { 
+                conversation: "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ: sʏsᴛᴇᴍ ᴠᴇʀɪꜰɪᴇᴅ ✅" 
+            }
+        };
+
         // --- 🚀 NUCLEAR AUDIO-VIDEO ENGINE (STABLE LOCAL) ---
         // Checks if the video exists locally first, otherwise falls back to URL
         let videoSource = fs.existsSync(localVideoPath) ? { url: localVideoPath } : { url: vinnieVideo };
@@ -94,7 +108,7 @@ const menuCommand = {
                     renderLargerThumbnail: true
                 }
             }
-        }, { quoted: msg });
+        }, { quoted: metaAIQuote }); // 🛡️ Quoting the Meta AI object instead of the user message
 
         if (!global.vinnieMenuCache && sentMsg.message?.videoMessage) {
             global.vinnieMenuCache = sentMsg.message.videoMessage;
