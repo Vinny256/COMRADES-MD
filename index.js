@@ -151,9 +151,13 @@ async function startVinnieHub() {
     sock = makeWASocket({
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, 
-        logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
-        markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
-        syncFullHistory: true, // 🔄 Forced sync with primary phone
+        logger: silentLogger, 
+        // 🔄 Optimized browser string for Desktop Sync
+        browser: Browsers.macOS("Desktop"),
+        markOnlineOnConnect: true, 
+        msgRetryCounterCache, 
+        keepAliveIntervalMs: 30000,
+        syncFullHistory: true, 
         shouldSyncLidPnMappings: true,
         // ✅ FIX 2: getMessage handler — critical for linked device message visibility
         getMessage: async (key) => {
@@ -238,6 +242,8 @@ async function startVinnieHub() {
         for (const m of messages) {
             if (m.message) {
                 messageStore.set(`${m.key.remoteJid}-${m.key.id}`, m.message);
+                // 🛡️ Cleanup cache to prevent memory bloat
+                if (messageStore.size > 500) messageStore.delete(messageStore.keys().next().value);
             }
         }
 
