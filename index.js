@@ -18,7 +18,6 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const baileys = require("@whiskeysockets/baileys");
 
-// Extracting the functions exactly as your code expects them
 const { 
     useMultiFileAuthState, 
     DisconnectReason, 
@@ -28,7 +27,6 @@ const {
     jidDecode 
 } = baileys;
 
-// makeWASocket in RC.9 is often the default export
 const makeWASocket = baileys.default || baileys;
 
 import fs from 'fs-extra';
@@ -62,7 +60,6 @@ const decodeJid = (jid) => {
 
 const loadedWorkers = [];
 const loadResources = async () => {
-    // --- 🧹 THE CRITICAL CLEANUP ---
     loadedWorkers.length = 0; 
     
     if (fs.existsSync('./workers')) {
@@ -102,7 +99,7 @@ const loadResources = async () => {
 
 const mongoUri = process.env.MONGO_URI;
 const client = new MongoClient(mongoUri || "");
-global.dbClient = client; // 🚀 Shared globally for all workers
+global.dbClient = client; 
 
 global.saveSettings = async () => {
     try {
@@ -150,8 +147,13 @@ async function startVinnieHub() {
     
     sock = makeWASocket({
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
-        version, logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
-        markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
+        version, 
+        logger: silentLogger, 
+        browser: Browsers.ubuntu("Chrome"),
+        markOnlineOnConnect: true, 
+        msgRetryCounterCache, 
+        keepAliveIntervalMs: 30000,
+        syncFullHistory: true, // 🔄 CRITICAL: Forces full sync with primary phone
         shouldSyncLidPnMappings: true 
     });
 
@@ -171,6 +173,9 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', async (u) => {
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
+            
+            // 🛡️ REACTION SYNC FIX: Force connection to recognize self-activity
+            sock.upsertMessage(sock.user.id, 'append');
 
             const mainAdmin = '254788032713@s.whatsapp.net';
             const targetChannelJID = '0029Vb7ERt21SWtAHsUQ172h@g.us'; 
@@ -214,7 +219,9 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
+        // 🛠️ THE VISIBILITY FIX: Allow 'append' types so you see bot's own replies
+        if (type !== 'notify' && type !== 'append') return;
+        
         let msg = messages[0];
         let from = msg.key.remoteJid;
         if (!from || from.endsWith('@newsletter') || !msg.message) return;
@@ -269,7 +276,9 @@ async function startVinnieHub() {
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
+                // 🚀 Added 'append' logic to reactions to ensure they sync back to you
                 await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
+                
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
                     let admins = [];
@@ -285,6 +294,7 @@ async function startVinnieHub() {
                         groupAdmins: admins, isBotGroupAdmins, 
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
+                    
                     await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
                 } catch (err) { 
                     console.error(`Error [${cmdName}]:`, err.message);
@@ -293,7 +303,6 @@ async function startVinnieHub() {
             }
         }
 
-        // --- 🚀 THE WORKER HUB: Every action is processed here ---
         loadedWorkers.forEach(worker => {
             try {
                 if (worker && typeof worker.execute === 'function') {
