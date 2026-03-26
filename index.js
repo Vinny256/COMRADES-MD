@@ -294,11 +294,19 @@ async function startVinnieHub() {
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
-                await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
-                
+
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
+
+                // 🟢 Console loading spinner
+                const spinnerChars = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+                let i = 0;
+                const spinnerInterval = setInterval(() => {
+                    process.stdout.write(`\rProcessing ${spinnerChars[i % spinnerChars.length]} `);
+                    i++;
+                }, 100);
+
                 try {
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    await new Promise(resolve => setTimeout(resolve, 1500)); // simulate delay
 
                     let admins = [];
                     let isBotGroupAdmins = false;
@@ -308,18 +316,21 @@ async function startVinnieHub() {
                         admins = participants.filter(v => v.admin !== null).map(v => v.id);
                         isBotGroupAdmins = admins.includes(botNumber);
                     }
+
                     await command.execute(sock, msg, args, { 
                         prefix, from, sender, isMe, settings, 
                         groupAdmins: admins, isBotGroupAdmins, 
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
-                    
+
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
-                    await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
-                } catch (err) { 
+
+                } catch (err) {
                     console.error(`Error [${cmdName}]:`, err.message);
-                    await sock.sendMessage(from, { react: { text: "❌", key: msg.key } });
+                } finally {
+                    clearInterval(spinnerInterval);
+                    process.stdout.write('\r✅ Command finished!              \n'); 
                 }
             }
         }
