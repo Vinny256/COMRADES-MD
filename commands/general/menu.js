@@ -15,23 +15,9 @@ const menuCommand = {
     category: "general",
     async execute(sock, msg, args, { prefix, commands, from, settings }) {
         try {
-            // --- 🛡️ THE GHOST QUOTE (META AI VERIFICATION) ---
-            // Creates a fake quote from Meta AI to show verification text
-            const metaAIQuote = {
-                key: { 
-                    remoteJid: from, 
-                    fromMe: false, 
-                    id: 'V-HUB-VERIFY-' + Date.now(), 
-                    participant: '0@s.whatsapp.net' 
-                },
-                message: { 
-                    conversation: "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ: sʏsᴛᴇᴍ ᴠᴇʀɪꜰɪᴇᴅ ✅" 
-                }
-            };
-
             // --- ⏳ STEP 1: THE SYNC POKE (COUNTDOWN) ---
             // Sending a light message first to open the sync pipe
-            let { key } = await sock.sendMessage(from, { text: "⏳ *V-HUB ENGINE INITIALIZING... 10%*" }, { quoted: metaAIQuote });
+            let { key } = await sock.sendMessage(from, { text: "⏳ *V-HUB ENGINE INITIALIZING... 10%*" }, { quoted: msg });
             
             await sleep(800);
             await sock.sendMessage(from, { edit: key, text: "⏳ *V-HUB ENGINE INITIALIZING... 50%*" });
@@ -41,7 +27,6 @@ const menuCommand = {
 
             // --- 📂 DATA ENGINE ---
             const hours = new Date().getHours();
-            // Replacing emojis with clean Unicode Status indicators
             let greeting = hours < 12 ? "ᴍᴏʀɴɪɴɢ ✧" : hours < 17 ? "ᴀꜰᴛᴇʀɴᴏᴏɴ ✦" : hours < 21 ? "ᴇᴠᴇɴɪɴɢ ✧" : "ɴɪɢʜᴛ ✦";
             const uptimeSeconds = process.uptime();
             const uptimeString = `${Math.floor(uptimeSeconds / 3600)}ʜ ${Math.floor((uptimeSeconds % 3600) / 60)}ᴍ`;
@@ -80,7 +65,6 @@ const menuCommand = {
             menu += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
 
             // --- 🚀 STEP 2: THE FINAL EDIT ---
-            // Editing the countdown message to be the "System Ready" header
             await sock.sendMessage(from, { edit: key, text: `✅ *sʏsᴛᴇᴍ ʀᴇᴀᴅʏ*\n${greeting} ${msg.pushName || ''}` });
 
             // --- 🎥 STEP 3: THE VIDEO DISPATCH (STABLE) ---
@@ -96,9 +80,8 @@ const menuCommand = {
                 video: videoContent,
                 caption: menu,
                 mimetype: 'video/mp4',
-                gifPlayback: true, // Forces it to behave like a GIF for faster preview sync
+                gifPlayback: true,
                 contextInfo: {
-                    // Using the actual sender JID or a real formatted JID for stability
                     participant: '254768666068@s.whatsapp.net', 
                     verifiedBadge: true, 
                     forwardingScore: 999,
@@ -111,14 +94,14 @@ const menuCommand = {
                     externalAdReply: {
                         title: hubName,
                         body: "sʏsᴛᴇᴍ ᴏᴘᴇʀᴀᴛɪᴏɴᴀʟ",
-                        mediaType: 2, // Video thumbnail type
+                        mediaType: 2,
                         thumbnailUrl: vinnieThumb,
                         sourceUrl: channelLink, 
                         showAdAttribution: true,
                         renderLargerThumbnail: true
                     }
                 }
-            }, { quoted: metaAIQuote }); // 🛡️ Quoting the Meta AI object instead of the user message
+            }, { quoted: msg }); // ✅ Quoting the real incoming message
 
             if (!global.vinnieMenuCache && sentMsg.message?.videoMessage) {
                 global.vinnieMenuCache = sentMsg.message.videoMessage;
