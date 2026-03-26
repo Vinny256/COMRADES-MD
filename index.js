@@ -107,14 +107,6 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 let sock;
 
-const waitForMessageSync = async (msgKey, timeout = 5000) => {
-    const start = Date.now();
-    while (!messageStore.has(`${msgKey.remoteJid}-${msgKey.id}`)) {
-        await sleep(50);
-        if (Date.now() - start > timeout) break;
-    }
-};
-
 async function startVinnieHub() {
     await loadResources(); 
 
@@ -159,11 +151,7 @@ async function startVinnieHub() {
         keepAliveIntervalMs: 30000,
         syncFullHistory: true, 
         shouldSyncLidPnMappings: true,
-        getMessage: async (key) => {
-            const stored = messageStore.get(`${key.remoteJid}-${key.id}`);
-            if (stored) return stored;
-            return { conversation: '' };
-        }
+        getMessage: async (key) => messageStore.get(`${key.remoteJid}-${key.id}`) || { conversation: '' }
     });
 
     sock.ev.on('creds.update', async () => {
@@ -180,7 +168,7 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('connection.update', async (u) => {
-        console.log("CONNECTION UPDATE:", u);
+        console.log("CONNECTION UPDATE:", u.connection, u.lastDisconnect ? `(Last Disconnect: ${u.lastDisconnect.error?.output?.statusCode})` : '');
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
             if (sock.user?.id) {
@@ -188,9 +176,9 @@ async function startVinnieHub() {
             }
         }
         if (u.connection === 'close') {
-            const statusCode = u.lastDisconnect?.error?.output?.statusCode;
-            console.log("Disconnected with status:", statusCode);
-            if (statusCode !== DisconnectReason.loggedOut) {
+            const code = u.lastDisconnect?.error?.output?.statusCode;
+            console.log("Disconnected with status:", code);
+            if (code !== DisconnectReason.loggedOut) {
                 console.log("Connection Lost: Auto-Heal Triggered...");
                 setTimeout(() => startVinnieHub(), 3000);
             }
@@ -199,22 +187,20 @@ async function startVinnieHub() {
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         console.log("MESSAGES UPSERT:", type, messages.map(m => m.key.remoteJid + ":" + Object.keys(m.message || {}).join(',')));
-        if (type !== 'notify' && type !== 'append') return;
+        if (!['notify','append'].includes(type)) return;
         
-        let msg = messages[0];
-        let from = msg.key.remoteJid;
-        if (!from || from.endsWith('@newsletter') || !msg.message) return;
-
         for (const m of messages) {
-            if (m.message) {
-                messageStore.set(`${m.key.remoteJid}-${m.key.id}`, m.message);
-                if (messageStore.size > 500) messageStore.delete(messageStore.keys().next().value);
-            }
+            if (!m.message) continue;
+            const keyStr = `${m.key.remoteJid}-${m.key.id}`;
+            messageStore.set(keyStr, m.message);
+            if (messageStore.size > 500) messageStore.delete(messageStore.keys().next().value);
         }
 
+        const msg = messages[0];
+        const from = msg.key.remoteJid;
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
-        console.log("RECEIVED MESSAGE:", { from, type: mtype, text: textContent });
+        console.log(`RECEIVED MESSAGE FROM: ${from} | Type: ${mtype} | Text: "${textContent}"`);
 
         // --- LOAD SETTINGS ---
         let settings = { mode: 'public', bluetick: true };
@@ -223,34 +209,26 @@ async function startVinnieHub() {
             settings = { ...settings, ...savedSettings };
         } catch(e) { }
 
-        let sender = msg.key.participant || from;
+        const sender = msg.key.participant || from;
         const botNumber = decodeJid(sock.user.id);
         const isMe = msg.key.fromMe || decodeJid(sender) === botNumber;
-
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
-
         if (settings.mode === 'private' && !isMe) return;
 
         if (isCommand) {
-            await waitForMessageSync(msg.key); // 🛡️ Prevent Bad MAC
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
                 try {
-                    console.log("EXECUTING COMMAND:", cmdName, "FROM:", from, "ARGS:", args);
+                    console.log(`EXECUTING COMMAND: ${cmdName} FROM: ${from} ARGS: ${args}`);
                     await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); // processing
-
-                    await command.execute(sock, msg, args, { 
-                        prefix, from, sender, isMe, settings, 
-                        commands, logsCollection: client.db("vinnieBot").collection("logs") 
-                    });
-
+                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, commands, logsCollection: client.db("vinnieBot").collection("logs") });
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
                     await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } }); // completed
-                    console.log("COMMAND COMPLETED:", cmdName, "FROM:", from);
+                    console.log(`COMMAND COMPLETED: ${cmdName} FROM: ${from}`);
                 } catch (err) {
                     console.error(`COMMAND ERROR [${cmdName}]:`, err);
                     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } }); // error
@@ -260,12 +238,8 @@ async function startVinnieHub() {
 
         loadedWorkers.forEach(worker => {
             try {
-                if (worker && typeof worker.execute === 'function') {
-                    worker.execute(sock, msg, settings).catch(err => console.error("Worker Execution Error:", err));
-                } 
-                else if (typeof worker === 'function') {
-                    worker(sock, msg, settings).catch(err => console.error("Worker Function Error:", err));
-                }
+                if (worker?.execute) worker.execute(sock, msg, settings).catch(err => console.error("Worker Execution Error:", err));
+                else if (typeof worker === 'function') worker(sock, msg, settings).catch(err => console.error("Worker Function Error:", err));
             } catch (err) { console.error("Worker Loop Error:", err); }
         });
     });
@@ -286,9 +260,7 @@ app.post('/v_hub_notify', async (req, res) => {
             await sock.sendMessage(req.body.jid, { text: req.body.text });
             console.log("SENT MESSAGE VIA VHUB_NOTIFY:", req.body.jid, req.body.text);
             res.status(200).send("OK");
-        } else {
-            res.status(503).send("Sock Offline");
-        }
+        } else res.status(503).send("Sock Offline");
     } catch (e) { 
         console.error("v_hub_notify error:", e);
         res.status(500).send(e.message); 
