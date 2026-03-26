@@ -150,7 +150,7 @@ async function startVinnieHub() {
         version, 
         logger: silentLogger, browser: Browsers.ubuntu("Chrome"),
         markOnlineOnConnect: true, msgRetryCounterCache, keepAliveIntervalMs: 30000,
-        syncFullHistory: true, // 🔄 Forced sync
+        syncFullHistory: true, // 🔄 Forced sync with primary phone
         shouldSyncLidPnMappings: true 
     });
 
@@ -171,7 +171,7 @@ async function startVinnieHub() {
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
             
-            // 🛡️ Safe sync poke to trigger phone download
+            // 🛡️ Safe sync handshake poke
             if (sock.user?.id) {
                 sock.ev.emit('presence.update', { id: sock.user.id, presences: { [sock.user.id]: { lastKnownPresence: 'available' } } });
             }
@@ -279,6 +279,9 @@ async function startVinnieHub() {
                 
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
                 try {
+                    // ⏱️ THE GRACE PERIOD: 1.5s delay to prevent "Closed Session" errors
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+
                     let admins = [];
                     let isBotGroupAdmins = false;
                     if (from.endsWith('@g.us')) {
@@ -293,7 +296,7 @@ async function startVinnieHub() {
                         commands, logsCollection: client.db("vinnieBot").collection("logs") 
                     });
                     
-                    // 🔄 Sync Poke: Forces the phone app to re-fetch the chat thread
+                    // 🔄 Sync Poke: Forces phone app to re-fetch and show the bot's message
                     await sock.sendPresenceUpdate('available', from);
 
                     await sock.sendMessage(from, { react: { text: "⬇️", key: msg.key } });
