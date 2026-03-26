@@ -153,7 +153,7 @@ async function startVinnieHub() {
         markOnlineOnConnect: true, 
         msgRetryCounterCache, 
         keepAliveIntervalMs: 30000,
-        syncFullHistory: true, // 🔄 CRITICAL: Forces full sync with primary phone
+        syncFullHistory: true, // 🔄 Forces full sync with primary phone
         shouldSyncLidPnMappings: true 
     });
 
@@ -174,8 +174,10 @@ async function startVinnieHub() {
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
             
-            // 🛡️ REACTION SYNC FIX: Force connection to recognize self-activity
-            sock.upsertMessage(sock.user.id, 'append');
+            // 🛡️ FIXED: Safe Sync Poke to avoid the remoteJid error
+            if (sock.user?.id) {
+                sock.ev.emit('presence.update', { id: sock.user.id, presences: { [sock.user.id]: { lastKnownPresence: 'available' } } });
+            }
 
             const mainAdmin = '254788032713@s.whatsapp.net';
             const targetChannelJID = '0029Vb7ERt21SWtAHsUQ172h@g.us'; 
@@ -219,7 +221,7 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        // 🛠️ THE VISIBILITY FIX: Allow 'append' types so you see bot's own replies
+        // 🛠️ ALLOW 'append' to see your own messages sent by bot
         if (type !== 'notify' && type !== 'append') return;
         
         let msg = messages[0];
@@ -276,7 +278,7 @@ async function startVinnieHub() {
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
-                // 🚀 Added 'append' logic to reactions to ensure they sync back to you
+                // Force reactions to show up by letting 'append' process them
                 await sock.sendMessage(from, { react: { text: "⬆️", key: msg.key } });
                 
                 console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
