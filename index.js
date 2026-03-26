@@ -186,7 +186,6 @@ async function startVinnieHub() {
     });
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        console.log("MESSAGES UPSERT:", type, messages.map(m => m.key.remoteJid + ":" + Object.keys(m.message || {}).join(',')));
         if (!['notify','append'].includes(type)) return;
         
         for (const m of messages) {
@@ -200,7 +199,7 @@ async function startVinnieHub() {
         const from = msg.key.remoteJid;
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
-        console.log(`RECEIVED MESSAGE FROM: ${from} | Type: ${mtype} | Text: "${textContent}"`);
+        console.log(`RECEIVED: ${from} | ${mtype} | "${textContent}"`);
 
         // --- LOAD SETTINGS ---
         let settings = { mode: 'public', bluetick: true };
@@ -217,23 +216,25 @@ async function startVinnieHub() {
         if (settings.mode === 'private' && !isMe) return;
 
         if (isCommand) {
-            const args = textContent.slice(prefix.length).trim().split(/ +/);
-            const cmdName = args.shift().toLowerCase();
-            const command = commands.get(cmdName);
-            if (command) {
+            (async () => { // 🚀 make command execution instant
+                const args = textContent.slice(prefix.length).trim().split(/ +/);
+                const cmdName = args.shift().toLowerCase();
+                const command = commands.get(cmdName);
+                if (!command) return;
+
                 try {
-                    console.log(`EXECUTING COMMAND: ${cmdName} FROM: ${from} ARGS: ${args}`);
-                    await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); // processing
+                    console.log(`EXECUTING COMMAND: ${cmdName} | FROM: ${from}`);
+                    await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); 
                     await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, commands, logsCollection: client.db("vinnieBot").collection("logs") });
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
-                    await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } }); // completed
-                    console.log(`COMMAND COMPLETED: ${cmdName} FROM: ${from}`);
+                    await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } });
+                    console.log(`COMMAND COMPLETED: ${cmdName} | FROM: ${from}`);
                 } catch (err) {
                     console.error(`COMMAND ERROR [${cmdName}]:`, err);
-                    await sock.sendMessage(from, { react: { text: '❌', key: msg.key } }); // error
+                    await sock.sendMessage(from, { react: { text: '❌', key: msg.key } });
                 }
-            }
+            })();
         }
 
         loadedWorkers.forEach(worker => {
