@@ -2,10 +2,13 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import baileys from "@whiskeysockets/baileys";
-const { delay } = baileys;
 
+// ESM fix for __dirname to ensure local assets load correctly
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 🚀 CUSTOM STABLE DELAY (Fixes the 'delay is not a function' error)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const menuCommand = {
     name: "menu",
@@ -13,23 +16,32 @@ const menuCommand = {
     async execute(sock, msg, args, { prefix, commands, from, settings }) {
         try {
             // --- 🛡️ THE GHOST QUOTE (META AI VERIFICATION) ---
+            // Creates a fake quote from Meta AI to show verification text
             const metaAIQuote = {
-                key: { remoteJid: from, fromMe: false, id: 'V-HUB-VERIFY-' + Date.now(), participant: '0@s.whatsapp.net' },
-                message: { conversation: "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ: sʏsᴛᴇᴍ ᴠᴇʀɪꜰɪᴇᴅ ✅" }
+                key: { 
+                    remoteJid: from, 
+                    fromMe: false, 
+                    id: 'V-HUB-VERIFY-' + Date.now(), 
+                    participant: '0@s.whatsapp.net' 
+                },
+                message: { 
+                    conversation: "ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ ʜᴜʙ: sʏsᴛᴇᴍ ᴠᴇʀɪꜰɪᴇᴅ ✅" 
+                }
             };
 
             // --- ⏳ STEP 1: THE SYNC POKE (COUNTDOWN) ---
             // Sending a light message first to open the sync pipe
             let { key } = await sock.sendMessage(from, { text: "⏳ *V-HUB ENGINE INITIALIZING... 10%*" }, { quoted: metaAIQuote });
             
-            await delay(500);
+            await sleep(800);
             await sock.sendMessage(from, { edit: key, text: "⏳ *V-HUB ENGINE INITIALIZING... 50%*" });
             
-            await delay(500);
+            await sleep(800);
             await sock.sendMessage(from, { edit: key, text: "⏳ *V-HUB ENGINE INITIALIZING... 100%*" });
 
             // --- 📂 DATA ENGINE ---
             const hours = new Date().getHours();
+            // Replacing emojis with clean Unicode Status indicators
             let greeting = hours < 12 ? "ᴍᴏʀɴɪɴɢ ✧" : hours < 17 ? "ᴀꜰᴛᴇʀɴᴏᴏɴ ✦" : hours < 21 ? "ᴇᴠᴇɴɪɴɢ ✧" : "ɴɪɢʜᴛ ✦";
             const uptimeSeconds = process.uptime();
             const uptimeString = `${Math.floor(uptimeSeconds / 3600)}ʜ ${Math.floor((uptimeSeconds % 3600) / 60)}ᴍ`;
@@ -86,6 +98,7 @@ const menuCommand = {
                 mimetype: 'video/mp4',
                 gifPlayback: true, // Forces it to behave like a GIF for faster preview sync
                 contextInfo: {
+                    // Using the actual sender JID or a real formatted JID for stability
                     participant: '254768666068@s.whatsapp.net', 
                     verifiedBadge: true, 
                     forwardingScore: 999,
@@ -105,7 +118,7 @@ const menuCommand = {
                         renderLargerThumbnail: true
                     }
                 }
-            }, { quoted: metaAIQuote });
+            }, { quoted: metaAIQuote }); // 🛡️ Quoting the Meta AI object instead of the user message
 
             if (!global.vinnieMenuCache && sentMsg.message?.videoMessage) {
                 global.vinnieMenuCache = sentMsg.message.videoMessage;
