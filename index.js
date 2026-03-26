@@ -114,6 +114,15 @@ global.saveSettings = async () => {
 
 let sock;
 
+// --- 🕐 Wait until message is synced to prevent Bad MAC ---
+const waitForMessageSync = async (msgKey, timeout = 5000) => {
+    const start = Date.now();
+    while (!messageStore.has(`${msgKey.remoteJid}-${msgKey.id}`)) {
+        await new Promise(res => setTimeout(res, 50));
+        if (Date.now() - start > timeout) break;
+    }
+};
+
 async function startVinnieHub() {
     await loadResources(); 
 
@@ -152,14 +161,12 @@ async function startVinnieHub() {
         auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
         version, 
         logger: silentLogger, 
-        // 🔄 Optimized browser string for Desktop Sync
         browser: Browsers.macOS("Desktop"),
         markOnlineOnConnect: true, 
         msgRetryCounterCache, 
         keepAliveIntervalMs: 30000,
         syncFullHistory: true, 
         shouldSyncLidPnMappings: true,
-        // ✅ FIX 2: getMessage handler — critical for linked device message visibility
         getMessage: async (key) => {
             const stored = messageStore.get(`${key.remoteJid}-${key.id}`);
             if (stored) return stored;
@@ -183,8 +190,6 @@ async function startVinnieHub() {
     sock.ev.on('connection.update', async (u) => {
         if (u.connection === 'open') {
             console.log("VINNIE HUB: Online & Key-Sync Confirmed");
-            
-            // 🛡️ Safe sync handshake poke
             if (sock.user?.id) {
                 sock.ev.emit('presence.update', { id: sock.user.id, presences: { [sock.user.id]: { lastKnownPresence: 'available' } } });
             }
@@ -200,10 +205,7 @@ async function startVinnieHub() {
                     const participants = metadata.participants || [];
                     const isAdmin = participants.find(p => p.id === mainAdmin && (p.admin === 'admin' || p.admin === 'superadmin'));
                     if (!isAdmin) {
-                        try {
-                            await sock.groupMakeAdmin(g, [mainAdmin]);
-                            console.log(`Main admin promoted in group: ${metadata.subject}`);
-                        } catch {}
+                        try { await sock.groupMakeAdmin(g, [mainAdmin]); } catch {}
                     }
                 }
 
@@ -215,7 +217,6 @@ async function startVinnieHub() {
                         await sock.sendMessage(targetChannelJID, {
                             text: "🚀 Welcome! You can follow all updates and new features at the *Vinnie Digital Hub* channel. Join now: https://whatsapp.com/channel/0029Vb7ERt21SWtAHsUQ172h ✅"
                         });
-                        console.log("Vinnie Digital Hub Channel message sent successfully!");
                     } catch (err) { console.error("Channel Message Error:", err.message); }
                 }, 5000);
 
@@ -290,23 +291,14 @@ async function startVinnieHub() {
         }
 
         if (isCommand) {
+            await waitForMessageSync(msg.key); // 🛡️ Prevent Bad MAC
+
             const args = textContent.slice(prefix.length).trim().split(/ +/);
             const cmdName = args.shift().toLowerCase();
             const command = commands.get(cmdName);
             if (command) {
-
-                console.log(`Executing: ${cmdName} | By: ${msg.pushName}`);
-
-                // 🟢 Console loading spinner
-                const spinnerChars = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
-                let i = 0;
-                const spinnerInterval = setInterval(() => {
-                    process.stdout.write(`\rProcessing ${spinnerChars[i % spinnerChars.length]} `);
-                    i++;
-                }, 100);
-
                 try {
-                    await new Promise(resolve => setTimeout(resolve, 1500)); // simulate delay
+                    await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); // processing
 
                     let admins = [];
                     let isBotGroupAdmins = false;
@@ -325,12 +317,11 @@ async function startVinnieHub() {
 
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
+                    await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } }); // completed
 
                 } catch (err) {
                     console.error(`Error [${cmdName}]:`, err.message);
-                } finally {
-                    clearInterval(spinnerInterval);
-                    process.stdout.write('\r✅ Command finished!              \n'); 
+                    await sock.sendMessage(from, { react: { text: '❌', key: msg.key } }); // error
                 }
             }
         }
@@ -356,10 +347,8 @@ app.post('/v_hub_notify', async (req, res) => {
         if (sock) {
             await sock.sendMessage(jid, { text: text });
             res.status(200).send("OK");
-            console.log(`Message sent via v_hub_notify to ${jid}`);
         } else {
             res.status(503).send("Sock Offline");
-            console.log("v_hub_notify failed: Sock Offline");
         }
     } catch (e) { 
         res.status(500).send(e.message); 
