@@ -112,13 +112,16 @@ global.saveSettings = async () => {
     } catch (e) { }
 };
 
+// --- 🚀 CUSTOM STABLE DELAY (Fixes delay issues) ---
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 let sock;
 
 // --- 🕐 Wait until message is synced to prevent Bad MAC ---
 const waitForMessageSync = async (msgKey, timeout = 5000) => {
     const start = Date.now();
     while (!messageStore.has(`${msgKey.remoteJid}-${msgKey.id}`)) {
-        await new Promise(res => setTimeout(res, 50));
+        await sleep(50);
         if (Date.now() - start > timeout) break;
     }
 };
@@ -252,7 +255,8 @@ async function startVinnieHub() {
 
         const mtype = Object.keys(msg.message)[0];
         const textContent = (mtype === 'conversation' ? msg.message.conversation : mtype === 'extendedTextMessage' ? msg.message.extendedTextMessage.text : msg.message[mtype]?.caption) || "";
-        
+
+        // --- LOAD SETTINGS ---
         let settings = { mode: 'public', bluetick: true };
         try { 
             const savedSettings = fs.readJsonSync(settingsFile); 
