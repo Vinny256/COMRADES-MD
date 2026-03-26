@@ -1,12 +1,14 @@
-import baileys from "@whiskeysockets/baileys";
-const { delay } = baileys;
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import baileys from "@whiskeysockets/baileys";
 
 // ESM fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 🚀 CUSTOM STABLE DELAY (REPLACES BAILEYS DELAY)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const aliveCommand = {
     name: "alive",
@@ -45,7 +47,7 @@ const aliveCommand = {
 
         // 2. SMART AUDIO SENDING
         if (fs.existsSync(audioPath)) {
-            await delay(1500);
+            await sleep(1500); 
             await sock.sendMessage(from, { 
                 audio: { url: audioPath }, 
                 mimetype: 'audio/mpeg',    
