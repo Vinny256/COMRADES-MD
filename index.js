@@ -1,9 +1,33 @@
 // --- THE GLOBAL BUSINESS SHIELD ---
-// Removed silent filter to log everything
+const originalWrite = process.stdout.write;
+process.stdout.write = function (chunk, encoding, callback) {
+    const data = chunk.toString();
+    // 🛡️ NOISE FILTER: Hiding the library spam that clogs Heroku
+    if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || 
+         data.includes('Decrypted message') || data.includes('MessageCounterError') || 
+         data.includes('LID mapping') || data.includes('bulk device migration') || 
+         data.includes('retry cache') || data.includes('Buffer timeout')) && 
+         !data.includes('🚀') && !data.includes('✅') && !data.includes('📥')) {
+        return; 
+    }
+    return originalWrite.call(process.stdout, chunk, encoding, callback);
+};
+
 import 'dotenv/config';
 import express from 'express';
 const app = express();
 app.use(express.json());
+
+// --- 🎨 V-HUB COLOR PALETTE ---
+const C = {
+    reset: "\x1b[0m",
+    blue: "\x1b[34m",
+    green: "\x1b[32m",
+    red: "\x1b[31m",
+    yellow: "\x1b[33m",
+    cyan: "\x1b[36m",
+    bold: "\x1b[1m"
+};
 
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -31,7 +55,7 @@ import NodeCache from "node-cache";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const logger = pino({ level: 'debug' }); // 🔹 full logging
+const logger = pino({ level: 'silent' }); // 🔹 Set to silent to let our custom logger shine
 const commands = new Map();
 const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
@@ -61,7 +85,7 @@ const loadResources = async () => {
             try { 
                 const worker = await import(`./workers/${file}?update=${Date.now()}`);
                 loadedWorkers.push(worker.default || worker); 
-            } catch (e) { console.error(`Worker Error: ${file}`, e); }
+            } catch (e) { console.error(`${C.red}Worker Error: ${file}${C.reset}`, e); }
         }
     }
 
@@ -82,13 +106,13 @@ const loadResources = async () => {
                         if (Array.isArray(cmd.name)) cmd.name.forEach(n => commands.set(n, cmd));
                         else commands.set(cmd.name, cmd);
                     }
-                } catch (e) { console.error(`Cmd Error: ${file}`, e); }
+                } catch (e) { console.error(`${C.red}Cmd Error: ${file}${C.reset}`, e); }
             }
         }
     };
     await readCommands(cmdPath);
     await readCommands(autoPath);
-    console.log(`V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers`);
+    console.log(`${C.cyan}${C.bold}V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers${C.reset}`);
 };
 
 const mongoUri = process.env.MONGO_URI;
@@ -100,7 +124,7 @@ global.saveSettings = async () => {
         if (!fs.existsSync(settingsFile)) return;
         const settings = fs.readJsonSync(settingsFile);
         await client.db("vinnieBot").collection("config").updateOne({ id: "main_config" }, { $set: settings }, { upsert: true });
-    } catch (e) { console.error("Save Settings Error:", e); }
+    } catch (e) { console.error(`${C.red}Save Settings Error:${C.reset}`, e); }
 };
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -120,9 +144,9 @@ async function startVinnieHub() {
         if (dbConfig) {
             delete dbConfig._id; delete dbConfig.id;
             fs.writeJsonSync(settingsFile, dbConfig);
-            console.log("Settings Pulled from Cloud");
+            console.log(`${C.green}Settings Pulled from Cloud${C.reset}`);
         }
-    } catch (err) { console.error("Mongo Pull Error:", err); }
+    } catch (err) { console.error(`${C.red}Mongo Pull Error:${C.reset}`, err); }
 
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
@@ -132,9 +156,9 @@ async function startVinnieHub() {
                 if (sessionRecord) {
                     const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
                     fs.writeFileSync(credsPath, decryptedData);
-                    console.log("SESSION HEALED");
+                    console.log(`${C.yellow}SESSION HEALED${C.reset}`);
                 }
-            } catch (err) { console.error("Session Heal Error:", err); }
+            } catch (err) { console.error(`${C.red}Session Heal Error:${C.reset}`, err); }
         }
     }
 
@@ -148,7 +172,7 @@ async function startVinnieHub() {
         browser: Browsers.macOS("Desktop"),
         markOnlineOnConnect: true, 
         msgRetryCounterCache, 
-        keepAliveIntervalMs: 30000,
+        keepAliveIntervalMs: 10000, // Faster keep-alive for stability
         syncFullHistory: true, 
         shouldSyncLidPnMappings: true,
         getMessage: async (key) => messageStore.get(`${key.remoteJid}-${key.id}`) || { conversation: '' }
@@ -164,22 +188,21 @@ async function startVinnieHub() {
                 { $set: { data: compressed, updatedAt: new Date() } },
                 { upsert: true }
             );
-        } catch (e) { console.error("Creds Update Error:", e); }
+        } catch (e) { console.error(`${C.red}Creds Update Error:${C.reset}`, e); }
     });
 
     sock.ev.on('connection.update', async (u) => {
-        console.log("CONNECTION UPDATE:", u.connection, u.lastDisconnect ? `(Last Disconnect: ${u.lastDisconnect.error?.output?.statusCode})` : '');
         if (u.connection === 'open') {
-            console.log("VINNIE HUB: Online & Key-Sync Confirmed");
+            console.log(`${C.green}${C.bold}VINNIE HUB: Online & Key-Sync Confirmed${C.reset}`);
             if (sock.user?.id) {
                 sock.ev.emit('presence.update', { id: sock.user.id, presences: { [sock.user.id]: { lastKnownPresence: 'available' } } });
             }
         }
         if (u.connection === 'close') {
             const code = u.lastDisconnect?.error?.output?.statusCode;
-            console.log("Disconnected with status:", code);
+            console.log(`${C.red}Connection Lost (Status: ${code})${C.reset}`);
             if (code !== DisconnectReason.loggedOut) {
-                console.log("Connection Lost: Auto-Heal Triggered...");
+                console.log(`${C.yellow}Auto-Heal Triggered...${C.reset}`);
                 setTimeout(() => startVinnieHub(), 3000);
             }
         }
@@ -198,7 +221,11 @@ async function startVinnieHub() {
         const msg = messages[0];
         const from = msg.key.remoteJid;
 
-        // ✅ Safe extraction to prevent crashes, logs stay intact
+        // ⏱️ ANTI-GHOST GUARD: Ignore messages older than 60s
+        const msgTime = msg.messageTimestamp;
+        const now = Math.floor(Date.now() / 1000);
+        if (now - msgTime > 60) return;
+
         let mtype = "unknown";
         let textContent = "";
         try {
@@ -209,12 +236,17 @@ async function startVinnieHub() {
                     : msg.message[mtype]?.caption) || "";
             }
         } catch (err) {
-            console.log(`⚠️ MESSAGE PARSE ERROR from ${from}:`, err.message);
+            console.log(`${C.red}⚠️ PARSE ERROR:${C.reset}`, err.message);
         }
 
-        console.log(`RECEIVED: ${from} | ${mtype} | "${textContent}"`);
+        // 📥 HUMAN READABLE LOG: INCOMING
+        const pushName = msg.pushName || "User";
+        console.log(`\n${C.blue}📥 [INCOMING] | ${from.endsWith('@g.us') ? 'GROUP' : 'PRIVATE'}${C.reset}`);
+        console.log(`┃ ${C.bold}FROM:${C.reset} ${pushName} (${from})`);
+        console.log(`┃ ${C.bold}TYPE:${C.reset} ${mtype}`);
+        console.log(`┃ ${C.bold}MSG:${C.reset} ${textContent.slice(0, 50)}${textContent.length > 50 ? '...' : ''}`);
+        console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┈`);
 
-        // --- LOAD SETTINGS ---
         let settings = { mode: 'public', bluetick: true };
         try { 
             const savedSettings = fs.readJsonSync(settingsFile); 
@@ -226,25 +258,38 @@ async function startVinnieHub() {
         const isMe = msg.key.fromMe || decodeJid(sender) === botNumber;
         const prefix = process.env.PREFIX || ".";
         const isCommand = textContent.startsWith(prefix);
+        
         if (settings.mode === 'private' && !isMe) return;
 
         if (isCommand) {
-            (async () => { // 🚀 make command execution instant
+            (async () => {
                 const args = textContent.slice(prefix.length).trim().split(/ +/);
                 const cmdName = args.shift().toLowerCase();
                 const command = commands.get(cmdName);
                 if (!command) return;
 
                 try {
-                    console.log(`EXECUTING COMMAND: ${cmdName} | FROM: ${from}`);
+                    // ⏱️ THE SYNC GRACE PERIOD
+                    await sleep(1000);
+
                     await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); 
+                    
                     await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, commands, logsCollection: client.db("vinnieBot").collection("logs") });
+                    
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
                     await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } });
-                    console.log(`COMMAND COMPLETED: ${cmdName} | FROM: ${from}`);
+
+                    // 📤 HUMAN READABLE LOG: SUCCESS
+                    console.log(`\n${C.green}📤 [OUTGOING] | COMMAND: ${cmdName}${C.reset}`);
+                    console.log(`┃ ${C.bold}TO:${C.reset} ${from}`);
+                    console.log(`┃ ${C.bold}STATUS:${C.reset} SUCCESS ✅`);
+                    console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┈`);
+
                 } catch (err) {
-                    console.error(`COMMAND ERROR [${cmdName}]:`, err);
+                    console.log(`\n${C.red}❌ [COMMAND ERROR] | ${cmdName}${C.reset}`);
+                    console.log(`┃ ${C.bold}FAIL:${C.reset} ${err.message}`);
+                    console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┈`);
                     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } });
                 }
             })();
@@ -252,37 +297,31 @@ async function startVinnieHub() {
 
         loadedWorkers.forEach(worker => {
             try {
-                if (worker?.execute) worker.execute(sock, msg, settings).catch(err => console.error("Worker Execution Error:", err));
-                else if (typeof worker === 'function') worker(sock, msg, settings).catch(err => console.error("Worker Function Error:", err));
-            } catch (err) { console.error("Worker Loop Error:", err); }
+                if (worker?.execute) worker.execute(sock, msg, settings).catch(err => {});
+                else if (typeof worker === 'function') worker(sock, msg, settings).catch(err => {});
+            } catch (err) { }
         });
     });
 
-    sock.ev.on('messages.update', (upd) => console.log("MESSAGE UPDATE:", upd));
-    sock.ev.on('messages.delete', (del) => console.log("MESSAGE DELETE:", del));
-    sock.ev.on('message-receipt.update', (r) => console.log("MESSAGE RECEIPT UPDATE:", r));
-    sock.ev.on('presence.update', (p) => console.log("PRESENCE UPDATE:", p));
-    sock.ev.on('chats.update', (c) => console.log("CHATS UPDATE:", c));
-    sock.ev.on('contacts.update', (c) => console.log("CONTACTS UPDATE:", c));
+    // 🛡️ Filtered standard events to prevent log flooding
+    sock.ev.on('messages.update', (upd) => {});
+    sock.ev.on('message-receipt.update', (r) => {});
+    sock.ev.on('presence.update', (p) => {});
 }
 
 app.post('/v_hub_notify', async (req, res) => {
-    console.log("VHUB_NOTIFY HIT:", req.body);
     if (req.headers['x-vhub-secret'] !== process.env.API_SECRET) return res.sendStatus(403);
     try {
         if (sock) {
             await sock.sendMessage(req.body.jid, { text: req.body.text });
-            console.log("SENT MESSAGE VIA VHUB_NOTIFY:", req.body.jid, req.body.text);
+            console.log(`${C.cyan}API NOTIFY: Message Sent to ${req.body.jid}${C.reset}`);
             res.status(200).send("OK");
         } else res.status(503).send("Sock Offline");
-    } catch (e) { 
-        console.error("v_hub_notify error:", e);
-        res.status(500).send(e.message); 
-    }
+    } catch (e) { res.status(500).send(e.message); }
 });
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-    console.log(`BOT_WEB_SERVER: Listening on ${PORT}`);
+    console.log(`${C.cyan}BOT_WEB_SERVER: Listening on ${PORT}${C.reset}`);
     startVinnieHub();
 });
