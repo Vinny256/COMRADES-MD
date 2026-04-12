@@ -8,14 +8,12 @@ const playCommand = {
     async execute(sock, msg, args, { prefix, from }) {
         const query = args.join(" ");
         
-        // 1. Validation Logic
         if (!query) {
             return sock.sendMessage(from, { 
                 text: `┌─『 SYSTEM_ERR 』\n│ USAGE: ${prefix}play [name]\n└────────────────────────┈` 
             });
         }
 
-        // Phase 1: Requesting State (Sleek UI)
         const { key } = await sock.sendMessage(from, { 
             text: `┌────────────────────────┈\n` +
                   `│      *YT_DOWNLOADER* \n` +
@@ -31,7 +29,6 @@ const playCommand = {
             const video = search.videos[0];
             if (!video) throw new Error("Not_Found");
 
-            // Phase 2: Fetching (Sleek UI Edit)
             await sock.sendMessage(from, { 
                 text: `┌────────────────────────┈\n` +
                       `│      *YT_DOWNLOADER* \n` +
@@ -43,12 +40,17 @@ const playCommand = {
                 edit: key 
             });
 
-            // 🚀 Updated to use noobs-api logic
+            // 🚀 API CALL WITH TIMEOUT & BETTER ERROR HANDLING
             const apiUrl = `https://noobs-api.top/dipto/ytDl3?link=${encodeURIComponent(video.url)}&format=mp3`;
-            const response = await axios.get(apiUrl);
+            
+            const response = await axios.get(apiUrl, { timeout: 45000 }).catch(e => {
+                if (e.response && e.response.status === 520) throw new Error("API_CRASH_520");
+                throw e;
+            });
+
             const downloadUrl = response.data.download_url || response.data.result || response.data.link;
 
-            if (!downloadUrl) throw new Error("API_ERROR");
+            if (!downloadUrl) throw new Error("API_INVALID_RESPONSE");
 
             let caption = `┌────────────────────────┈\n`;
             caption += `│      *YT_RESULT* \n`;
@@ -60,7 +62,6 @@ const playCommand = {
             caption += `└────────────────────────┈\n\n`;
             caption += `_INFINITE IMPACT x VINNIE DIGITAL_`;
 
-            // Phase 3: Final Delivery (Sending as Audio/Voice)
             await sock.sendMessage(from, { 
                 audio: { url: downloadUrl }, 
                 mimetype: 'audio/mpeg',
@@ -68,13 +69,17 @@ const playCommand = {
                 caption: caption 
             }, { quoted: msg });
 
-            // Cleanup the status message
             await sock.sendMessage(from, { delete: key });
 
         } catch (e) {
-            console.error(`❌ [PLAY_ERR] API failure: ${e.message}`);
+            let errorMsg = "API_TIMEOUT";
+            if (e.message === "API_CRASH_520") errorMsg = "SERVER_OVERLOAD (520)";
+            if (e.message === "Not_Found") errorMsg = "VIDEO_NOT_FOUND";
+
+            console.error(`❌ [PLAY_ERR] ${errorMsg}: ${e.message}`);
+            
             await sock.sendMessage(from, { 
-                text: `┌─『 SYSTEM_ERR 』\n│ STAT: FAILED\n│ ERR: API_TIMEOUT\n│ TIP: TRY AGAIN LATER\n└────────────────────────┈`, 
+                text: `┌─『 SYSTEM_ERR 』\n│ STAT: FAILED\n│ ERR: ${errorMsg}\n│ TIP: TRY A DIFFERENT SONG\n└────────────────────────┈`, 
                 edit: key 
             });
         }
