@@ -2,12 +2,12 @@
 const originalWrite = process.stdout.write;
 process.stdout.write = function (chunk, encoding, callback) {
     const data = chunk.toString();
-    // 🛡️ NOISE FILTER: Hiding the library spam that clogs Heroku
+    // NOISE FILTER: Hiding the library spam that clogs Heroku
     if ((data.includes('SessionEntry') || data.includes('Closing session') || data.includes('Bad MAC') || 
          data.includes('Decrypted message') || data.includes('MessageCounterError') || 
          data.includes('LID mapping') || data.includes('bulk device migration') || 
          data.includes('retry cache') || data.includes('Buffer timeout')) && 
-         !data.includes('🚀') && !data.includes('✅') && !data.includes('📥')) {
+         !data.includes('START') && !data.includes('SUCCESS') && !data.includes('INCOMING')) {
         return; 
     }
     return originalWrite.call(process.stdout, chunk, encoding, callback);
@@ -18,7 +18,7 @@ import express from 'express';
 const app = express();
 app.use(express.json());
 
-// --- 🎨 V-HUB COLOR PALETTE ---
+// --- V-HUB COLOR PALETTE ---
 const C = {
     reset: "\x1b[0m",
     blue: "\x1b[34m",
@@ -49,18 +49,17 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pino from 'pino';
 import zlib from 'zlib'; 
-import { MongoClient } from "mongodb"; 
 import NodeCache from "node-cache"; 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const logger = pino({ level: 'silent' }); // 🔹 Set to silent to let our custom logger shine
+const logger = pino({ level: 'silent' }); // Set to silent to let our custom logger shine
 const commands = new Map();
 const settingsFile = './settings.json';
 const msgRetryCounterCache = new NodeCache(); 
 
-// ✅ In-memory message store for getMessage handler
+// In-memory message store for getMessage handler
 const messageStore = new Map();
 
 if (!global.healingRetries) global.healingRetries = new Map(); 
@@ -115,15 +114,10 @@ const loadResources = async () => {
     console.log(`${C.cyan}${C.bold}V-HUB ONLINE | ${commands.size} Commands | ${loadedWorkers.length} Workers${C.reset}`);
 };
 
-const mongoUri = process.env.MONGO_URI;
-const client = new MongoClient(mongoUri || "");
-global.dbClient = client; 
-
 global.saveSettings = async () => {
     try {
         if (!fs.existsSync(settingsFile)) return;
-        const settings = fs.readJsonSync(settingsFile);
-        await client.db("vinnieBot").collection("config").updateOne({ id: "main_config" }, { $set: settings }, { upsert: true });
+        // Local settings preservation only in Zero-DB mode
     } catch (e) { console.error(`${C.red}Save Settings Error:${C.reset}`, e); }
 };
 
@@ -138,26 +132,14 @@ async function startVinnieHub() {
     if (!fs.existsSync(authFolder)) fs.mkdirSync(authFolder);
     const credsPath = path.join(authFolder, 'creds.json');
 
-    try {
-        await client.connect();
-        const dbConfig = await client.db("vinnieBot").collection("config").findOne({ id: "main_config" });
-        if (dbConfig) {
-            delete dbConfig._id; delete dbConfig.id;
-            fs.writeJsonSync(settingsFile, dbConfig);
-            console.log(`${C.green}Settings Pulled from Cloud${C.reset}`);
-        }
-    } catch (err) { console.error(`${C.red}Mongo Pull Error:${C.reset}`, err); }
-
     if (!fs.existsSync(credsPath)) {
         const sessionID = process.env.SESSION_ID;
         if (sessionID?.startsWith('VINNIE~')) {
             try {
-                const sessionRecord = await client.db("vinnieBot").collection("sessions").findOne({ sessionId: sessionID });
-                if (sessionRecord) {
-                    const decryptedData = zlib.inflateSync(Buffer.from(sessionRecord.data, 'base64')).toString();
-                    fs.writeFileSync(credsPath, decryptedData);
-                    console.log(`${C.yellow}SESSION HEALED${C.reset}`);
-                }
+                const base64Data = sessionID.split('VINNIE~')[1];
+                const decryptedData = zlib.inflateSync(Buffer.from(base64Data, 'base64')).toString();
+                fs.writeFileSync(credsPath, decryptedData);
+                console.log(`${C.yellow}SESSION HEALED FROM STRING${C.reset}`);
             } catch (err) { console.error(`${C.red}Session Heal Error:${C.reset}`, err); }
         }
     }
@@ -180,15 +162,6 @@ async function startVinnieHub() {
 
     sock.ev.on('creds.update', async () => {
         await saveCreds(); 
-        try {
-            const credsData = fs.readFileSync(credsPath);
-            const compressed = zlib.deflateSync(credsData).toString('base64');
-            await client.db("vinnieBot").collection("sessions").updateOne(
-                { sessionId: process.env.SESSION_ID },
-                { $set: { data: compressed, updatedAt: new Date() } },
-                { upsert: true }
-            );
-        } catch (e) { console.error(`${C.red}Creds Update Error:${C.reset}`, e); }
     });
 
     sock.ev.on('connection.update', async (u) => {
@@ -221,7 +194,7 @@ async function startVinnieHub() {
         const msg = messages[0];
         const from = msg.key.remoteJid;
 
-        // ⏱️ ANTI-GHOST GUARD: Ignore messages older than 60s
+        // ANTI-GHOST GUARD: Ignore messages older than 60s
         const msgTime = msg.messageTimestamp;
         const now = Math.floor(Date.now() / 1000);
         if (now - msgTime > 60) return;
@@ -236,12 +209,12 @@ async function startVinnieHub() {
                     : msg.message[mtype]?.caption) || "";
             }
         } catch (err) {
-            console.log(`${C.red}⚠️ PARSE ERROR:${C.reset}`, err.message);
+            console.log(`${C.red}PARSING ERROR:${C.reset}`, err.message);
         }
 
-        // 📥 HUMAN READABLE LOG: INCOMING
+        // HUMAN READABLE LOG: INCOMING
         const pushName = msg.pushName || "User";
-        console.log(`\n${C.blue}📥 [INCOMING] | ${from.endsWith('@g.us') ? 'GROUP' : 'PRIVATE'}${C.reset}`);
+        console.log(`\n${C.blue}[INCOMING] | ${from.endsWith('@g.us') ? 'GROUP' : 'PRIVATE'}${C.reset}`);
         console.log(`┃ ${C.bold}FROM:${C.reset} ${pushName} (${from})`);
         console.log(`┃ ${C.bold}TYPE:${C.reset} ${mtype}`);
         console.log(`┃ ${C.bold}MSG:${C.reset} ${textContent.slice(0, 50)}${textContent.length > 50 ? '...' : ''}`);
@@ -269,25 +242,25 @@ async function startVinnieHub() {
                 if (!command) return;
 
                 try {
-                    // ⏱️ THE SYNC GRACE PERIOD
+                    // THE SYNC GRACE PERIOD
                     await sleep(1000);
 
                     await sock.sendMessage(from, { react: { text: '⬆️', key: msg.key } }); 
                     
-                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, commands, logsCollection: client.db("vinnieBot").collection("logs") });
+                    await command.execute(sock, msg, args, { prefix, from, sender, isMe, settings, commands });
                     
                     await sock.sendPresenceUpdate('available', from);
                     await sock.readMessages([msg.key]);
                     await sock.sendMessage(from, { react: { text: '⬇️', key: msg.key } });
 
-                    // 📤 HUMAN READABLE LOG: SUCCESS
-                    console.log(`\n${C.green}📤 [OUTGOING] | COMMAND: ${cmdName}${C.reset}`);
+                    // HUMAN READABLE LOG: SUCCESS
+                    console.log(`\n${C.green}[OUTGOING] | COMMAND: ${cmdName}${C.reset}`);
                     console.log(`┃ ${C.bold}TO:${C.reset} ${from}`);
-                    console.log(`┃ ${C.bold}STATUS:${C.reset} SUCCESS ✅`);
+                    console.log(`┃ ${C.bold}STATUS:${C.reset} SUCCESS`);
                     console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┈`);
 
                 } catch (err) {
-                    console.log(`\n${C.red}❌ [COMMAND ERROR] | ${cmdName}${C.reset}`);
+                    console.log(`\n${C.red}[COMMAND ERROR] | ${cmdName}${C.reset}`);
                     console.log(`┃ ${C.bold}FAIL:${C.reset} ${err.message}`);
                     console.log(`┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┈`);
                     await sock.sendMessage(from, { react: { text: '❌', key: msg.key } });
@@ -303,7 +276,7 @@ async function startVinnieHub() {
         });
     });
 
-    // 🛡️ Filtered standard events to prevent log flooding
+    // Filtered standard events to prevent log flooding
     sock.ev.on('messages.update', (upd) => {});
     sock.ev.on('message-receipt.update', (r) => {});
     sock.ev.on('presence.update', (p) => {});
