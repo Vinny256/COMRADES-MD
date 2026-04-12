@@ -1,5 +1,5 @@
 import yts from 'yt-search';
-import ytdl from '@distube/ytdl-core';
+import axios from 'axios';
 
 const playCommand = {
     name: "play",
@@ -11,18 +11,18 @@ const playCommand = {
         // 1. Validation Logic
         if (!query) {
             return sock.sendMessage(from, { 
-                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *ᴜsᴀɢᴇ:* ${prefix}ᴘʟᴀʏ [ɴᴀᴍᴇ]\n└────────────────────────┈` 
+                text: `┌─『 SYSTEM_ERR 』\n│ USAGE: ${prefix}play [name]\n└────────────────────────┈` 
             });
         }
 
         // Phase 1: Requesting State (Sleek UI)
         const { key } = await sock.sendMessage(from, { 
             text: `┌────────────────────────┈\n` +
-                  `│      *ʏᴛ_ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* \n` +
+                  `│      *YT_DOWNLOADER* \n` +
                   `└────────────────────────┈\n\n` +
-                  `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n` +
-                  `│ ⚙ *ǫᴜᴇʀʏ:* ${query.slice(0, 15)}...\n` +
-                  `│ ⚙ *sᴛᴀᴛ:* [ ʀᴇǫᴜᴇsᴛɪɴɢ... ]\n` +
+                  `┌─『 STATUS_LOG 』\n` +
+                  `│ QUERY: ${query.slice(0, 15)}...\n` +
+                  `│ STAT: [ REQUESTING... ]\n` +
                   `└────────────────────────┈`
         });
 
@@ -31,45 +31,50 @@ const playCommand = {
             const video = search.videos[0];
             if (!video) throw new Error("Not_Found");
 
-            // Phase 2: Extracting (Sleek UI Edit)
+            // Phase 2: Fetching (Sleek UI Edit)
             await sock.sendMessage(from, { 
                 text: `┌────────────────────────┈\n` +
-                      `│      *ʏᴛ_ᴅᴏᴡɴʟᴏᴀᴅᴇʀ* \n` +
+                      `│      *YT_DOWNLOADER* \n` +
                       `└────────────────────────┈\n\n` +
-                      `┌─『 sᴛᴀᴛᴜs_ʟᴏɢ 』\n` +
-                      `│ ⚙ *ᴛɪᴛʟᴇ:* ${video.title.slice(0, 15)}...\n` +
-                      `│ ⚙ *sᴛᴀᴛ:* [ ᴇxᴛʀᴀᴄᴛɪɴɢ... ]\n` +
+                      `┌─『 STATUS_LOG 』\n` +
+                      `│ TITLE: ${video.title.slice(0, 15)}...\n` +
+                      `│ STAT: [ FETCHING_API... ]\n` +
                       `└────────────────────────┈`, 
                 edit: key 
             });
 
-            const videoUrl = video.url;
-            const info = await ytdl.getInfo(videoUrl);
-            const format = ytdl.chooseFormat(info.formats, { quality: 'highestvideo', filter: 'mp4' });
+            // 🚀 Updated to use noobs-api logic
+            const apiUrl = `https://noobs-api.top/dipto/ytDl3?link=${encodeURIComponent(video.url)}&format=mp3`;
+            const response = await axios.get(apiUrl);
+            const downloadUrl = response.data.download_url || response.data.result || response.data.link;
+
+            if (!downloadUrl) throw new Error("API_ERROR");
 
             let caption = `┌────────────────────────┈\n`;
-            caption += `│      *ʏᴛ_ʀᴇsᴜʟᴛ* \n`;
+            caption += `│      *YT_RESULT* \n`;
             caption += `└────────────────────────┈\n\n`;
-            caption += `┌─『 ᴍᴇᴅɪᴀ_ᴅᴇᴛᴀɪʟs 』\n`;
-            caption += `│ ⚙ *ᴛɪᴛʟᴇ:* ${video.title.slice(0, 25)}\n`;
-            caption += `│ ⚙ *ᴅᴜʀᴀᴛɪᴏɴ:* ${video.timestamp}\n`;
-            caption += `│ ⚙ *ǫᴜᴀʟɪᴛʏ:* ʜᴅ_ᴀᴜᴛᴏ\n`;
+            caption += `┌─『 MEDIA_DETAILS 』\n`;
+            caption += `│ TITLE: ${video.title.slice(0, 25)}\n`;
+            caption += `│ DURATION: ${video.timestamp}\n`;
+            caption += `│ QUALITY: 320KBPS_AUDIO\n`;
             caption += `└────────────────────────┈\n\n`;
-            caption += `_ɪɴꜰɪɴɪᴛᴇ ɪᴍᴘᴀᴄᴛ x ᴠɪɴɴɪᴇ ᴅɪɢɪᴛᴀʟ_`;
+            caption += `_INFINITE IMPACT x VINNIE DIGITAL_`;
 
-            // Phase 3: Final Delivery
+            // Phase 3: Final Delivery (Sending as Audio/Voice)
             await sock.sendMessage(from, { 
-                video: { url: format.url }, 
+                audio: { url: downloadUrl }, 
+                mimetype: 'audio/mpeg',
+                fileName: `${video.title}.mp3`,
                 caption: caption 
             }, { quoted: msg });
 
-            // Cleanup the "Rendering" message
+            // Cleanup the status message
             await sock.sendMessage(from, { delete: key });
 
         } catch (e) {
-            console.error(`❌ [COMMAND_ERR] YouTube download failed: ${e.message}`);
+            console.error(`❌ [PLAY_ERR] API failure: ${e.message}`);
             await sock.sendMessage(from, { 
-                text: `┌─『 sʏsᴛᴇᴍ_ᴇʀʀ 』\n│ ⚙ *sᴛᴀᴛ:* ғᴀɪʟᴇᴅ\n│ ⚙ *ᴇʀʀ:* ʀᴇɢɪᴏɴ_ʙʟᴏᴄᴋ\n│ ⚙ *ᴛɪᴘ:* ᴄʜᴇᴄᴋ sᴇʀᴠᴇʀ ɪᴘ\n└────────────────────────┈`, 
+                text: `┌─『 SYSTEM_ERR 』\n│ STAT: FAILED\n│ ERR: API_TIMEOUT\n│ TIP: TRY AGAIN LATER\n└────────────────────────┈`, 
                 edit: key 
             });
         }
